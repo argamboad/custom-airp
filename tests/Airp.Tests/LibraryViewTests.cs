@@ -121,17 +121,77 @@ public sealed class LibraryViewTests : IDisposable
     }
 
     [Fact]
-    public void A_short_screen_ends_the_preview_in_an_ellipsis()
+    public void A_description_too_long_for_the_pane_says_how_much_there_is()
     {
-        File.WriteAllText(
+        WriteNumberedWorld();
+
+        var rendered = Render(View().Render(Short()));
+
+        rendered.ShouldContain("of 40");
+        rendered.ShouldContain("line 1");
+        rendered.ShouldNotContain("line 40");
+    }
+
+    [Fact]
+    public async Task PgDn_scrolls_the_description_and_PgUp_comes_back()
+    {
+        WriteNumberedWorld();
+
+        var view = View();
+        await view.HandleKeyAsync(Nav(ConsoleKey.PageDown), Short(), CancellationToken.None);
+
+        var scrolled = Render(view.Render(Short()));
+
+        // A page down, not a jump to the end: the top line has moved off and the next
+        // screenful is showing. "line 1 " keeps its space so it cannot match "line 10".
+        scrolled.ShouldContain("line 8");
+        scrolled.ShouldNotContain("line 1 ");
+
+        await view.HandleKeyAsync(Nav(ConsoleKey.PageUp), Short(), CancellationToken.None);
+
+        Render(view.Render(Short())).ShouldContain("line 1 ");
+    }
+
+    [Fact]
+    public async Task Paging_past_the_end_stops_at_the_last_screenful()
+    {
+        WriteNumberedWorld();
+
+        var view = View();
+
+        foreach (var _ in Enumerable.Range(0, 20))
+        {
+            await view.HandleKeyAsync(Nav(ConsoleKey.PageDown), Short(), CancellationToken.None);
+        }
+
+        var rendered = Render(view.Render(Short()));
+
+        rendered.ShouldContain("line 40");
+        rendered.ShouldContain("of 40");
+    }
+
+    [Fact]
+    public async Task Scrolling_does_not_follow_you_to_the_next_entry()
+    {
+        WriteNumberedWorld();
+
+        var view = View();
+        await view.HandleKeyAsync(Nav(ConsoleKey.PageDown), Short(), CancellationToken.None);
+        Render(view.Render(Short()));
+
+        // elena is short enough to need no scrolling; her first line has to be visible.
+        await view.HandleKeyAsync(Nav(ConsoleKey.DownArrow), Short(), CancellationToken.None);
+
+        Render(view.Render(Short())).ShouldContain("You are Elena.");
+    }
+
+    private void WriteNumberedWorld()
+        => File.WriteAllText(
             Path.Combine(_root, "characters", "a-lighthouse.txt"),
             "=== THE WORLD ===\n\n" + string.Join('\n', Enumerable.Range(1, 40).Select(i => $"line {i}")));
 
-        var rendered = Render(View().Render(new RenderContext(100, 16, Theme.For(ThemeName.Dark), new AirpOptions())));
-
-        rendered.ShouldContain("…");
-        rendered.ShouldNotContain("line 40");
-    }
+    private static RenderContext Short()
+        => new(100, 16, Theme.For(ThemeName.Dark), new AirpOptions());
 
     [Fact]
     public void A_template_card_previews_its_world_not_the_boilerplate()
