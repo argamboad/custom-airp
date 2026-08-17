@@ -232,6 +232,20 @@ public sealed class LibraryViewTests : IDisposable
     }
 
     [Fact]
+    public void An_underscored_name_is_kept_but_not_listed()
+    {
+        File.WriteAllText(Path.Combine(_root, "characters", "_scenario-template.txt"), "The skeleton.");
+
+        var rendered = Render(View().Render(Context()));
+
+        rendered.ShouldNotContain("scenario-template");
+        rendered.ShouldContain("elena");
+
+        // Kept, not hidden: asking for it by name still finds the file.
+        TextLibrary.Find(Path.Combine(_root, "characters"), "_scenario-template").ShouldNotBeNull();
+    }
+
+    [Fact]
     public async Task Arrows_switch_shelves()
     {
         var view = View();
