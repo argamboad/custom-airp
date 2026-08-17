@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Airp.Tests</RootNamespace>
+    <AssemblyName>Airp.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <!--
+      xUnit1051 asks every call that accepts a CancellationToken to be passed
+      TestContext.Current.CancellationToken. These tests are in-memory and finish in
+      milliseconds, so threading a token through every assertion would add noise without
+      making anything more cancellable.
+    -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Airp.Domain\Airp.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Airp.Application\Airp.Application.csproj" />
+    <ProjectReference Include="..\..\src\Airp.Infrastructure\Airp.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Airp.Terminal\Airp.Terminal.csproj" />
+    <ProjectReference Include="..\..\src\Airp.Proxy\Airp.Proxy.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+</Project>

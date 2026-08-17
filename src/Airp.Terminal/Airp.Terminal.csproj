@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Airp.Terminal</RootNamespace>
+    <AssemblyName>airp</AssemblyName>
+    <ToolCommandName>airp</ToolCommandName>
+    <PackAsTool>true</PackAsTool>
+    <PackageId>Airp.Terminal</PackageId>
+    <Description>A keyboard-driven terminal client.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Airp.Application\Airp.Application.csproj" />
+    <ProjectReference Include="..\Airp.Infrastructure\Airp.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" />
+    <PackageReference Include="Spectre.Console" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Airp.Tests" />
+  </ItemGroup>
+
+</Project>

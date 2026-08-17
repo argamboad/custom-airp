@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Airp.Domain</RootNamespace>
+    <IsLibraryProject>true</IsLibraryProject>
+  </PropertyGroup>
+
+</Project>

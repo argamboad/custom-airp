@@ -1,0 +1,30 @@
+# Rocinante 12B v1.1 with the template the community mirror did not ship.
+#
+# The michaelbui/rocinante-12b-v1.1 mirror comes with `TEMPLATE {{ .Prompt }}`:
+# no ChatML wrapper and no slot for .System, which means the system prompt is
+# discarded silently and the model does raw completion instead of chat.
+# The stop tokens were correct, which confirms it is a ChatML model.
+#
+# Build:
+#   ollama create rocinante-rp -f Modelfile.rocinante
+
+FROM michaelbui/rocinante-12b-v1.1:q4-k-m
+
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+{{ .Response }}<|im_end|>
+"""
+
+PARAMETER stop <|im_start|>
+PARAMETER stop <|im_end|>
+
+# 4096 is Ollama's default and it is not enough for this project.
+# 8192 is a reasonable middle point to measure from. A full context budget wants
+# 24k-32k, and that jump has to be measured separately: it costs RAM and prompt eval.
+PARAMETER num_ctx 8192
+
+# TheDrummer recommends 0.7-1.2 for Rocinante. 1.0 for RP with some spark.
+PARAMETER temperature 1.0

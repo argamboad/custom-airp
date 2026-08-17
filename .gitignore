@@ -1,0 +1,24 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+TestResults/
+artifacts/
+exports/
+profile/
+*.log
+
+# Datos privados — ver §Seguridad en CLAUDE.md
+# captures/ tiene el prompt completo de los chats en claro.
+# La base tiene todo el historial en claro.
+captures/
+/secrets/
+.env
+*.db
+*.db-wal
+*.db-shm
+
+# Owner's local context — the personal half of CLAUDE.md
+CLAUDE.local.md
