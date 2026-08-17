@@ -61,6 +61,12 @@ public sealed class TextLibrary
     }
 
     /// <summary>The names available in a folder, alphabetically.</summary>
+    /// <remarks>
+    /// A name starting with <c>_</c> is kept but not listed. A shelf holds working papers as
+    /// well as things to play — a template, notes towards a character — and they belong beside
+    /// the files they are about rather than in every picker that offers something to start.
+    /// Resolution by name still finds them, so nothing is hidden from someone who asks for it.
+    /// </remarks>
     /// <param name="folder">One of <see cref="Characters"/> or <see cref="Personas"/>.</param>
     /// <returns>The names, without extensions.</returns>
     public static IReadOnlyList<string> Names(string folder)
@@ -68,6 +74,7 @@ public sealed class TextLibrary
             ? [.. Directory.GetFiles(folder, "*.txt")
                 .Select(Path.GetFileNameWithoutExtension)
                 .OfType<string>()
+                .Where(static n => !n.StartsWith('_'))
                 .OrderBy(static n => n, StringComparer.OrdinalIgnoreCase)]
             : [];
 

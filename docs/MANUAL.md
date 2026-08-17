@@ -117,6 +117,12 @@ The file name is the name you refer to it by. `remove` lists the conversations s
 entry and stops, because they would fall back to the default; `--force` deletes anyway. The
 skeleton carries the fail-safe rule already phrased as a procedure.
 
+**A name starting with `_` is kept but never listed.** A shelf collects working papers as well
+as things to play — a template you copy from, notes towards a character not ready yet — and
+`_scenario-template.txt` sits beside the cards it is about without appearing in the manager or
+in the pickers that offer something to start. Nothing is hidden from you: `show`, `edit` and
+the resolution rule all still find it by name.
+
 **Snippets** are the third shelf: authored prose the composer expands on demand. Write
 `snippets/office.txt` today; months later, mid-scene, type `:off`, press `Tab`, and the page
 replaces the trigger — still editable before sending. What is sent and stored is exactly what
