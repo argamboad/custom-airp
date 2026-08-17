@@ -35,7 +35,7 @@ internal sealed class LibraryView : ViewBase
     private int _selected;
     private IReadOnlyList<string> _names = [];
 
-    private (int Shelf, string Name)? _previewKey;
+    private (int Shelf, string Name, int Budget)? _previewKey;
     private IReadOnlyList<string> _preview = [];
 
     private bool _naming;
@@ -139,21 +139,25 @@ internal sealed class LibraryView : ViewBase
             rows.Add(new Markup(Draw.Literal($"No {Kind}s yet — N starts one.", theme.Muted)));
         }
 
+        // The list keeps a row per name; the preview takes the rest of the screen.
+        var height = Math.Max(3, Math.Min(_names.Count, context.Height - 12));
+
         if (!_naming && Selected is { } current)
         {
-            if (_previewKey != (_shelf, current))
+            var budget = Math.Max(4, context.Height - 8 - height);
+
+            if (_previewKey != (_shelf, current, budget))
             {
-                _previewKey = (_shelf, current);
-                _preview = TextLibrary.Find(Folder, current) is { } path ? TextLibrary.Preview(path) : [];
+                _previewKey = (_shelf, current, budget);
+                _preview = TextLibrary.Find(Folder, current) is { } path
+                    ? TextLibrary.Preview(path, budget)
+                    : [];
             }
         }
         else
         {
             _preview = [];
         }
-
-        var footprint = _preview.Count > 0 ? _preview.Count + 1 : 0;
-        var height = Math.Max(3, context.Height - 7 - footprint);
         var top = Math.Clamp(_selected - height / 2, 0, Math.Max(0, _names.Count - height));
 
         foreach (var (name, index) in _names.Select(static (n, i) => (n, i)).Skip(top).Take(height))

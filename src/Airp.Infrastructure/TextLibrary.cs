@@ -172,12 +172,13 @@ public sealed class TextLibrary
     /// <summary>Reads the lines that tell a reader what an entry is, for a list to show.</summary>
     /// <remarks>
     /// A name alone says nothing to choose by. Template cards all open with the same
-    /// boilerplate, so the first paragraph under <c>=== THE WORLD ===</c> is what actually
-    /// distinguishes one from another; files without that marker — openings, personas,
-    /// snippets, hand-made cards — preview from their first paragraph instead.
+    /// boilerplate, so what distinguishes one from another starts under
+    /// <c>=== THE WORLD ===</c>; files without that marker — openings, personas, snippets,
+    /// hand-made cards — preview from the top. The preview runs to the next section header
+    /// or the line budget, whichever arrives first.
     /// </remarks>
     /// <param name="path">The file, typically from <see cref="Find"/>.</param>
-    /// <param name="maxLines">Most lines to return; a longer paragraph ends in an ellipsis.</param>
+    /// <param name="maxLines">Most lines to return; a longer section ends in an ellipsis.</param>
     /// <returns>Up to <paramref name="maxLines"/> trimmed lines; empty when unreadable.</returns>
     public static IReadOnlyList<string> Preview(string path, int maxLines = 4)
     {
@@ -196,16 +197,28 @@ public sealed class TextLibrary
             l.Trim().Equals("=== THE WORLD ===", StringComparison.OrdinalIgnoreCase));
 
         // FindIndex returns -1 when the marker is absent, so the skip lands on the top.
-        var paragraph = lines
+        var body = lines
             .Skip(world + 1)
             .SkipWhile(static l => string.IsNullOrWhiteSpace(l))
-            .TakeWhile(static l => !string.IsNullOrWhiteSpace(l))
+            .TakeWhile(static l => !l.TrimStart().StartsWith("=== ", StringComparison.Ordinal))
             .Select(static l => l.Trim())
             .ToList();
 
-        return paragraph.Count > maxLines
-            ? [.. paragraph.Take(maxLines - 1), paragraph[maxLines - 1] + " …"]
-            : paragraph;
+        while (body.Count > 0 && body[^1].Length == 0)
+        {
+            body.RemoveAt(body.Count - 1);
+        }
+
+        if (body.Count <= maxLines)
+        {
+            return body;
+        }
+
+        var kept = body.Take(maxLines).ToList();
+
+        kept[^1] = kept[^1].Length == 0 ? "…" : kept[^1] + " …";
+
+        return kept;
     }
 
     /// <summary>Creates a new entry, refusing to overwrite one that exists.</summary>
