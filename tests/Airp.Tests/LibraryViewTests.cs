@@ -51,7 +51,10 @@ public sealed class LibraryViewTests : IDisposable
     private static KeyStroke Letter(char c)
         => KeyMap.Resolve(new ConsoleKeyInfo(c, default, false, false, false), KeyboardMode.Standard, KeyContext.Navigation);
 
-    private static string Render(IRenderable renderable)
+    // The console the view draws into is the one its RenderContext was measured from, so the
+    // width has to be set here too — left at its default, a two-column layout is squeezed and
+    // the right column loses text the view believed it had room for.
+    private static string Render(IRenderable renderable, int width = 100)
     {
         var writer = new StringWriter();
         var console = AnsiConsole.Create(new AnsiConsoleSettings
@@ -61,6 +64,7 @@ public sealed class LibraryViewTests : IDisposable
             Out = new AnsiConsoleOutput(writer),
         });
 
+        console.Profile.Width = width;
         console.Write(renderable);
         return writer.ToString();
     }

@@ -27,6 +27,18 @@ internal sealed class LibraryView : ViewBase
 {
     private static readonly string[] ShelfNames = ["Characters", "Personas", "Snippets", "Openings"];
 
+    /// <summary>Columns between the list and the description.</summary>
+    private const int Gutter = 2;
+
+    /// <summary>
+    /// A source line at least this long was wrapped by the writer, so it flows into the next
+    /// one; anything shorter was short on purpose — dialogue, a list — and keeps its own row.
+    /// </summary>
+    private const int WrapHint = 60;
+
+    /// <summary>Enough source lines to fill any pane; the view then cuts to what fits.</summary>
+    private const int MaxPreviewLines = 400;
+
     private readonly TextLibrary _library;
     private readonly LocalConversationProvider? _provider;
     private readonly Func<string, CancellationToken, Task> _editor;
@@ -139,18 +151,19 @@ internal sealed class LibraryView : ViewBase
             rows.Add(new Markup(Draw.Literal($"No {Kind}s yet — N starts one.", theme.Muted)));
         }
 
-        // The list keeps a row per name; the preview takes the rest of the screen.
-        var height = Math.Max(3, Math.Min(_names.Count, context.Height - 12));
+        // Names on the left, what they are on the right: a quarter of the width is enough
+        // for any file name, and the description is the part worth reading.
+        var listWidth = Math.Clamp(context.Width / 4, 16, 40);
+        var textWidth = Math.Max(20, context.Width - listWidth - Gutter);
+        var height = Math.Max(3, context.Height - 7);
 
         if (!_naming && Selected is { } current)
         {
-            var budget = Math.Max(4, context.Height - 8 - height);
-
-            if (_previewKey != (_shelf, current, budget))
+            if (_previewKey != (_shelf, current, textWidth))
             {
-                _previewKey = (_shelf, current, budget);
+                _previewKey = (_shelf, current, textWidth);
                 _preview = TextLibrary.Find(Folder, current) is { } path
-                    ? TextLibrary.Preview(path, budget)
+                    ? TextLibrary.Preview(path, MaxPreviewLines)
                     : [];
             }
         }
@@ -158,24 +171,29 @@ internal sealed class LibraryView : ViewBase
         {
             _preview = [];
         }
+
         var top = Math.Clamp(_selected - height / 2, 0, Math.Max(0, _names.Count - height));
+
+        var list = new List<IRenderable>();
 
         foreach (var (name, index) in _names.Select(static (n, i) => (n, i)).Skip(top).Take(height))
         {
-            rows.Add(new Markup(index == _selected && !_naming
+            list.Add(new Markup(index == _selected && !_naming
                 ? $"[{theme.Selection.ToMarkup()}]{Markup.Escape(" " + name + " ")}[/]"
                 : Draw.Literal(" " + name, theme.Text)));
         }
 
-        if (_preview.Count > 0)
-        {
-            rows.Add(new Rule { Style = theme.Border });
+        var grid = new Grid();
+        grid.AddColumn(new GridColumn { Width = listWidth, NoWrap = true, Padding = new Padding(0, 0, Gutter, 0) });
+        grid.AddColumn(new GridColumn { Width = textWidth, Padding = new Padding(0, 0, 0, 0) });
+        grid.AddRow(
+            new Rows(list),
+            // An empty markup renders as no line at all, so the gap between paragraphs is a
+            // space — without it the description runs together into one block.
+            new Rows(Describe(_preview, textWidth, height)
+                .Select(p => new Markup(Draw.Literal(p.Length == 0 ? " " : p, theme.Muted)))));
 
-            foreach (var line in _preview)
-            {
-                rows.Add(new Markup(Draw.Literal(" " + line, theme.Muted)));
-            }
-        }
+        rows.Add(grid);
 
         return new Rows(rows);
     }
@@ -233,6 +251,95 @@ internal sealed class LibraryView : ViewBase
 
     private string? Selected
         => _selected >= 0 && _selected < _names.Count ? _names[_selected] : null;
+
+    /// <summary>Turns the file's own lines into paragraphs that fill the pane.</summary>
+    /// <remarks>
+    /// The files are hard-wrapped for an editor, which leaves a ragged column of short lines
+    /// in a pane three times that wide. Prose is rejoined so it wraps to the space it has;
+    /// deliberately short lines are left alone. What does not fit ends in an ellipsis, because
+    /// a description cut mid-sentence with no mark reads as a description that ended.
+    /// </remarks>
+    private static IReadOnlyList<string> Describe(IReadOnlyList<string> lines, int width, int height)
+    {
+        var paragraphs = new List<string>();
+        var current = new List<string>();
+
+        void Flush()
+        {
+            if (current.Count > 0)
+            {
+                paragraphs.Add(string.Join(' ', current));
+                current.Clear();
+            }
+        }
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].Length == 0)
+            {
+                Flush();
+
+                if (paragraphs.Count > 0 && paragraphs[^1].Length > 0)
+                {
+                    paragraphs.Add(string.Empty);
+                }
+
+                continue;
+            }
+
+            if (current.Count > 0 && lines[i - 1].Length < WrapHint)
+            {
+                Flush();
+            }
+
+            current.Add(lines[i]);
+        }
+
+        Flush();
+
+        var kept = new List<string>();
+        var used = 0;
+        var dropped = false;
+
+        foreach (var paragraph in paragraphs)
+        {
+            var needed = paragraph.Length == 0 ? 1 : (paragraph.Length + width - 1) / width;
+
+            if (used + needed <= height)
+            {
+                kept.Add(paragraph);
+                used += needed;
+                continue;
+            }
+
+            var room = (height - used) * width - 2;
+
+            if (room > 0 && paragraph.Length > 0)
+            {
+                kept.Add(paragraph[..Math.Min(room, paragraph.Length)].TrimEnd() + " …");
+            }
+            else
+            {
+                // The cut landed on a paragraph boundary, so the mark goes on the line before
+                // it — otherwise a description that was cut short reads as one that ended.
+                dropped = true;
+            }
+
+            break;
+        }
+
+        if (dropped && kept.Count > 0)
+        {
+            var last = kept[^1];
+            var rows = last.Length == 0 ? 1 : (last.Length + width - 1) / width;
+
+            kept[^1] = last.Length == 0
+                ? "…"
+                : last[..Math.Min(rows * width - 2, last.Length)].TrimEnd() + " …";
+        }
+
+        return kept;
+    }
 
     private async ValueTask<ViewAction> HandleNamingAsync(KeyStroke stroke, CancellationToken cancellationToken)
     {
