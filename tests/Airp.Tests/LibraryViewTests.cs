@@ -76,6 +76,66 @@ public sealed class LibraryViewTests : IDisposable
     }
 
     [Fact]
+    public void The_selected_entry_shows_its_first_paragraph_under_the_list()
+    {
+        var rendered = Render(View().Render(Context()));
+
+        // elena is selected; the preview is her file's text, not just her name.
+        rendered.ShouldContain("You are Elena.");
+        rendered.ShouldNotContain("You are Mira.");
+    }
+
+    [Fact]
+    public async Task The_preview_follows_the_selection()
+    {
+        var view = View();
+        await view.HandleKeyAsync(Nav(ConsoleKey.DownArrow), Context(), CancellationToken.None);
+
+        var rendered = Render(view.Render(Context()));
+
+        rendered.ShouldContain("You are Mira.");
+        rendered.ShouldNotContain("You are Elena.");
+    }
+
+    [Fact]
+    public void A_template_card_previews_its_world_not_the_boilerplate()
+    {
+        File.WriteAllText(
+            Path.Combine(_root, "characters", "a-lighthouse.txt"),
+            "You are the narrator and every character of the world described below.\n\n" +
+            "=== THE WORLD ===\n\n" +
+            "A lighthouse on a cold coast, and the keeper who signed for one winter.\n\n" +
+            "=== THE CAST ===\n");
+
+        // First alphabetically, so it is the selected entry.
+        var rendered = Render(View().Render(Context()));
+
+        rendered.ShouldContain("A lighthouse on a cold coast");
+        rendered.ShouldNotContain("You are the narrator");
+    }
+
+    [Fact]
+    public async Task The_openings_shelf_previews_too()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "openings"));
+        File.WriteAllText(
+            Path.Combine(_root, "openings", "mira.txt"),
+            "The apartment door clicks shut after a long day.");
+
+        var view = View();
+
+        foreach (var _ in Enumerable.Range(0, 3))
+        {
+            await view.HandleKeyAsync(Nav(ConsoleKey.RightArrow), Context(), CancellationToken.None);
+        }
+
+        var rendered = Render(view.Render(Context()));
+
+        rendered.ShouldContain("Openings");
+        rendered.ShouldContain("The apartment door clicks shut");
+    }
+
+    [Fact]
     public async Task Arrows_switch_shelves()
     {
         var view = View();
