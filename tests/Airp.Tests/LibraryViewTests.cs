@@ -98,6 +98,38 @@ public sealed class LibraryViewTests : IDisposable
     }
 
     [Fact]
+    public void The_preview_runs_past_the_first_paragraph_when_there_is_room()
+    {
+        File.WriteAllText(
+            Path.Combine(_root, "characters", "a-lighthouse.txt"),
+            "You are the narrator and every character of the world described below.\n\n" +
+            "=== THE WORLD ===\n\n" +
+            "A lighthouse on a cold coast.\n\n" +
+            "The keeper signed for one winter and the boat comes in spring.\n\n" +
+            "=== THE CAST ===\n\n" +
+            "Someone who should not appear in a preview.\n");
+
+        var rendered = Render(View().Render(Context()));
+
+        rendered.ShouldContain("A lighthouse on a cold coast");
+        rendered.ShouldContain("the boat comes in spring");
+        rendered.ShouldNotContain("should not appear");
+    }
+
+    [Fact]
+    public void A_short_screen_ends_the_preview_in_an_ellipsis()
+    {
+        File.WriteAllText(
+            Path.Combine(_root, "characters", "a-lighthouse.txt"),
+            "=== THE WORLD ===\n\n" + string.Join('\n', Enumerable.Range(1, 40).Select(i => $"line {i}")));
+
+        var rendered = Render(View().Render(new RenderContext(100, 16, Theme.For(ThemeName.Dark), new AirpOptions())));
+
+        rendered.ShouldContain("…");
+        rendered.ShouldNotContain("line 40");
+    }
+
+    [Fact]
     public void A_template_card_previews_its_world_not_the_boilerplate()
     {
         File.WriteAllText(
