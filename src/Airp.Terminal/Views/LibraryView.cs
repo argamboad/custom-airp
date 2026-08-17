@@ -47,8 +47,9 @@ internal sealed class LibraryView : ViewBase
     private int _selected;
     private IReadOnlyList<string> _names = [];
 
-    private (int Shelf, string Name, int Budget)? _previewKey;
+    private (int Shelf, string Name, int Width)? _previewKey;
     private IReadOnlyList<string> _preview = [];
+    private int _scroll;
 
     private bool _naming;
     private string _newName = string.Empty;
@@ -85,6 +86,7 @@ internal sealed class LibraryView : ViewBase
         :
         [
             new("←→", "Shelf"),
+            new("PgUp/PgDn", "Scroll"),
             new("N", "New"),
             new("Enter", "Edit"),
             new("Del", "Remove"),
@@ -122,6 +124,7 @@ internal sealed class LibraryView : ViewBase
 
         // The file behind the selection may have just been edited; re-read on next render.
         _previewKey = null;
+        _scroll = 0;
     }
 
     /// <inheritdoc />
@@ -163,13 +166,32 @@ internal sealed class LibraryView : ViewBase
             {
                 _previewKey = (_shelf, current, textWidth);
                 _preview = TextLibrary.Find(Folder, current) is { } path
-                    ? TextLibrary.Preview(path, MaxPreviewLines)
+                    ? Describe(TextLibrary.Preview(path, MaxPreviewLines), textWidth)
                     : [];
             }
         }
         else
         {
             _preview = [];
+        }
+
+        // One row goes to saying where you are, but only when there is somewhere else to be.
+        var scrollable = _preview.Count > height;
+        var pane = scrollable ? height - 1 : height;
+
+        _scroll = Math.Clamp(_scroll, 0, Math.Max(0, _preview.Count - pane));
+
+        var shown = _preview.Skip(_scroll).Take(pane).ToList();
+
+        var description = shown
+            .Select(p => new Markup(Draw.Literal(p.Length == 0 ? " " : p, theme.Muted)))
+            .ToList<IRenderable>();
+
+        if (scrollable)
+        {
+            description.Add(new Markup(Draw.Literal(
+                $"{_scroll + 1}–{_scroll + shown.Count} of {_preview.Count}   PgUp/PgDn",
+                theme.Border)));
         }
 
         var top = Math.Clamp(_selected - height / 2, 0, Math.Max(0, _names.Count - height));
@@ -186,12 +208,7 @@ internal sealed class LibraryView : ViewBase
         var grid = new Grid();
         grid.AddColumn(new GridColumn { Width = listWidth, NoWrap = true, Padding = new Padding(0, 0, Gutter, 0) });
         grid.AddColumn(new GridColumn { Width = textWidth, Padding = new Padding(0, 0, 0, 0) });
-        grid.AddRow(
-            new Rows(list),
-            // An empty markup renders as no line at all, so the gap between paragraphs is a
-            // space — without it the description runs together into one block.
-            new Rows(Describe(_preview, textWidth, height)
-                .Select(p => new Markup(Draw.Literal(p.Length == 0 ? " " : p, theme.Muted)))));
+        grid.AddRow(new Rows(list), new Rows(description));
 
         rows.Add(grid);
 
@@ -224,12 +241,25 @@ internal sealed class LibraryView : ViewBase
                 Refresh();
                 return ViewAction.None;
 
+            // A new entry starts at its first line, not where the last one was left.
             case AppCommand.MoveUp when _selected > 0:
                 _selected--;
+                _scroll = 0;
                 return ViewAction.None;
 
             case AppCommand.MoveDown when _selected < _names.Count - 1:
                 _selected++;
+                _scroll = 0;
+                return ViewAction.None;
+
+            // Arrows move the selection, so paging scrolls what the selection is showing —
+            // the same division the conversation makes between its messages and its text.
+            case AppCommand.PageDown:
+                _scroll += Math.Max(1, context.Height - 9);
+                return ViewAction.None;
+
+            case AppCommand.PageUp:
+                _scroll = Math.Max(0, _scroll - Math.Max(1, context.Height - 9));
                 return ViewAction.None;
 
             // The keymap resolves N to SearchNext outside a search, and this view has no
@@ -252,14 +282,14 @@ internal sealed class LibraryView : ViewBase
     private string? Selected
         => _selected >= 0 && _selected < _names.Count ? _names[_selected] : null;
 
-    /// <summary>Turns the file's own lines into paragraphs that fill the pane.</summary>
+    /// <summary>Turns the file's own lines into the rows a pane of this width would show.</summary>
     /// <remarks>
     /// The files are hard-wrapped for an editor, which leaves a ragged column of short lines
     /// in a pane three times that wide. Prose is rejoined so it wraps to the space it has;
-    /// deliberately short lines are left alone. What does not fit ends in an ellipsis, because
-    /// a description cut mid-sentence with no mark reads as a description that ended.
+    /// deliberately short lines are left alone. Wrapping happens here rather than in the
+    /// renderer because a scroll position has to mean a row the reader can count.
     /// </remarks>
-    private static IReadOnlyList<string> Describe(IReadOnlyList<string> lines, int width, int height)
+    private static IReadOnlyList<string> Describe(IReadOnlyList<string> lines, int width)
     {
         var paragraphs = new List<string>();
         var current = new List<string>();
@@ -297,48 +327,57 @@ internal sealed class LibraryView : ViewBase
 
         Flush();
 
-        var kept = new List<string>();
-        var used = 0;
-        var dropped = false;
+        var rows = new List<string>();
 
         foreach (var paragraph in paragraphs)
         {
-            var needed = paragraph.Length == 0 ? 1 : (paragraph.Length + width - 1) / width;
-
-            if (used + needed <= height)
+            if (paragraph.Length == 0)
             {
-                kept.Add(paragraph);
-                used += needed;
+                rows.Add(string.Empty);
                 continue;
             }
 
-            var room = (height - used) * width - 2;
-
-            if (room > 0 && paragraph.Length > 0)
-            {
-                kept.Add(paragraph[..Math.Min(room, paragraph.Length)].TrimEnd() + " …");
-            }
-            else
-            {
-                // The cut landed on a paragraph boundary, so the mark goes on the line before
-                // it — otherwise a description that was cut short reads as one that ended.
-                dropped = true;
-            }
-
-            break;
+            rows.AddRange(Wrap(paragraph, width));
         }
 
-        if (dropped && kept.Count > 0)
+        while (rows.Count > 0 && rows[^1].Length == 0)
         {
-            var last = kept[^1];
-            var rows = last.Length == 0 ? 1 : (last.Length + width - 1) / width;
-
-            kept[^1] = last.Length == 0
-                ? "…"
-                : last[..Math.Min(rows * width - 2, last.Length)].TrimEnd() + " …";
+            rows.RemoveAt(rows.Count - 1);
         }
 
-        return kept;
+        return rows;
+    }
+
+    /// <summary>Breaks a paragraph on spaces into rows no wider than the pane.</summary>
+    private static IEnumerable<string> Wrap(string text, int width)
+    {
+        var start = 0;
+
+        while (start < text.Length)
+        {
+            var take = Math.Min(width, text.Length - start);
+
+            if (start + take < text.Length)
+            {
+                var space = text.LastIndexOf(' ', start + take, take);
+
+                // No space to break on means a word longer than the pane: cut it rather than
+                // overflow, since an overflowing row would push the layout out of shape.
+                if (space > start)
+                {
+                    take = space - start;
+                }
+            }
+
+            yield return text.Substring(start, take).TrimEnd();
+
+            start += take;
+
+            while (start < text.Length && text[start] == ' ')
+            {
+                start++;
+            }
+        }
     }
 
     private async ValueTask<ViewAction> HandleNamingAsync(KeyStroke stroke, CancellationToken cancellationToken)
