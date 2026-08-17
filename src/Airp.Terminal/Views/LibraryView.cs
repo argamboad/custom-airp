@@ -35,6 +35,9 @@ internal sealed class LibraryView : ViewBase
     private int _selected;
     private IReadOnlyList<string> _names = [];
 
+    private (int Shelf, string Name)? _previewKey;
+    private IReadOnlyList<string> _preview = [];
+
     private bool _naming;
     private string _newName = string.Empty;
 
@@ -104,6 +107,9 @@ internal sealed class LibraryView : ViewBase
     {
         _names = TextLibrary.Names(Folder);
         _selected = Math.Clamp(_selected, 0, Math.Max(0, _names.Count - 1));
+
+        // The file behind the selection may have just been edited; re-read on next render.
+        _previewKey = null;
     }
 
     /// <inheritdoc />
@@ -133,7 +139,21 @@ internal sealed class LibraryView : ViewBase
             rows.Add(new Markup(Draw.Literal($"No {Kind}s yet — N starts one.", theme.Muted)));
         }
 
-        var height = Math.Max(3, context.Height - 7);
+        if (!_naming && Selected is { } current)
+        {
+            if (_previewKey != (_shelf, current))
+            {
+                _previewKey = (_shelf, current);
+                _preview = TextLibrary.Find(Folder, current) is { } path ? TextLibrary.Preview(path) : [];
+            }
+        }
+        else
+        {
+            _preview = [];
+        }
+
+        var footprint = _preview.Count > 0 ? _preview.Count + 1 : 0;
+        var height = Math.Max(3, context.Height - 7 - footprint);
         var top = Math.Clamp(_selected - height / 2, 0, Math.Max(0, _names.Count - height));
 
         foreach (var (name, index) in _names.Select(static (n, i) => (n, i)).Skip(top).Take(height))
@@ -141,6 +161,16 @@ internal sealed class LibraryView : ViewBase
             rows.Add(new Markup(index == _selected && !_naming
                 ? $"[{theme.Selection.ToMarkup()}]{Markup.Escape(" " + name + " ")}[/]"
                 : Draw.Literal(" " + name, theme.Text)));
+        }
+
+        if (_preview.Count > 0)
+        {
+            rows.Add(new Rule { Style = theme.Border });
+
+            foreach (var line in _preview)
+            {
+                rows.Add(new Markup(Draw.Literal(" " + line, theme.Muted)));
+            }
         }
 
         return new Rows(rows);
