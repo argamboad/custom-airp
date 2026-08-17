@@ -97,7 +97,7 @@ internal sealed class NewChatView : ViewBase
     [
         new("Tab", "Next field"),
         new("←→", "Pick"),
-        new("Ctrl+S", "Create"),
+        new("Ctrl+Enter", "Create"),
         new("Esc", "Cancel"),
     ];
 
@@ -182,6 +182,14 @@ internal sealed class NewChatView : ViewBase
         RenderContext context,
         CancellationToken cancellationToken)
     {
+        // Ctrl+S is flow control (XOFF) in a Windows console and never reaches the
+        // application there, which left this form with no way to finish. Ctrl+Enter arrives
+        // intact, so the create chord is both — and the footer names the one that works.
+        if (stroke.Key is { Key: ConsoleKey.Enter, Modifiers: ConsoleModifiers.Control })
+        {
+            return await CreateAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         switch (stroke.Command)
         {
             case AppCommand.Save:

@@ -143,7 +143,9 @@ If you always play as the same person, name them once:
 
 From inside the terminal, press `N` in the chat list: name, speaker, a character and a
 persona picked from the library with `<-` `->`, and the opening written in a composer.
-`Ctrl+S` creates it and drops you straight into the conversation.
+`Ctrl+Enter` creates it and drops you straight into the conversation. (`Ctrl+S` does the
+same where the terminal passes it through — on Windows the console keeps that chord for
+flow control and the application never sees it, which is why the footer names `Ctrl+Enter`.)
 
 The same thing from the command line:
 

@@ -105,6 +105,22 @@ public sealed class NewChatFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Ctrl_Enter_creates_too_because_a_console_eats_Ctrl_S()
+    {
+        var provider = Provider();
+        var view = View(provider);
+
+        await TypeAsync(view, "Vardhal");
+
+        // Ctrl+S is XOFF in a Windows console and never arrives; this chord does.
+        var action = await view.HandleKeyAsync(
+            Pressed(ConsoleKey.Enter, control: true), Context(), CancellationToken.None);
+
+        action.ShouldBeOfType<ViewAction.SequenceAction>();
+        (await provider.ListAsync()).ShouldHaveSingleItem().Name.ShouldBe("Vardhal");
+    }
+
+    [Fact]
     public async Task A_nameless_chat_falls_back_to_the_speaker()
     {
         var provider = Provider();
