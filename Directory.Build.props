@@ -1,0 +1,26 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <Authors>Airp contributors</Authors>
+    <Product>Airp</Product>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!--
+    Public API surface of the library projects is documented with XML comments.
+    The terminal front-end keeps most types internal, so documentation generation
+    is only switched on where there is a real public contract to describe.
+  -->
+  <PropertyGroup Condition="'$(IsLibraryProject)' == 'true'">
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

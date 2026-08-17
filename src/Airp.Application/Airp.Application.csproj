@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Airp.Application</RootNamespace>
+    <IsLibraryProject>true</IsLibraryProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Airp.Domain\Airp.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Airp.Tests" />
+  </ItemGroup>
+
+  <!--
+    The completion dictionary ships inside the assembly rather than beside it. A word list
+    that can go missing is a feature that stops working on someone else's machine for a
+    reason nobody can see.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Text\Words.txt" />
+  </ItemGroup>
+
+</Project>

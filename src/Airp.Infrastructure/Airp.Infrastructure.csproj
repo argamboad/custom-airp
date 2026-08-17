@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Airp.Infrastructure</RootNamespace>
+    <IsLibraryProject>true</IsLibraryProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Airp.Application\Airp.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="TextCopy" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Airp.Tests" />
+  </ItemGroup>
+
+</Project>

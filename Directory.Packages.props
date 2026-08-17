@@ -1,0 +1,47 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Hosting / DI / configuration / logging -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <!-- Lifted off the 2.1.11 that EF Core 10.0.10 resolves to: that build carries
+         GHSA-2m69-gcr7-jv3q, a high-severity SQLite flaw. 2.1.13 is the patched end of the
+         same line; 3.x is a major bump EF has not been tested against here. -->
+    <PackageVersion Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="2.0.0" />
+    <!-- Lifted off the 9.0.4 that Microsoft.ML.Tokenizers resolves to: that build carries
+         GHSA-73j8-2gch-69rq, high severity. 10.0.10 keeps it in step with the rest of the
+         Microsoft packages here. -->
+    <PackageVersion Include="Microsoft.Bcl.Memory" Version="10.0.10" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+    <!-- Held at 10.0.10 with the rest of the Extensions set: 10.0.11 pulls its siblings
+         forward and NuGet reports the whole family as a downgrade. -->
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.CommandLine" Version="10.0.10" />
+    <!-- Browser automation -->
+    <!-- Terminal UI -->
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+    <!-- Clipboard -->
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+    <PackageVersion Include="TextCopy" Version="6.2.1" />
+    <!-- Tests -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Shouldly" Version="4.3.0" />
+    <PackageVersion Include="NSubstitute" Version="6.0.0" />
+  </ItemGroup>
+</Project>
