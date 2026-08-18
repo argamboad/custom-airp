@@ -428,4 +428,68 @@ internal static partial class Program
 
         return 0;
     }
+
+    /// <summary>Erases the conversations already deleted.</summary>
+    /// <remarks>
+    /// Deleting a chat hides it; the transcript stays on disk in the clear, which is not what
+    /// "delete" led anyone to expect. This finishes it, and because that cannot be undone it
+    /// shows exactly what would go and does nothing until asked twice.
+    /// </remarks>
+    /// <param name="services">Resolved services.</param>
+    /// <param name="args">The command line.</param>
+    /// <param name="cancellationToken">Token used to abort the work.</param>
+    /// <returns>The process exit code.</returns>
+    private static async Task<int> PurgeAsync(
+        IServiceProvider services,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        if (services.GetService<LocalConversationProvider>() is not { } local)
+        {
+            AnsiConsole.MarkupLine("[red]Only the local provider keeps a store to purge.[/]");
+            AnsiConsole.MarkupLine("[grey]Pass --provider local.[/]");
+            return 64;
+        }
+
+        var waiting = await local.PurgeableAsync(cancellationToken).ConfigureAwait(false);
+
+        if (waiting.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[green]Nothing to purge — no deleted conversations are still stored.[/]");
+            return 0;
+        }
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("deleted");
+        table.AddColumn("name");
+        table.AddColumn(new TableColumn("messages").RightAligned());
+
+        foreach (var candidate in waiting)
+        {
+            table.AddRow(
+                Markup.Escape(candidate.DeletedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")),
+                Markup.Escape(candidate.Name),
+                candidate.Messages.ToString());
+        }
+
+        AnsiConsole.Write(table);
+
+        if (!args.Contains("--yes", StringComparer.OrdinalIgnoreCase))
+        {
+            AnsiConsole.MarkupLine(
+                $"[yellow]{waiting.Count} conversation(s) and "
+                + $"{waiting.Sum(static c => c.Messages)} message(s) would be erased for good.[/]");
+            AnsiConsole.MarkupLine("[grey]Nothing has been touched. Run 'airp purge --yes' to go ahead.[/]");
+            return 0;
+        }
+
+        var report = await local.PurgeDeletedAsync(cancellationToken).ConfigureAwait(false);
+
+        AnsiConsole.MarkupLine(
+            $"[green]Purged {report.Conversations} conversation(s): {report.Messages} message(s), "
+            + $"{report.Summaries} summary(ies), {report.Facts} fact(s), {report.Trackers} tracker(s).[/]");
+        AnsiConsole.MarkupLine("[grey]The database was vacuumed, so the space is actually released.[/]");
+
+        return 0;
+    }
 }

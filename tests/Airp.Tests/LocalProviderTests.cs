@@ -319,6 +319,57 @@ public sealed class LocalProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task Purging_erases_what_was_deleted_and_leaves_the_rest()
+    {
+        var doomed = await StartAsync();
+        var kept = await StartAsync();
+        _model.Says("Fine.").Says("Also fine.");
+        await Provider().SendAsync(doomed, "Hello.");
+        await Provider().SendAsync(kept, "Hello.");
+        await Provider().DeleteConversationAsync(doomed);
+
+        var waiting = await Provider().PurgeableAsync();
+        waiting.ShouldHaveSingleItem().Messages.ShouldBe(2);
+
+        var report = await Provider().PurgeDeletedAsync();
+
+        report.Conversations.ShouldBe(1);
+        report.Messages.ShouldBe(2);
+
+        await using var store = _factory.CreateDbContext();
+        (await store.Conversations.CountAsync()).ShouldBe(1);
+        (await store.Messages.CountAsync()).ShouldBe(2);
+        (await store.Conversations.SingleAsync()).Id.ShouldBe(kept);
+    }
+
+    [Fact]
+    public async Task Purging_with_nothing_deleted_touches_nothing()
+    {
+        var id = await StartAsync();
+        _model.Says("Fine.");
+        await Provider().SendAsync(id, "Hello.");
+
+        var report = await Provider().PurgeDeletedAsync();
+
+        report.Empty.ShouldBeTrue();
+        (await Provider().ListAsync()).ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task The_append_only_guard_still_refuses_an_ordinary_delete()
+    {
+        var id = await StartAsync();
+        _model.Says("Fine.");
+        await Provider().SendAsync(id, "Hello.");
+
+        // Purging lifts the guard for itself alone; every other caller still meets the wall.
+        await using var store = _factory.CreateDbContext();
+        store.Messages.RemoveRange(await store.Messages.ToListAsync());
+
+        await Should.ThrowAsync<InvalidOperationException>(() => store.SaveChangesAsync());
+    }
+
+    [Fact]
     public async Task Renaming_changes_the_list_entry()
     {
         var id = await StartAsync();

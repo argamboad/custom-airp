@@ -247,7 +247,24 @@ first, name it: `airp send --chat vardhal --text "…"`.
 | `X` | Export the transcript |
 
 Deleting **hides**: the terminal stops showing them and the database keeps them, with a
-tombstone. Nothing said is ever truly erased.
+tombstone. That is deliberate — messages are append-only, so the store refuses to drop one —
+and it is why `airp audit` can still answer "why did it say that" about a reply you threw
+away. The same is true of a whole conversation: deleting it takes it out of the list and
+leaves every word of it on disk.
+
+When you want it gone for real, `airp purge` finishes the job:
+
+```bash
+airp purge          # what is still stored, and what erasing it would cost
+airp purge --yes    # erase it
+```
+
+Without `--yes` it only shows you the deleted conversations and their message counts, and
+touches nothing. With it, those conversations and everything they own — messages, summaries,
+facts, trackers — are removed and the database is vacuumed, so the space is released rather
+than merely marked free. It never touches a conversation you can still see. There is no undo,
+which is the point: the database holds your history in the clear, so "deleted" ought to be
+able to mean deleted.
 
 ### Regenerating
 

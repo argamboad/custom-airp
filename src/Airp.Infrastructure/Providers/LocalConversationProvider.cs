@@ -642,6 +642,94 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>What is waiting to be purged: the conversations already deleted.</summary>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>Each hidden conversation with the weight it is still carrying.</returns>
+    public async Task<IReadOnlyList<PurgeCandidate>> PurgeableAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        // SQLite cannot sort a DateTimeOffset, so the ordering happens once the rows are here.
+        var waiting = await store.Conversations
+            .AsNoTracking()
+            .Where(c => c.DeletedAtUtc != null)
+            .Select(c => new PurgeCandidate(
+                c.Id,
+                c.Name,
+                c.DeletedAtUtc!.Value,
+                store.Messages.Count(m => m.ConversationId == c.Id)))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return [.. waiting.OrderBy(static c => c.DeletedAtUtc)];
+    }
+
+    /// <summary>Erases the conversations already deleted, and everything they own.</summary>
+    /// <remarks>
+    /// Deleting a chat hides it, because messages are append-only and dropping the row would
+    /// take them with it. That leaves the whole history on disk, in the clear, for a story the
+    /// reader thought was gone — so this exists to finish the job when it is asked for by
+    /// name. It touches nothing that is still visible, and the database is vacuumed afterwards
+    /// so the pages are actually released rather than merely marked free.
+    /// </remarks>
+    /// <param name="cancellationToken">Token used to abort the work.</param>
+    /// <returns>What was erased.</returns>
+    public async Task<PurgeReport> PurgeDeletedAsync(CancellationToken cancellationToken = default)
+    {
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var doomed = await store.Conversations
+            .Where(c => c.DeletedAtUtc != null)
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (doomed.Count == 0)
+        {
+            return new PurgeReport(0, 0, 0, 0, 0);
+        }
+
+        var messages = await store.Messages
+            .Where(m => doomed.Contains(m.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var summaries = await store.Summaries
+            .Where(s => doomed.Contains(s.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var facts = await store.Facts
+            .Where(f => doomed.Contains(f.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var trackers = await store.Trackers
+            .Where(t => doomed.Contains(t.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var conversations = await store.Conversations
+            .Where(c => doomed.Contains(c.Id)).ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        store.Messages.RemoveRange(messages);
+        store.Summaries.RemoveRange(summaries);
+        store.Facts.RemoveRange(facts);
+        store.Trackers.RemoveRange(trackers);
+        store.Conversations.RemoveRange(conversations);
+
+        // The one place the append-only guard is lifted, and it says so out loud.
+        store.Purging = true;
+
+        try
+        {
+            await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            store.Purging = false;
+        }
+
+        await store.Database.ExecuteSqlRawAsync("VACUUM", cancellationToken).ConfigureAwait(false);
+
+        _logger.LogWarning(
+            "Purged {Conversations} conversation(s) and {Messages} message(s). This cannot be undone.",
+            conversations.Count,
+            messages.Count);
+
+        return new PurgeReport(
+            conversations.Count, messages.Count, summaries.Count, facts.Count, trackers.Count);
+    }
+
     /// <inheritdoc />
     public async Task RenameConversationAsync(
         string conversationId,

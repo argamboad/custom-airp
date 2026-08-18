@@ -86,6 +86,8 @@ internal static partial class Program
                     .ConfigureAwait(false),
                 "audit" => await AuditAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
+                "purge" => await PurgeAsync(host.Services, args, lifetime.ApplicationStopping)
+                    .ConfigureAwait(false),
                 "fact" or "facts" => await FactAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
                 "send" => await SendMessageAsync(host.Services, args, lifetime.ApplicationStopping)
@@ -388,6 +390,8 @@ internal static partial class Program
         AnsiConsole.MarkupLine("  airp fact               List what the story holds to be true");
         AnsiConsole.MarkupLine("  airp fact add \"…\" --subject Elena   State one yourself; the model cannot retire it");
         AnsiConsole.MarkupLine("  airp fact retire <id>   Mark one as no longer true");
+        AnsiConsole.MarkupLine("  airp purge              List the deleted conversations still on disk");
+        AnsiConsole.MarkupLine("  airp purge --yes        Erase them for good, and vacuum the database");
         AnsiConsole.MarkupLine("  airp import             Bring exported transcripts into the local store");
         AnsiConsole.MarkupLine("  airp import <path> --character elena.txt");
         AnsiConsole.MarkupLine("  airp new \"Name\"         Start a conversation in the local store");
