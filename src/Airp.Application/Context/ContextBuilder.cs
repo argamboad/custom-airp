@@ -181,7 +181,6 @@ public static class ContextBuilder
             Layer.Memories,
             memories is { Count: > 0 } ? string.Join("\n", memories) : null);
         var meters = Fixed(Layer.Trackers, trackers);
-        var directive = Fixed(Layer.Instruction, instruction);
 
         // Whatever is left after the layers that are not negotiable belongs to the transcript.
         var remaining = Math.Max(0, budget - fixedCost);
@@ -203,6 +202,16 @@ public static class ContextBuilder
         }
 
         kept.Reverse();
+
+        // Carrying on adds no turn of the reader's own, so the prompt would end on the
+        // character's last reply with only a system note after it — and several providers
+        // answer that shape with 200 and no content at all, which reaches the reader as "the
+        // model did not answer". A directive that follows a reply is the reader asking for
+        // more, so it goes in as their turn and the prompt ends where every backend expects.
+        var directive = Fixed(
+            Layer.Instruction,
+            instruction,
+            kept.Count > 0 && kept[^1].Role == ModelRole.Assistant ? ModelRole.User : ModelRole.System);
 
         sections.Add(character);
         sections.Add(you);

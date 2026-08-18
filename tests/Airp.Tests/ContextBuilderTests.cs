@@ -83,6 +83,34 @@ public class ContextBuilderTests
         => [.. Enumerable.Range(1, count).Select(i => User($"turn {i} " + new string('x', 350)))];
 
     [Fact]
+    public void An_instruction_after_a_reply_arrives_as_the_readers_turn()
+    {
+        // Carrying on adds no turn of the reader's own. Ending the prompt on the character's
+        // reply with a system note after it makes several providers answer 200 with no
+        // content, which the reader sees as "the model did not answer".
+        var built = Build(
+            character: "You are Elena.",
+            history: [User("Hello."), new ModelMessage(ModelRole.Assistant, "She looks up.")],
+            instruction: "Carry the scene forward yourself.",
+            budget: 10000);
+
+        built.Messages[^1].Role.ShouldBe(ModelRole.User);
+        built.Messages[^1].Content.ShouldBe("Carry the scene forward yourself.");
+    }
+
+    [Fact]
+    public void An_instruction_after_the_readers_own_turn_stays_a_system_note()
+    {
+        var built = Build(
+            character: "You are Elena.",
+            history: [User("Hello.")],
+            instruction: "Try that reply again, shorter.",
+            budget: 10000);
+
+        built.Messages[^1].Role.ShouldBe(ModelRole.System);
+    }
+
+    [Fact]
     public void The_layers_are_sent_least_volatile_first()
     {
         // The order is the cache contract. Everything up to the first thing that changed since
