@@ -351,7 +351,16 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             store,
             conversation,
             null,
-            "Carry on from where the scene left off, without waiting for the user to speak.",
+            // A card's fail-safe rule — hand the scene back rather than assume what the user
+            // does — is phrased as "no exception", and it outranks a polite "without waiting":
+            // the reply comes back as a beat that stops and asks. So this separates the two
+            // halves the rule conflates. Never writing the user still holds; stopping for them
+            // does not, this turn.
+            "Carry the scene forward yourself. Let time pass and let the world act: other "
+            + "characters speak, move, arrive, react to one another. This reply does not hand "
+            + "the scene back and does not wait — the user's silence is not a cue to stop. "
+            + "Still never write their words, actions or thoughts; leave them something to "
+            + "step into instead.",
             progress,
             cancellationToken).ConfigureAwait(false);
 
