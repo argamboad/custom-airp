@@ -143,9 +143,25 @@ public sealed class AirpDbContext : DbContext
     /// a supported shape: hide it with <c>DeletedAtUtc</c>, or append a new turn.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Lifts the append-only guard for one explicit, asked-for erasure.
+    /// </summary>
+    /// <remarks>
+    /// Purging what the reader already deleted is the one operation whose whole purpose is to
+    /// lose messages, so it cannot go through the guard — and it must not go around it quietly
+    /// either. Naming the exception here keeps the invariant honest: every other caller still
+    /// meets the wall, and the only way past it is a line of code that says what it is doing.
+    /// </remarks>
+    public bool Purging { get; set; }
+
     /// <exception cref="InvalidOperationException">A delete or a text edit was pending.</exception>
     private void GuardAppendOnly()
     {
+        if (Purging)
+        {
+            return;
+        }
+
         foreach (var entry in ChangeTracker.Entries<MessageRecord>())
         {
             if (entry.State == EntityState.Deleted)
