@@ -319,6 +319,30 @@ public sealed class LocalProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task A_regenerate_the_model_never_answers_gives_the_old_reply_back()
+    {
+        var id = await StartAsync();
+        _model.Says("The first one.");
+        await Provider().SendAsync(id, "Hello.");
+
+        _model.Fails();
+
+        await Should.ThrowAsync<AirpException>(
+            async () => await Provider().RegenerateAsync(id, RegenerateReason.Looping));
+
+        // The reply was hidden before the call; a call that brought nothing back must not
+        // leave the conversation shorter than it found it.
+        var transcript = await Provider().GetMessagesAsync(id);
+        transcript[^1].Text.ShouldBe("The first one.");
+
+        // And a second attempt still has something to write again.
+        _model.Says("The second one.");
+        await Provider().RegenerateAsync(id, RegenerateReason.Looping);
+
+        (await Provider().GetMessagesAsync(id))[^1].Text.ShouldBe("The second one.");
+    }
+
+    [Fact]
     public async Task Purging_erases_what_was_deleted_and_leaves_the_rest()
     {
         var doomed = await StartAsync();

@@ -324,16 +324,30 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
         // Hidden, not removed: the wording being replaced is still something the model wrote,
         // and a later phase that summarises the conversation may want to know it was rejected.
+        // It has to be hidden before the call, or the prompt would end on the very reply being
+        // rewritten and invite the model to write it again.
         last.DeletedAtUtc = DateTimeOffset.UtcNow;
         await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        await ReplyAsync(
-            store,
-            conversation,
-            null,
-            LocalPrompt.RegenerateDirective(reason, instructions),
-            progress,
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ReplyAsync(
+                store,
+                conversation,
+                null,
+                LocalPrompt.RegenerateDirective(reason, instructions),
+                progress,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Nothing arrived to replace it, so put it back. Left hidden, a failed regenerate
+            // would take the reply with it — the reader loses a reply they had and a second
+            // attempt finds nothing to write again, which is the worst of both.
+            last.DeletedAtUtc = null;
+            await store.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
 
         return await VisibleAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
     }
