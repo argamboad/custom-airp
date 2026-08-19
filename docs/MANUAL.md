@@ -835,9 +835,18 @@ Two settings, both lists of provider **slugs** — the lower-case name in the ta
 still available behind it — add `"allowProviderFallbacks": false` to make it a restriction
 rather than a preference.
 
-**A slug that matches no host is dropped without complaint.** So after changing this, play a
-turn and check what `airp audit` says served it. If the name was wrong you will see the same
-host you meant to avoid.
+**A slug that matches no host is dropped without complaint.** Two checks, and you want both.
+`airp config` prints the lists back as they will be sent, which catches a setting written into
+the wrong place in the file:
+
+```
+│ Denied hosts       │ deepinfra                               │
+│ Preferred hosts    │ gmicloud, baidu, coreweave, siliconflow  │
+```
+
+That only proves the file was read. Whether the router recognised the names is a different
+question, so play a turn and check what `airp audit` says served it. If a name was wrong you
+will see the same host you meant to avoid.
 
 One thing worth thinking about before pinning: choosing a host is also choosing who is willing
 to write your scenes. The cheapest one that caches is not automatically the one that will

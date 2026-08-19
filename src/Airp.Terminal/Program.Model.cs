@@ -200,6 +200,19 @@ internal static partial class Program
         table.AddRow("API key", $"secret '{options.Model.ApiKeyName}' (value never shown)");
         table.AddRow("Context budget", $"{options.Model.ContextBudget:N0} tokens");
         table.AddRow("Max reply", $"{options.Model.MaxTokens:N0} tokens");
+
+        // Routing is the one setting that fails silently: a slug matching no host is dropped
+        // by the router without a word, so the only way to notice a typo is to see what was
+        // sent next to what came back. Printing it here is half of that; the audit's
+        // 'served by' column is the other half.
+        table.AddRow("Denied hosts", Hosts(options.Model.IgnoreProviders, "(none — any host may serve)"));
+        table.AddRow("Preferred hosts", Hosts(options.Model.PreferProviders, "(none — the router chooses)"));
+
+        if (options.Model.AllowProviderFallbacks is false)
+        {
+            table.AddRow("Other hosts", "refused — only the preferred ones may serve");
+        }
+
         table.AddRow("Default persona", options.DefaultPersona ?? "(none)");
         table.AddRow("Theme", options.Theme.ToString());
         table.AddRow("Keyboard", options.Keyboard.ToString());
@@ -207,5 +220,23 @@ internal static partial class Program
 
         AnsiConsole.Write(table);
         return 0;
+    }
+
+    /// <summary>
+    /// A routing list as it will actually be sent, or why there is nothing to send.
+    /// </summary>
+    /// <remarks>
+    /// Blanks are dropped on the way out, so a list of nothing but whitespace sends no routing
+    /// at all. Reading back "(none)" for a file that plainly has entries in it is the whole
+    /// point: that is the mistake, said out loud.
+    /// </remarks>
+    private static string Hosts(IEnumerable<string>? given, string none)
+    {
+        var named = (given ?? [])
+            .Where(host => !string.IsNullOrWhiteSpace(host))
+            .Select(host => host.Trim())
+            .ToArray();
+
+        return named.Length == 0 ? none : Markup.Escape(string.Join(", ", named));
     }
 }
