@@ -272,7 +272,9 @@ Learned at the cost of time. Do not learn it again.
   throughout for exactly that reason. The repository is public; this is the obvious place for
   someone else's provider to be added.
 - **The provider changes between requests** and is stored per message. If a scene comes out
-  strange, that is the first thing to look at. Measured in practice: some of the providers
+  strange, that is the first thing to look at — and it decides the bill as much as the prose:
+  whether the host caches prefixes at all varies between them, measured at 61% against 0% for
+  the same conversation on the same day. Measured in practice: some of the providers
   OpenRouter fans this model across intermittently return a response with no content at all.
   The client keeps the message and says not to resend; the QA harness retries that case.
 - **OpenRouter exposes `/embeddings`** — `openai/text-embedding-3-small`, 1536 dimensions, same
@@ -376,8 +378,20 @@ Janitor.
 that were regenerated away. So `usage.cost` and `prompt_tokens_details.cached_tokens` arrive in
 the documented shape from a live reply, and the field names are right.
 
-**What that same reading raises:** 21% cached over 731.8k prompt tokens is low for a
-conversation that long. The layer order exists to keep everything up to the first change of
-the turn cacheable, so either something before the transcript is moving between turns, or the
-backends OpenRouter fanned that session across mostly do not cache. The audit's `served by`
-column is where to start.
+**And the layer order is doing its job — the backend lottery is what costs money.** The same
+session's 21% average hid the real shape. Split by host, over fifteen calls at ~61k prompt
+tokens each:
+
+| Served by | Calls | Cached |
+|---|---|---|
+| GMICloud | 5 | 61% |
+| Baidu | 2 | 47% |
+| DigitalOcean | 4 | 0% |
+| Alibaba, Sail Research, SiliconFlow, StreamLake | 1 each | 0% |
+
+Individual calls reached **100%** — 60,416 of 60,611 prompt tokens served from cache. So
+nothing ahead of the transcript is moving between turns; the prefix is stable and the ordering
+works exactly as designed. Seven hosts appeared in fifteen calls and four of them cache
+nothing at all, which on a 60k prompt is most of what a turn costs, decided by a coin flip.
+**Pinning or ordering providers is the largest saving available, and it is a request field
+rather than a prompt change.**
