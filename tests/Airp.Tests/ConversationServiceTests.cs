@@ -45,7 +45,7 @@ public class ConversationServiceTests
     public async Task SendAsync_ReturnsTheTurnsTheProviderAdded()
     {
         var (service, provider) = Build();
-        provider.SendAsync("chat-1", "hello", Arg.Any<IProgress<string>?>(), Arg.Any<CancellationToken>())
+        provider.SendAsync("chat-1", "hello", Arg.Any<string?>(), Arg.Any<IProgress<string>?>(), Arg.Any<CancellationToken>())
             .Returns([
                 Message("m1", ChatRole.User, "hello", 0),
                 Message("m2", ChatRole.Assistant, "hi there", 1),
@@ -72,7 +72,7 @@ public class ConversationServiceTests
         // invariant, tested where it lives. What matters here is that the failure reaches the
         // caller unchanged, so the composer can say the right thing about the draft.
         var (service, provider) = Build();
-        provider.SendAsync("chat-1", "hello", Arg.Any<IProgress<string>?>(), Arg.Any<CancellationToken>())
+        provider.SendAsync("chat-1", "hello", Arg.Any<string?>(), Arg.Any<IProgress<string>?>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new ReplyTimeoutException("no reply"));
 
         await Should.ThrowAsync<ReplyTimeoutException>(() => service.SendAsync("chat-1", "hello"));

@@ -11,9 +11,14 @@ namespace Airp.Infrastructure.Providers;
 
 /// <summary>Embeds text through an OpenAI-compatible <c>/embeddings</c> endpoint.</summary>
 /// <remarks>
-/// Shares the base address and the key with the chat client, because for OpenRouter they are
-/// the same service. DeepSeek exposes no embeddings endpoint of its own, which is what made
-/// this worth confirming before the memory layer was designed around it.
+/// <para>
+/// It uses the chat client's base address and key by default, because for OpenRouter they are
+/// one service. They can be split with <c>Airp:Model:EmbeddingBaseUrl</c> and
+/// <c>EmbeddingApiKeyName</c>, which is what makes it possible to run the replies against a
+/// provider's own API — cheaper, and it caches prefixes — while embeddings stay somewhere that
+/// offers them. DeepSeek exposes no embeddings endpoint at all, and without the split, pointing
+/// the client at it would take retrieval away without saying so.
+/// </para>
 /// </remarks>
 public sealed class OpenRouterEmbeddingClient : IEmbeddingClient
 {
@@ -52,12 +57,15 @@ public sealed class OpenRouterEmbeddingClient : IEmbeddingClient
         }
 
         var settings = _options.CurrentValue.Model;
-        var key = await _secrets.GetAsync(settings.ApiKeyName, cancellationToken).ConfigureAwait(false);
+        var endpoint = settings.ResolvedEmbeddingBaseUrl;
+        var keyName = settings.ResolvedEmbeddingApiKeyName;
+
+        var key = await _secrets.GetAsync(keyName, cancellationToken).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(key))
         {
             throw new ModelUnavailableException(
-                $"No API key is configured under '{settings.ApiKeyName}'.", 401);
+                $"No API key is configured under '{keyName}'.", 401);
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -65,7 +73,7 @@ public sealed class OpenRouterEmbeddingClient : IEmbeddingClient
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            $"{settings.BaseUrl.TrimEnd('/')}/embeddings");
+            $"{endpoint.TrimEnd('/')}/embeddings");
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
         request.Content = JsonContent.Create(new JsonObject
@@ -82,7 +90,7 @@ public sealed class OpenRouterEmbeddingClient : IEmbeddingClient
         }
         catch (HttpRequestException ex)
         {
-            throw new ModelUnavailableException($"Could not reach {settings.BaseUrl}: {ex.Message}", null, ex);
+            throw new ModelUnavailableException($"Could not reach {endpoint}: {ex.Message}", null, ex);
         }
 
         using (response)

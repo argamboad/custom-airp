@@ -37,11 +37,21 @@ I / Enter Write a message   ↑↓ Previous / next   PgUp/PgDn Scroll   / Search
   as facts with a validity range, so a thing that stopped being true stops being sent.
 - **A context budget you can inspect.** Every reply records its prompt layer by layer, with
   estimated and reported token counts side by side — `airp audit` shows it all.
+- **A spend ledger and a report.** Every billed call is recorded with what the provider said
+  it charged — including replies you regenerated away, which cost money and buy nothing.
+  `airp cost` reports a month by conversation, as a table or as JSON, and the running total
+  sits in the conversation header.
 - **A library of characters and personas** as plain text files, referred to by name, so
   editing one reaches every conversation using it.
 - **Reply dials** per conversation — lust, response length, creativity — with configurable
   wording, where the text you read and the text the model receives are the same text.
 - **Optional per conversation**: inner thoughts, and named meters the story keeps.
+- **Slash commands in the composer** — `/do` to steer a turn, `/ask` to put a question to the
+  story out of character and keep the answer out of the transcript, plus free lookups for the
+  card, the persona, the live facts and what it has all cost. An unknown command is refused
+  rather than sent: a typo would otherwise be billed and permanent.
+- **Replies drawn rather than shown raw**: `*action*` in italic and dimmed, `"speech"` as
+  plain text, markers gone from the screen and kept in the store.
 - The full terminal experience: carry on, regenerate with a reason, rewind, search across
   every conversation, command palette, export, clipboard.
 - **`airp send`** for playing a turn from a script.
@@ -91,6 +101,23 @@ Windows encrypts the key with DPAPI. On Linux and macOS, `secret set` refuses ra
 store plaintext — export `OPENROUTER_API_KEY` in your shell instead. Native keychain and
 libsecret implementations of `ISecretStore` are a welcome contribution.
 
+An empty library is a hard place to start from, so there is a worked example — a character,
+the persona facing it, an opening and a snippet — playable straight away:
+
+```bash
+airp library --samples
+airp new "Cadgwith Point" --speaker Morwenna --character lighthouse --persona traveller
+```
+
+The files are in [`src/Airp.Infrastructure/Samples`](src/Airp.Infrastructure/Samples) if you
+would rather read one before running anything. Nothing already in your library is ever
+overwritten, so it stays safe to run later.
+
+Everything the application keeps lives under one folder — `%LOCALAPPDATA%\Airp` on Windows,
+`~/.local/share/Airp` elsewhere: the database, `airp.json`, the four library shelves,
+`exports/`, `logs/` and the encrypted key. `AIRP_HOME` moves the lot, which is how a test
+install stays away from a real one.
+
 ---
 
 ## Architecture
@@ -126,6 +153,48 @@ from another backend costs nothing.
 Note the naming: `IChatProvider` lists conversations. The language model is a different thing
 entirely, `ILanguageModelClient`.
 
+### Which APIs it works with
+
+**Tested against OpenRouter only.** Everything below is what the code does, not what has been
+exercised in anger — if you run this against another provider, corrections and fixes are very
+welcome.
+
+The request is plain OpenAI: `model`, `stream`, `temperature`, `max_tokens`, and
+`messages[{role, content}]` posted to `/chat/completions` with a bearer token. Point
+`Airp:Model:BaseUrl` at DeepSeek, Together, Groq, a local Ollama or OpenAI itself, set `Name`
+and `ApiKeyName`, and turns should work. The only OpenRouter-isms in the request are two
+attribution headers (`HTTP-Referer`, `X-Title`) that other APIs ignore.
+
+Three *response* fields are not standard, and the features built on them go quiet elsewhere
+rather than breaking:
+
+| Field | Elsewhere | What is lost |
+|---|---|---|
+| `provider` | absent | the audit's *served by* column |
+| `usage.cost` | absent | `airp cost` — calls report as *unpriced* and the total says it is a floor |
+| `usage.prompt_tokens_details.cached_tokens` | named differently | the cache-share column |
+
+That last one is real rather than hypothetical: OpenAI nests it as above, while DeepSeek's own
+API returns `prompt_cache_hit_tokens` and `prompt_cache_miss_tokens` at the top of `usage`.
+Cost is deliberately nullable throughout for this reason — a provider that reports nothing
+produces an honestly incomplete report rather than a confident $0.00.
+
+Embeddings can point somewhere else entirely:
+
+```jsonc
+"Model": {
+  "BaseUrl": "https://api.deepseek.com/v1",   // replies: cheaper, caches prefixes
+  "EmbeddingBaseUrl": "https://openrouter.ai/api/v1",  // DeepSeek has no /embeddings
+  "EmbeddingApiKeyName": "OPENROUTER_API_KEY"
+}
+```
+
+Both embedding settings fall back to the chat ones when unset, so a single-service setup needs
+no configuration at all.
+
+**Adding a provider** should be configuration, not code. If it is not, the interesting places
+are `OpenRouterClient` (one `CompleteAsync`, one response parse) and `OpenRouterEmbeddingClient`
+— both are thin, and both are named after a default rather than a dependency.
 ### The local store
 
 EF Core over SQLite, append-only by construction rather than by convention: `SaveChanges`
@@ -133,6 +202,12 @@ refuses to persist a deleted message or an edited one, so the invariant does not
 anyone remembering it. Deleting from the terminal writes a tombstone. Summaries, extracted
 facts and embeddings are all derived — dropping any of those tables loses nothing that
 `Messages` does not still hold.
+
+The one exception is the spend ledger, which is not derived and cannot be rebuilt: token
+counts could be re-estimated, but what a router actually charged — after its own pricing, its
+choice of host and whatever cache discount applied that day — exists nowhere else once the
+response is gone. It carries no story text, so `airp purge` erases the conversation and keeps
+the ledger.
 
 A retry cannot duplicate a turn: the request hash is anchored on the **last assistant reply**,
 not on the next free sequence, so re-sending after a model failure collides with the message
@@ -144,7 +219,7 @@ and go through.
 The prompt is assembled in layers ordered by volatility, the volatile last:
 
 ```text
-character → persona → directives → world → summaries → history → memories → trackers
+character → persona → directives → world → summaries → history → memories → trackers → instruction
 ```
 
 Everything before the first layer that changes each turn survives the provider's prefix
@@ -171,7 +246,7 @@ dotnet build
 dotnet test
 ```
 
-508 tests cover the parts worth testing: the editor buffer, fuzzy matching, the LCS diff, the
+629 tests cover the parts worth testing: the editor buffer, fuzzy matching, the LCS diff, the
 context builder's layering and budgets, retrieval, idempotency and the append-only guard, and
 each business service against substituted providers. There are no tests of getters.
 

@@ -56,6 +56,39 @@ public sealed record ModelReply
     public int? CompletionTokens { get; init; }
 
     /// <summary>
+    /// What this call was actually charged, in the account's currency, when the API says.
+    /// </summary>
+    /// <remarks>
+    /// The figure the router billed, not one worked out here from a price list. Prices change,
+    /// a router fans one model across hosts that charge differently, and a cached prefix is
+    /// discounted — so any number this client computed itself would drift away from the invoice
+    /// and never say by how much.
+    /// </remarks>
+    public double? Cost { get; init; }
+
+    /// <summary>
+    /// Prompt tokens the provider served from its cache rather than reading again.
+    /// </summary>
+    /// <remarks>
+    /// The one measurement that says whether the prompt's layer order is doing its job. The
+    /// whole ordering contract exists to keep everything before the first change of the turn
+    /// cacheable; without this figure that is a belief rather than an observation.
+    /// </remarks>
+    public int? CachedTokens { get; init; }
+
+    /// <summary>Prompt tokens written into the cache, on models that charge for it.</summary>
+    public int? CacheWriteTokens { get; init; }
+
+    /// <summary>
+    /// The router's own identifier for this generation.
+    /// </summary>
+    /// <remarks>
+    /// Kept so a charge can be taken back to the provider's record of it later. It costs one
+    /// short string per reply and is unrecoverable once the response is gone.
+    /// </remarks>
+    public string? GenerationId { get; init; }
+
+    /// <summary>
     /// Why generation stopped — <c>stop</c> for a finished reply, <c>length</c> for one cut
     /// off at the token ceiling.
     /// </summary>

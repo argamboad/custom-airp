@@ -43,6 +43,17 @@ internal sealed record Theme
     /// <summary>Search-match highlight.</summary>
     public required Style Highlight { get; init; }
 
+    /// <summary>
+    /// Action and narration inside a reply — the parts a card writes between asterisks.
+    /// </summary>
+    /// <remarks>
+    /// Derived from <see cref="Muted"/> rather than declared beside it, so the four palettes
+    /// cannot drift apart on it. Dimmed and italic together on purpose: a console that does not
+    /// draw italics still shows the dimming, so what a character did stays distinct from what
+    /// they said either way.
+    /// </remarks>
+    public Style Action => Muted.Combine(new Style(decoration: Decoration.Italic));
+
     /// <summary>Added lines in a diff.</summary>
     public required Style DiffAdded { get; init; }
 

@@ -132,7 +132,7 @@ internal sealed class ConversationSummariser
 
         if (toCompress.Count > 0)
         {
-            var summary = await WriteAsync(conversation, toCompress, settings, cancellationToken)
+            var summary = await WriteAsync(store, conversation, toCompress, settings, cancellationToken)
                 .ConfigureAwait(false);
 
             if (summary is not null)
@@ -191,6 +191,7 @@ internal sealed class ConversationSummariser
     /// <summary>Asks the model to compress a stretch of transcript.</summary>
     /// <returns>The summary, or <see langword="null"/> when the model would not write one.</returns>
     private async Task<SummaryRecord?> WriteAsync(
+        AirpDbContext store,
         ConversationRecord conversation,
         IReadOnlyList<MessageRecord> messages,
         ModelOptions settings,
@@ -213,6 +214,11 @@ internal sealed class ConversationSummariser
                 choice.Temperature,
                 choice.MaxTokens,
                 cancellationToken).ConfigureAwait(false);
+
+            // Recorded before the reply is judged. Compressing fires without the reader asking
+            // for it, and a call that came back useless was billed exactly like one that did
+            // not — so the row goes in even when the summary is thrown away on the next line.
+            store.Spend.Add(Ledger.Row(conversation.Id, SpendKind.Summary, reply));
 
             if (string.IsNullOrWhiteSpace(reply.Text))
             {

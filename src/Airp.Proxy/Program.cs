@@ -180,7 +180,7 @@ app.MapPost("/v1/chat/completions", async (HttpContext context, CancellationToke
     try
     {
         var added = await conversations
-            .SendAsync(resolved.ConversationId, said, progress: null, cancellationToken)
+            .SendAsync(resolved.ConversationId, said, instruction: null, progress: null, cancellationToken)
             .ConfigureAwait(false);
 
         var replyText = added.LastOrDefault()?.Text ?? string.Empty;

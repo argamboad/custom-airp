@@ -90,6 +90,11 @@ public interface IConversationProvider : IProviderIdentity
     /// </remarks>
     /// <param name="conversationId">Identifier of the conversation.</param>
     /// <param name="text">The message to send.</param>
+    /// <param name="instruction">
+    /// A one-off direction for the reply this message asks for, such as "keep it brief" or
+    /// "have her leave before he answers". It steers the turn without becoming part of it: it
+    /// goes in the prompt's instruction layer and is never stored as something anybody said.
+    /// </param>
     /// <param name="progress">Receives status while waiting for the reply.</param>
     /// <param name="cancellationToken">
     /// Aborts waiting. It does not un-send a message that already reached the site.
@@ -98,6 +103,7 @@ public interface IConversationProvider : IProviderIdentity
     Task<IReadOnlyList<Domain.Conversations.ChatMessage>> SendAsync(
         string conversationId,
         string text,
+        string? instruction = null,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default);
 
@@ -145,11 +151,17 @@ public interface IConversationProvider : IProviderIdentity
     /// hides the control while one is still being written.
     /// </remarks>
     /// <param name="conversationId">Identifier of the conversation.</param>
+    /// <param name="instruction">
+    /// A direction for the turn, replacing the default "carry on" wording. Two answers to what
+    /// this turn should be would leave the reply satisfying neither, so it replaces rather than
+    /// joins.
+    /// </param>
     /// <param name="progress">Receives status while waiting.</param>
     /// <param name="cancellationToken">Aborts waiting; it cannot un-ask.</param>
     /// <returns>The transcript once the continuation has settled.</returns>
     Task<IReadOnlyList<Domain.Conversations.ChatMessage>> ContinueAsync(
         string conversationId,
+        string? instruction = null,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default);
 

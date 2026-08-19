@@ -410,3 +410,165 @@ public sealed class MessageRecord
         SentAtUtc = SentAtUtc,
     };
 }
+
+/// <summary>
+/// A question asked about the story out of character, and the answer it got.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It lives here rather than in <c>Messages</c> because it is not a turn. Stored as one it
+/// would be a paragraph the character said out of character, and everything downstream would
+/// believe it: retrieval would embed it, the summariser would compress it as something that
+/// happened, the extractor would pull facts out of it — and the append-only rule means none of
+/// that could be taken back. So an aside is written where nothing reads it into a prompt.
+/// </para>
+/// <para>
+/// It is recorded at all because the call is billed. A question that costs money and leaves no
+/// trace would make <c>airp audit</c> quietly stop adding up, which is the failure invariant 4
+/// exists to prevent. Derived in the sense that matters: dropping this table loses no story.
+/// </para>
+/// </remarks>
+public sealed class AsideRecord
+{
+    /// <summary>Identifier, assigned here.</summary>
+    public required string Id { get; set; }
+
+    /// <summary>Identifier of the conversation it was asked about.</summary>
+    public required string ConversationId { get; set; }
+
+    /// <summary>The last turn that had happened when it was asked, for ordering against the story.</summary>
+    public long Sequence { get; set; }
+
+    /// <summary>What was asked.</summary>
+    public required string Question { get; set; }
+
+    /// <summary>What came back.</summary>
+    public required string Answer { get; set; }
+
+    /// <summary>When it was asked, in UTC.</summary>
+    public DateTimeOffset AskedAtUtc { get; set; }
+
+    /// <summary>The model that answered.</summary>
+    public string? Model { get; set; }
+
+    /// <summary>The backend that served it. Worth keeping for the same reason a reply keeps it.</summary>
+    public string? Provider { get; set; }
+
+    /// <summary>Prompt tokens the provider reported.</summary>
+    public int? PromptTokens { get; set; }
+
+    /// <summary>Completion tokens the provider reported.</summary>
+    public int? CompletionTokens { get; set; }
+
+    /// <summary>What this client estimated the prompt at, to be checked against the reported figure.</summary>
+    public int EstimatedPromptTokens { get; set; }
+
+    /// <summary>The per-layer breakdown, as the audit prints it.</summary>
+    public string? ContextAudit { get; set; }
+}
+
+/// <summary>What kind of work a billed call was doing.</summary>
+/// <remarks>
+/// Recorded rather than inferred, because the interesting question about a bill is not what
+/// it totalled but what it went on. A month where compression outgrew the replies is a month
+/// where something wants tuning, and no amount of arithmetic over message rows would show it.
+/// </remarks>
+public enum SpendKind
+{
+    /// <summary>Writing a turn of the story.</summary>
+    Reply = 0,
+
+    /// <summary>Answering a question asked out of character.</summary>
+    Aside,
+
+    /// <summary>Compressing turns that no longer fit.</summary>
+    Summary,
+
+    /// <summary>Extracting what the story established.</summary>
+    Facts,
+}
+
+/// <summary>
+/// One call that was charged for.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A ledger, not a summary. Every billed completion writes exactly one row here, whatever it
+/// was doing and whatever became of what it produced — including a reply that was rerolled a
+/// second later. That is the whole point: the money left the account, and a report that
+/// counted only the replies still on screen would quietly understate every conversation that
+/// was ever regenerated.
+/// </para>
+/// <para>
+/// It is not derived and cannot be rebuilt. Token counts could be re-estimated from the
+/// messages, but what a router actually charged — after its own pricing, its choice of host
+/// and whatever cache discount applied that day — exists nowhere else once the response is
+/// gone. Nothing in it is ever read into a prompt.
+/// </para>
+/// <para>
+/// Whether a reply was thrown away is deliberately not stored here. It is read from the
+/// message's own tombstone at report time, so a turn rerolled tomorrow is counted as discarded
+/// tomorrow, without this row being rewritten.
+/// </para>
+/// </remarks>
+public sealed class SpendRecord
+{
+    /// <summary>Identifier, assigned here.</summary>
+    public required string Id { get; set; }
+
+    /// <summary>The conversation the call was made for.</summary>
+    public required string ConversationId { get; set; }
+
+    /// <summary>What the call was doing.</summary>
+    public SpendKind Kind { get; set; }
+
+    /// <summary>
+    /// The message this produced, when it produced one.
+    /// </summary>
+    /// <remarks>
+    /// Null for the calls that write no turn — a question asked out of character, a summary, an
+    /// extraction. Where it is set, it is what tells a report that the reply has since been
+    /// rolled back.
+    /// </remarks>
+    public string? MessageId { get; set; }
+
+    /// <summary>When the call was made, in UTC. What a monthly report groups on.</summary>
+    public DateTimeOffset AtUtc { get; set; }
+
+    /// <summary>The model that answered.</summary>
+    public string? Model { get; set; }
+
+    /// <summary>The host that served it. Prices differ between them for the same model.</summary>
+    public string? Provider { get; set; }
+
+    /// <summary>The router's identifier for the generation, for reconciling against its records.</summary>
+    public string? GenerationId { get; set; }
+
+    /// <summary>Prompt tokens the provider reported.</summary>
+    public int? PromptTokens { get; set; }
+
+    /// <summary>Completion tokens the provider reported.</summary>
+    public int? CompletionTokens { get; set; }
+
+    /// <summary>Prompt tokens served from cache. What says the layer order is working.</summary>
+    public int? CachedTokens { get; set; }
+
+    /// <summary>Prompt tokens written to cache, where the model charges for that.</summary>
+    public int? CacheWriteTokens { get; set; }
+
+    /// <summary>
+    /// What the call was charged, when the API said. Null when it did not.
+    /// </summary>
+    /// <remarks>
+    /// Nullable rather than zero. A call whose cost went unreported and a call that genuinely
+    /// cost nothing are different facts, and a report that added them together would be
+    /// confidently wrong rather than honestly incomplete.
+    /// </remarks>
+    /// <remarks>
+    /// Decimal rather than the double the wire hands over. A turn costs around $0.0028 and a
+    /// month is hundreds of them; summed as binary floating point a total arrives looking like
+    /// 0.0006000000000000001, and a report about money that has to apologise for its own
+    /// arithmetic is not one anybody checks against an invoice.
+    /// </remarks>
+    public decimal? Cost { get; set; }
+}

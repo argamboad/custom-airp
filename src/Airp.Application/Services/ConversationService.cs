@@ -39,6 +39,7 @@ public sealed class ConversationService : IConversationService
     public async Task<IReadOnlyList<ChatMessage>> SendAsync(
         string conversationId,
         string text,
+        string? instruction = null,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -51,7 +52,13 @@ public sealed class ConversationService : IConversationService
 
         _logger.LogInformation("Sending a message to conversation {ConversationId}.", conversationId);
 
-        return await _provider.SendAsync(conversationId, text, progress, cancellationToken)
+        return await _provider
+            .SendAsync(
+                conversationId,
+                text,
+                instruction: instruction,
+                progress: progress,
+                cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -93,6 +100,7 @@ public sealed class ConversationService : IConversationService
     /// <inheritdoc />
     public Task<IReadOnlyList<ChatMessage>> ContinueAsync(
         string conversationId,
+        string? instruction = null,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -100,7 +108,11 @@ public sealed class ConversationService : IConversationService
 
         _logger.LogInformation("Continuing conversation {ConversationId}.", conversationId);
 
-        return _provider.ContinueAsync(conversationId, progress, cancellationToken);
+        return _provider.ContinueAsync(
+            conversationId,
+            instruction: instruction,
+            progress: progress,
+            cancellationToken: cancellationToken);
     }
 
     /// <inheritdoc />

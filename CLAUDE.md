@@ -48,9 +48,10 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       508 tests
+tests/Airp.Tests/       629 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
+src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
 ```
 
 **The provider seam survives the split on purpose.** The terminal talks only to
@@ -226,6 +227,17 @@ to move the number.
 5. **`Facts` uses `ValidFrom`/`ValidTo`.** A fact stops being true without erasing history.
 6. **Summaries, facts and embeddings are derived.** Dropping those tables entirely loses
    nothing: all of it can be produced again from `Messages`.
+7. **`Spend` is a ledger, and is the one table that is *not* derived.** One row per billed
+   call — replies, asides, compression, extraction — written whatever became of the output. A
+   reply rerolled a second later cost exactly what a kept one did. Token counts could be
+   re-estimated; what a router actually charged, after its pricing, its choice of host and
+   whatever cache discount applied that day, exists nowhere else once the response is gone.
+   Whether a reply was discarded is read from its tombstone at report time, never stored, so a
+   turn rerolled tomorrow counts as discarded tomorrow.
+8. **`Asides` never enters a prompt.** A question asked out of character is not a turn.
+   Stored as one, retrieval would embed it, the summariser would compress it as something that
+   happened and the extractor would pull facts from it — and append-only makes all of that
+   permanent.
 
 What the terminal sees as deleted, the database keeps with a tombstone. A reroll hides the
 previous reply and leaves it in the audit — "why did it say that" is almost always asked about
@@ -248,13 +260,30 @@ Learned at the cost of time. Do not learn it again.
   variants. V4 Flash: 1M context, $0.14/M in, $0.28/M out.
 - **OpenRouter first, direct later.** One key to try many models. Only DeepSeek's own API and
   Azure cache prefixes; the cheap ones do not. Moving to direct is only worth it once you have
-  already chosen a model.
+  already chosen a model. **Embeddings can be split off** with `EmbeddingBaseUrl` and
+  `EmbeddingApiKeyName`, which is what makes going direct survivable: DeepSeek exposes no
+  `/embeddings`, and without the split, pointing the whole client at it takes retrieval away
+  silently. Both fall back to the chat settings when unset.
+- **OpenRouter is the only API this has ever run against.** The request is plain OpenAI and
+  should reach anything speaking it, but three response fields are OpenRouter's own —
+  `provider`, `usage.cost`, and `prompt_tokens_details.cached_tokens` (DeepSeek names its
+  cache counters `prompt_cache_hit_tokens`/`prompt_cache_miss_tokens` instead). Everything
+  built on them degrades to silence rather than to a wrong number, and `Cost` is nullable
+  throughout for exactly that reason. The repository is public; this is the obvious place for
+  someone else's provider to be added.
 - **The provider changes between requests** and is stored per message. If a scene comes out
   strange, that is the first thing to look at. Measured in practice: some of the providers
   OpenRouter fans this model across intermittently return a response with no content at all.
   The client keeps the message and says not to resend; the QA harness retries that case.
 - **OpenRouter exposes `/embeddings`** — `openai/text-embedding-3-small`, 1536 dimensions, same
-  key. At ~$0.02/M the whole corpus costs less than a cent.
+  key. At ~$0.02/M the whole corpus costs less than a cent. Not counted in the spend ledger,
+  and the report says so rather than implying completeness.
+- **The real cost of a call comes back inline, on every response**, in `usage.cost`, with
+  `prompt_tokens_details.cached_tokens` beside it. Nothing has to be asked for: the
+  `usage: {include: true}` request flag is deprecated and ignored. `GET /api/v1/generation?id=`
+  gives the same figures authoritatively but costs a second round trip and documents no
+  consistency guarantee, so the generation id is stored and the endpoint left for reconciling.
+  **Never compute cost from a price list** — prices change, hosts differ, caching discounts.
 - **DeepSeek's API is billed** and **does not expose `/v1/embeddings`**.
 - **`gpt-oss-120b` is among the most censored there is.** The worst choice for NSFW RP.
 - **Local Ollama is a privacy option, not a cost one**: 4.58 tok/s on this hardware.
@@ -298,11 +327,23 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 508 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 629 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
 four-shelf library manager, `S` dials + inner-thoughts toggle, snippets in the composer.
+
+**Twelve slash commands live in the composer**, because the alternative — typing
+`(OOC: skip to the evening)` into a message — is permanent, billed, retrieved, summarised and
+un-take-backable. `/do` steers a turn, `/ask` answers a question about the story and stores
+the answer nowhere (`F` in the pane promotes it to a pinned fact), `/focus` hands the turn to
+a named character; the rest read what is already on disk. **An unrecognised command is refused,
+never sent**; `//` escapes a message that genuinely starts with a slash.
+
+**Replies are drawn, not shown raw.** `*action*` renders italic and dimmed, `"speech"` renders
+as plain text, and both lose their markers — display only, since the stored wording is what the
+next prompt sends and what the prefix cache is keyed on. Single asterisks outnumber double ones
+about ten to one in real replies; both are read.
 
 **Owner-specific state — the cast, the raw material, the machines — lives in
 `CLAUDE.local.md`**, git-ignored beside this file. When it is present, read it too.
@@ -318,7 +359,19 @@ four-shelf library manager, `S` dials + inner-thoughts toggle, snippets in the c
   some may filter differently. On refusals or empty replies, check the audit's `served by`
   column first.
 
+- **A directive sent bare gets echoed back as the reply.** Observed twice now, once as a
+  carry-on that returned nothing and once as a regenerate note — `Use at least 30 words` —
+  coming back verbatim as the character's turn. Every instruction-layer text must say what it
+  is (a direction, out of character, not something anyone said) and what the reply must be
+  (the scene itself, never a repetition or acknowledgement of the note). `LocalDirections`,
+  `AskDirective` and `RegenerateDirective` all carry that frame; anything new must too.
+
 **What has never run:** the memory against a real long conversation (compression, retrieval
 and extraction have 500+ tests and zero lived turns — around message ~120 a turn runs slow;
 `airp audit` and `airp fact` right after is the moment of truth), and the proxy against real
 Janitor.
+
+**And one thing verified only on paper:** the spend ledger has never seen a priced response.
+`usage.cost` and `prompt_tokens_details.cached_tokens` are parsed against the documented shape
+and a scripted model, not against a live OpenRouter reply. The first real turn is the check —
+if `airp cost` shows every call unpriced, the field names are what to look at, not the ledger.

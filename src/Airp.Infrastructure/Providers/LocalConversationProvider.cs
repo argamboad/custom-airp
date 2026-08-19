@@ -221,6 +221,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
     public async Task<IReadOnlyList<ChatMessage>> SendAsync(
         string conversationId,
         string text,
+        string? instruction = null,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -241,7 +242,10 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             .MaxAsync(m => (long?)m.Sequence, cancellationToken)
             .ConfigureAwait(false) ?? 0;
 
-        var hash = Hash(conversationId, anchor, text);
+        // The direction is part of what is being asked for, so it is part of the identity of
+        // the request. The same sentence sent twice with different directions wants two
+        // different replies; without this the second would be handed the first one back.
+        var hash = Hash(conversationId, anchor, text, instruction);
 
         var existing = await store.Messages
             .FirstOrDefaultAsync(m => m.ConversationId == conversationId && m.RequestHash == hash, cancellationToken)
@@ -292,7 +296,13 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        var reply = await ReplyAsync(store, conversation, sent, null, progress, cancellationToken)
+        var reply = await ReplyAsync(
+                store,
+                conversation,
+                pending: sent,
+                instruction: string.IsNullOrWhiteSpace(instruction) ? null : instruction.Trim(),
+                progress: progress,
+                cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
         return [sent.ToDomain(), reply.ToDomain()];
@@ -355,6 +365,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
     /// <inheritdoc />
     public async Task<IReadOnlyList<ChatMessage>> ContinueAsync(
         string conversationId,
+        string? instruction = null,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -364,21 +375,293 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         await ReplyAsync(
             store,
             conversation,
-            null,
-            // A card's fail-safe rule — hand the scene back rather than assume what the user
-            // does — is phrased as "no exception", and it outranks a polite "without waiting":
-            // the reply comes back as a beat that stops and asks. So this separates the two
-            // halves the rule conflates. Never writing the user still holds; stopping for them
-            // does not, this turn.
-            "Carry the scene forward yourself. Let time pass and let the world act: other "
-            + "characters speak, move, arrive, react to one another. This reply does not hand "
-            + "the scene back and does not wait — the user's silence is not a cue to stop. "
-            + "Still never write their words, actions or thoughts; leave them something to "
-            + "step into instead.",
-            progress,
-            cancellationToken).ConfigureAwait(false);
+            pending: null,
+            // A direction from the reader replaces the carry-on wording rather than joining it.
+            // Both say what this turn should be, and two answers to that question in one prompt
+            // is how a reply comes back trying to satisfy neither.
+            instruction: string.IsNullOrWhiteSpace(instruction)
+                // A card's fail-safe rule — hand the scene back rather than assume what the
+                // user does — is phrased as "no exception", and it outranks a polite
+                // "without waiting": the reply comes back as a beat that stops and asks. So this
+                // separates the two halves the rule conflates. Never writing the user still
+                // holds; stopping for them does not, this turn.
+                ? "Carry the scene forward yourself. Let time pass and let the world act: other "
+                  + "characters speak, move, arrive, react to one another. This reply does not "
+                  + "hand the scene back and does not wait — the user's silence is not a cue "
+                  + "to stop. Still never write their words, actions or thoughts; leave them "
+                  + "something to step into instead."
+                : instruction.Trim(),
+            progress: progress,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return await VisibleAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The stored conversation row, for callers that need what the prompt resolves from.</summary>
+    /// <remarks>
+    /// The terminal's <c>Chat</c> carries what a chat list needs and deliberately not the
+    /// character text, the persona or the names of the files they come from. Showing the reader
+    /// which of those a turn actually resolves is the whole value of <c>/card</c> and
+    /// <c>/persona</c>, so the row itself is handed over rather than widening <c>Chat</c> for
+    /// two commands.
+    /// </remarks>
+    /// <param name="conversationId">Identifier of the conversation.</param>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>The row, or <see langword="null"/> when there is no such conversation.</returns>
+    public async Task<ConversationRecord?> RawAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        return await store.Conversations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Asks about the story out of character, and answers without touching the transcript.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>Nothing is added to <c>Messages</c>.</strong> That is the whole design: an
+    /// answer stored as a turn would be a paragraph the character said out of character, and
+    /// every downstream reader would believe it — retrieval embeds it, the summariser
+    /// compresses it as something that happened, the extractor pulls facts from it — with the
+    /// append-only rule making all of that permanent. So the answer is handed back and written
+    /// only to the asides table, which no prompt reads.
+    /// </para>
+    /// <para>
+    /// The prompt is byte-identical to the one the next real turn will send, up to the
+    /// instruction. That is deliberate: on a caching provider the question is nearly free,
+    /// and it also means the answer is grounded in exactly what the character can currently
+    /// see — not in more of the story, and not in less.
+    /// </para>
+    /// <para>
+    /// It still spends credits, so it still gets an audit row. A billed call that left no
+    /// trace would make <c>airp audit</c> quietly stop adding up.
+    /// </para>
+    /// </remarks>
+    /// <param name="conversationId">Identifier of the conversation to ask about.</param>
+    /// <param name="question">What to ask.</param>
+    /// <param name="progress">Receives the phase.</param>
+    /// <param name="cancellationToken">Token used to abort the call.</param>
+    /// <returns>The answer, with the accounting behind it.</returns>
+    /// <exception cref="ReplyMissingException">The model did not answer.</exception>
+    public async Task<AskAnswer> AskAsync(
+        string conversationId,
+        string question,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(question);
+
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var conversation = await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+
+        var composed = await ComposeAsync(
+                store,
+                conversation,
+                LocalPrompt.AskDirective(question),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        progress?.Report(SendPhase.Waiting);
+
+        ModelReply reply;
+
+        try
+        {
+            var choice = ModelRouter.For(ModelTask.Aside, composed.Settings);
+
+            reply = await _model.CompleteAsync(
+                composed.Context.Messages,
+                conversation.Model ?? choice.Model,
+                choice.Temperature,
+                choice.MaxTokens,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Nothing to hand back with it, unlike a send: no message was stored, because an
+            // asking is not a turn. So this is simply a call that did not happen.
+            throw new ReplyMissingException(
+                $"The question was not answered: {ex.Message}",
+                [],
+                ex);
+        }
+
+        progress?.Report(SendPhase.Arriving);
+
+        var answer = reply.Text.Trim();
+
+        store.Spend.Add(Ledger.Row(conversation.Id, SpendKind.Aside, reply));
+
+        store.Asides.Add(new AsideRecord
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ConversationId = conversation.Id,
+            Sequence = await store.Messages
+                .Where(m => m.ConversationId == conversation.Id && m.DeletedAtUtc == null)
+                .MaxAsync(m => (long?)m.Sequence, cancellationToken)
+                .ConfigureAwait(false) ?? 0,
+            Question = question,
+            Answer = answer,
+            AskedAtUtc = DateTimeOffset.UtcNow,
+            Model = reply.Model,
+            Provider = reply.Provider,
+            PromptTokens = reply.PromptTokens,
+            CompletionTokens = reply.CompletionTokens,
+            EstimatedPromptTokens = composed.Context.EstimatedTokens,
+            ContextAudit = composed.Context.Describe(),
+        });
+
+        await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Aside answered for {Conversation}: {Audit}; reported {Prompt} in, {Completion} out.",
+            conversation.Id,
+            composed.Context.Describe(),
+            reply.PromptTokens,
+            reply.CompletionTokens);
+
+        return new AskAnswer(
+            Question: question,
+            Answer: answer,
+            Model: reply.Model,
+            Provider: reply.Provider,
+            EstimatedPromptTokens: composed.Context.EstimatedTokens,
+            PromptTokens: reply.PromptTokens,
+            CompletionTokens: reply.CompletionTokens,
+            ContextAudit: composed.Context.Describe());
+    }
+
+    /// <summary>
+    /// What has been spent, grouped by conversation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The window is applied here rather than in the query on purpose: SQLite stores a
+    /// <see cref="DateTimeOffset"/> as text and this provider will not order or compare on one,
+    /// which has already cost this project a crash once. The ledger is a few rows per turn, so
+    /// reading it and filtering in memory is cheap and cannot be got wrong by a provider quirk.
+    /// </para>
+    /// <para>
+    /// Whether a reply was thrown away is read from the message's tombstone at this moment, not
+    /// from the ledger. A turn rerolled after the row was written is counted as discarded now,
+    /// which is the only reading that stays true as the story goes on.
+    /// </para>
+    /// </remarks>
+    /// <param name="fromUtc">Start of the window, inclusive. Null for the beginning of time.</param>
+    /// <param name="toUtc">End of the window, exclusive. Null for now.</param>
+    /// <param name="conversationId">One conversation, or null for all of them.</param>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>The report, dearest conversation first.</returns>
+    public async Task<SpendReport> SpendAsync(
+        DateTimeOffset? fromUtc = null,
+        DateTimeOffset? toUtc = null,
+        string? conversationId = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var query = store.Spend.AsNoTracking();
+
+        if (conversationId is not null)
+        {
+            query = query.Where(s => s.ConversationId == conversationId);
+        }
+
+        var rows = await query.ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        var window = rows
+            .Where(s => (fromUtc is null || s.AtUtc >= fromUtc) && (toUtc is null || s.AtUtc < toUtc))
+            .ToList();
+
+        if (window.Count == 0)
+        {
+            return new SpendReport(fromUtc, toUtc, []);
+        }
+
+        // Which of the replies paid for are no longer shown. Hidden conversations included:
+        // deleting a story does not un-spend what it cost.
+        var paidFor = window
+            .Where(static s => s.MessageId != null)
+            .Select(static s => s.MessageId!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var rolledBack = (await store.Messages
+                .AsNoTracking()
+                .Where(m => paidFor.Contains(m.Id) && m.DeletedAtUtc != null)
+                .Select(static m => m.Id)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var named = await store.Conversations
+            .AsNoTracking()
+            .Select(static c => new { c.Id, c.Name, c.Speaker })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var names = named.ToDictionary(static c => c.Id, StringComparer.Ordinal);
+
+        var lines = window
+            .GroupBy(static s => s.ConversationId, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var discarded = group.Where(s => s.MessageId != null && rolledBack.Contains(s.MessageId)).ToList();
+
+                return new ConversationSpend(
+                    ConversationId: group.Key,
+                    // A purged conversation can leave its ledger behind, so the name may be
+                    // gone. Saying so beats an empty column that reads like a bug.
+                    Name: names.TryGetValue(group.Key, out var row) ? row.Name : "(purged)",
+                    Speaker: names.TryGetValue(group.Key, out var who) ? who.Speaker : null,
+                    Calls: group.Count(),
+                    Cost: group.Sum(static s => s.Cost ?? 0),
+                    DiscardedCalls: discarded.Count,
+                    DiscardedCost: discarded.Sum(static s => s.Cost ?? 0),
+                    PromptTokens: group.Sum(static s => (long)(s.PromptTokens ?? 0)),
+                    CompletionTokens: group.Sum(static s => (long)(s.CompletionTokens ?? 0)),
+                    CachedTokens: group.Sum(static s => (long)(s.CachedTokens ?? 0)),
+                    Unpriced: group.Count(static s => s.Cost is null),
+                    ByKind:
+                    [
+                        .. group
+                            .GroupBy(static s => s.Kind)
+                            .Select(static k => new SpendByKind(k.Key, k.Count(), k.Sum(static s => s.Cost ?? 0)))
+                            .OrderBy(static k => k.Kind),
+                    ],
+                    FirstAtUtc: group.Min(static s => s.AtUtc),
+                    LastAtUtc: group.Max(static s => s.AtUtc));
+            })
+            .OrderByDescending(static c => c.Cost)
+            .ThenBy(static c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new SpendReport(fromUtc, toUtc, lines);
+    }
+
+    /// <summary>The questions asked about a conversation, newest first.</summary>
+    /// <param name="conversationId">Identifier of the conversation.</param>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>The asides.</returns>
+    public async Task<IReadOnlyList<AsideRecord>> AsidesAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await store.Asides
+            .AsNoTracking()
+            .Where(a => a.ConversationId == conversationId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // Sorted here rather than in the query: SQLite cannot order by a DateTimeOffset.
+        return [.. rows.OrderByDescending(static a => a.AskedAtUtc)];
     }
 
     /// <summary>
@@ -400,6 +683,120 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         MessageRecord? pending,
         string? instruction,
         IProgress<string>? progress,
+        CancellationToken cancellationToken)
+    {
+        var composed = await ComposeAsync(store, conversation, instruction, cancellationToken)
+            .ConfigureAwait(false);
+
+        var context = composed.Context;
+        var settings = composed.Settings;
+        var meters = composed.Meters;
+
+        progress?.Report(SendPhase.Waiting);
+
+        ModelReply reply;
+
+        try
+        {
+            var choice = ModelRouter.For(
+                ModelTask.Reply,
+                settings,
+                LocalPrompt.Temperature(conversation.Creativity, settings.Temperature),
+                LocalPrompt.MaxTokens(conversation.ResponseLength, settings.MaxTokens));
+
+            reply = await _model.CompleteAsync(
+                context.Messages,
+                // A model set on the conversation still wins: the router decides what kind of
+                // work this is, not which character is played on what.
+                conversation.Model ?? choice.Model,
+                choice.Temperature,
+                choice.MaxTokens,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The send is not undone. It is stored, it is the reader's, and telling them it
+            // failed outright is how the same message gets typed a second time.
+            throw new ReplyMissingException(
+                $"The message was kept, but the model did not answer: {ex.Message}",
+                pending is null ? [] : [pending.ToDomain()],
+                ex);
+        }
+
+        progress?.Report(SendPhase.Arriving);
+
+        var record = new MessageRecord
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ConversationId = conversation.Id,
+            Sequence = await NextSequenceAsync(store, conversation.Id, cancellationToken).ConfigureAwait(false),
+            Role = ChatRole.Assistant,
+            Text = reply.Text.Trim(),
+            SentAtUtc = DateTimeOffset.UtcNow,
+            Model = reply.Model,
+            Provider = reply.Provider,
+            PromptTokens = reply.PromptTokens,
+            CompletionTokens = reply.CompletionTokens,
+            EstimatedPromptTokens = context.EstimatedTokens,
+            ContextAudit = context.Describe(),
+        };
+
+        // What the model drew goes back to the store: that is what makes the number survive
+        // this turn being compressed.
+        var movedMeters = Trackers.Absorb(meters, record.Text, record.Sequence);
+
+        // Written whatever becomes of the reply. A reroll a second from now hides the message
+        // and leaves this row exactly where it is, which is the only way the total can still
+        // agree with what was actually charged.
+        store.Spend.Add(Ledger.Row(conversation.Id, SpendKind.Reply, reply, record.Id));
+
+        store.Messages.Add(record);
+        await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        if (movedMeters > 0)
+        {
+            _logger.LogInformation("{Count} meter(s) moved.", movedMeters);
+        }
+
+        _logger.LogInformation(
+            "Reply stored for {Conversation}: {Audit}; reported {Prompt} in, {Completion} out.",
+            conversation.Id,
+            context.Describe(),
+            reply.PromptTokens,
+            reply.CompletionTokens);
+
+        return record;
+    }
+
+    /// <summary>The prompt for one call, and what was needed to build it.</summary>
+    /// <param name="Context">The assembled prompt and its accounting.</param>
+    /// <param name="Settings">The model options it was built against.</param>
+    /// <param name="Meters">The conversation's trackers, so a reply can read moved values back.</param>
+    private sealed record Composed(
+        BuiltContext Context,
+        ModelOptions Settings,
+        IReadOnlyList<TrackerRecord> Meters);
+
+    /// <summary>
+    /// Assembles the prompt for a call, compressing first when the transcript has outgrown
+    /// the budget.
+    /// </summary>
+    /// <remarks>
+    /// Separated from <see cref="ReplyAsync"/> so that a call which stores nothing — asking a
+    /// question about the story — can be built from exactly the same layers. Sharing the
+    /// assembly is not only tidiness: an aside that differs from a turn by so much as one
+    /// layer would miss the provider's prefix cache and pay full price for a prompt the next
+    /// real turn is about to send again.
+    /// </remarks>
+    /// <param name="store">The open store.</param>
+    /// <param name="conversation">The conversation being spoken about.</param>
+    /// <param name="instruction">The one-off directive that goes last.</param>
+    /// <param name="cancellationToken">Token used to abort the work.</param>
+    /// <returns>The prompt, the settings behind it, and the meters it rendered.</returns>
+    private async Task<Composed> ComposeAsync(
+        AirpDbContext store,
+        ConversationRecord conversation,
+        string? instruction,
         CancellationToken cancellationToken)
     {
         var history = await store.Messages
@@ -492,75 +889,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 conversation.Id);
         }
 
-        progress?.Report(SendPhase.Waiting);
-
-        ModelReply reply;
-
-        try
-        {
-            var choice = ModelRouter.For(
-                ModelTask.Reply,
-                settings,
-                LocalPrompt.Temperature(conversation.Creativity, settings.Temperature),
-                LocalPrompt.MaxTokens(conversation.ResponseLength, settings.MaxTokens));
-
-            reply = await _model.CompleteAsync(
-                context.Messages,
-                // A model set on the conversation still wins: the router decides what kind of
-                // work this is, not which character is played on what.
-                conversation.Model ?? choice.Model,
-                choice.Temperature,
-                choice.MaxTokens,
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // The send is not undone. It is stored, it is the reader's, and telling them it
-            // failed outright is how the same message gets typed a second time.
-            throw new ReplyMissingException(
-                $"The message was kept, but the model did not answer: {ex.Message}",
-                pending is null ? [] : [pending.ToDomain()],
-                ex);
-        }
-
-        progress?.Report(SendPhase.Arriving);
-
-        var record = new MessageRecord
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            ConversationId = conversation.Id,
-            Sequence = await NextSequenceAsync(store, conversation.Id, cancellationToken).ConfigureAwait(false),
-            Role = ChatRole.Assistant,
-            Text = reply.Text.Trim(),
-            SentAtUtc = DateTimeOffset.UtcNow,
-            Model = reply.Model,
-            Provider = reply.Provider,
-            PromptTokens = reply.PromptTokens,
-            CompletionTokens = reply.CompletionTokens,
-            EstimatedPromptTokens = context.EstimatedTokens,
-            ContextAudit = context.Describe(),
-        };
-
-        // Lo que el modelo dibujo vuelve al almacen: es lo que hace que el numero sobreviva
-        // a que este turno se comprima.
-        var movedMeters = Trackers.Absorb(meters, record.Text, record.Sequence);
-
-        store.Messages.Add(record);
-        await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        if (movedMeters > 0)
-        {
-            _logger.LogInformation("{Count} meter(s) moved.", movedMeters);
-        }
-
-        _logger.LogInformation(
-            "Reply stored for {Conversation}: {Audit}; reported {Prompt} in, {Completion} out.",
-            conversation.Id,
-            context.Describe(),
-            reply.PromptTokens,
-            reply.CompletionTokens);
-
-        return record;
+        return new Composed(context, settings, meters);
     }
 
     /// <summary>
@@ -701,7 +1030,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
         if (doomed.Count == 0)
         {
-            return new PurgeReport(0, 0, 0, 0, 0);
+            return new PurgeReport(0, 0, 0, 0, 0, 0, default);
         }
 
         var messages = await store.Messages
@@ -712,6 +1041,17 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             .Where(f => doomed.Contains(f.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
         var trackers = await store.Trackers
             .Where(t => doomed.Contains(t.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var asides = await store.Asides
+            .Where(a => doomed.Contains(a.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        // Counted, not removed. See LedgerKept: the money left the account whatever became of
+        // the story, and these rows carry no text from it.
+        var ledger = await store.Spend
+            .AsNoTracking()
+            .Where(s => doomed.Contains(s.ConversationId))
+            .Select(static s => s.Cost)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
         var conversations = await store.Conversations
             .Where(c => doomed.Contains(c.Id)).ToListAsync(cancellationToken).ConfigureAwait(false);
 
@@ -719,6 +1059,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         store.Summaries.RemoveRange(summaries);
         store.Facts.RemoveRange(facts);
         store.Trackers.RemoveRange(trackers);
+        store.Asides.RemoveRange(asides);
         store.Conversations.RemoveRange(conversations);
 
         // The one place the append-only guard is lifted, and it says so out loud.
@@ -741,7 +1082,13 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             messages.Count);
 
         return new PurgeReport(
-            conversations.Count, messages.Count, summaries.Count, facts.Count, trackers.Count);
+            conversations.Count,
+            messages.Count,
+            summaries.Count,
+            facts.Count,
+            trackers.Count,
+            asides.Count,
+            new LedgerKept(ledger.Count, ledger.Sum(static c => c ?? 0)));
     }
 
     /// <inheritdoc />
@@ -1340,9 +1687,17 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         return (highest ?? 0) + 1;
     }
 
-    private static string Hash(string conversationId, long sequence, string text)
+    private static string Hash(string conversationId, long sequence, string text, string? instruction = null)
     {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{conversationId}|{sequence}|{text}"));
+        // Appended only when there is one, so a plain send hashes exactly as it always has.
+        // Changing that would give every unanswered message in an existing database a new
+        // hash, and the retry that found it would store the sentence a second time.
+        // A control character rather than a space or a pipe. Those appear in prose, and a
+        // separator the message can contain is one that lets two different sends hash
+        // alike when the words happen to fall either side of it.
+        const string separator = "\u001f";
+        var directed = string.IsNullOrWhiteSpace(instruction) ? text : text + separator + instruction.Trim();
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{conversationId}|{sequence}|{directed}"));
         return Convert.ToHexString(bytes)[..32];
     }
 }

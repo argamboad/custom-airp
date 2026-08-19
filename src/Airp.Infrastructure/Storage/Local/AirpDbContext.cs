@@ -29,6 +29,12 @@ public sealed class AirpDbContext : DbContext
     /// <summary>Named meters the story keeps. Not derived: the reader defines these.</summary>
     public DbSet<TrackerRecord> Trackers => Set<TrackerRecord>();
 
+    /// <summary>Questions asked out of character, and what they cost. Never read into a prompt.</summary>
+    public DbSet<AsideRecord> Asides => Set<AsideRecord>();
+
+    /// <summary>Every call that was charged for. A ledger; never read into a prompt.</summary>
+    public DbSet<SpendRecord> Spend => Set<SpendRecord>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -110,6 +116,42 @@ public sealed class AirpDbContext : DbContext
             // One meter per name per conversation: two called the same thing would render
             // twice and the model would have no way to tell which one it just moved.
             entity.HasIndex(t => new { t.ConversationId, t.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<AsideRecord>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Id).HasMaxLength(64);
+            entity.Property(a => a.ConversationId).HasMaxLength(64).IsRequired();
+            entity.Property(a => a.Question).IsRequired();
+            entity.Property(a => a.Answer).IsRequired();
+            entity.Property(a => a.Model).HasMaxLength(200);
+            entity.Property(a => a.Provider).HasMaxLength(200);
+
+            // Read newest first, for one conversation, and only when the audit is opened.
+            // Nothing here is on the path of a turn, so one index is all it needs.
+            entity.HasIndex(a => new { a.ConversationId, a.AskedAtUtc });
+        });
+
+        modelBuilder.Entity<SpendRecord>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Id).HasMaxLength(64);
+            entity.Property(s => s.ConversationId).HasMaxLength(64).IsRequired();
+            entity.Property(s => s.MessageId).HasMaxLength(64);
+            entity.Property(s => s.Model).HasMaxLength(200);
+            entity.Property(s => s.Provider).HasMaxLength(200);
+            entity.Property(s => s.GenerationId).HasMaxLength(120);
+
+            // Two reads, and they want different orders: everything one conversation spent,
+            // and everything spent in a month across all of them.
+            entity.HasIndex(s => new { s.ConversationId, s.AtUtc });
+            entity.HasIndex(s => s.AtUtc);
+
+            // The link to a reply is by identifier only. A foreign key would make the store
+            // refuse to purge a conversation until its ledger went first, and the ledger is
+            // the thing most worth keeping around longest.
+            entity.HasIndex(s => s.MessageId);
         });
     }
 

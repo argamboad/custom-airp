@@ -51,7 +51,15 @@ public sealed class AirpOptions
     /// <summary>Enable click and scroll-wheel handling in addition to the keyboard.</summary>
     public bool MouseSupport { get; set; }
 
-    /// <summary>Directory that exports are written to when no path is supplied.</summary>
+    /// <summary>
+    /// Directory that exports are written to when no path is supplied.
+    /// </summary>
+    /// <remarks>
+    /// Configured relative — <c>./exports</c> — and made absolute against the application's
+    /// own root while options are being built, so nothing that reads it can accidentally
+    /// resolve it against whatever directory the terminal was launched from. It was that,
+    /// once, and transcripts went wherever the shell happened to be standing.
+    /// </remarks>
     public string ExportDirectory { get; set; } = "./exports";
 
     /// <summary>

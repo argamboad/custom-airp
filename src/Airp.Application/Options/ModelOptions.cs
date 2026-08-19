@@ -61,6 +61,41 @@ public sealed class ModelOptions
     public string EmbeddingModel { get; set; } = "openai/text-embedding-3-small";
 
     /// <summary>
+    /// Base address for embeddings, or null to use the same API the replies come from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separable because the two are not always the same service. DeepSeek's own API is
+    /// cheaper than reaching it through a router and caches prefixes, which is exactly what
+    /// this prompt's layer order is built for — but it exposes no embeddings endpoint at all,
+    /// so pointing the whole client at it would silently cost the memory its retrieval.
+    /// </para>
+    /// <para>
+    /// Falls back rather than defaulting to a second URL: one service answering both is the
+    /// common case, and a setting that has to be filled in to keep working is a setting that
+    /// breaks an existing install on upgrade.
+    /// </para>
+    /// </remarks>
+    public string? EmbeddingBaseUrl { get; set; }
+
+    /// <summary>
+    /// Name of the secret holding the embeddings key, or null to use the replies' key.
+    /// </summary>
+    /// <remarks>
+    /// A second endpoint usually means a second account. Still a name and never the key
+    /// itself, for the same reason as <see cref="ApiKeyName"/>.
+    /// </remarks>
+    public string? EmbeddingApiKeyName { get; set; }
+
+    /// <summary>Where embeddings are actually fetched from, once the fallback is applied.</summary>
+    public string ResolvedEmbeddingBaseUrl =>
+        string.IsNullOrWhiteSpace(EmbeddingBaseUrl) ? BaseUrl : EmbeddingBaseUrl;
+
+    /// <summary>Which secret the embeddings call actually uses, once the fallback is applied.</summary>
+    public string ResolvedEmbeddingApiKeyName =>
+        string.IsNullOrWhiteSpace(EmbeddingApiKeyName) ? ApiKeyName : EmbeddingApiKeyName;
+
+    /// <summary>
     /// How many past turns retrieval may bring back into a prompt.
     /// </summary>
     /// <remarks>

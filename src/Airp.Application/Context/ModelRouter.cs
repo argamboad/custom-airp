@@ -10,6 +10,9 @@ public enum ModelTask
 
     /// <summary>Compress turns that no longer fit. Nobody reads the output directly.</summary>
     Summary,
+
+    /// <summary>Answer a question about the story, out of character. Read once, stored nowhere.</summary>
+    Aside,
 }
 
 /// <summary>How a task is dispatched: which model, and how it should sample.</summary>
@@ -59,6 +62,15 @@ public static class ModelRouter
                 // believes for the rest of the conversation.
                 Temperature: 0.3,
                 MaxTokens: 700),
+
+            // The main model, not the background one: the question is about an adult scene and
+            // whatever answers it has to be as willing to read that as the model writing it.
+            // Cold for the same reason a summary is — an answer here can be promoted to a
+            // pinned fact, so an embellishment becomes something the character believes.
+            ModelTask.Aside => new ModelChoice(
+                settings.Name,
+                Temperature: 0.4,
+                MaxTokens: 600),
 
             _ => new ModelChoice(
                 settings.Name,

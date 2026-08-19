@@ -23,7 +23,32 @@ internal sealed class ScriptedModel : ILanguageModelClient
 
     public ScriptedModel Says(string text)
     {
-        _answers.Enqueue(() => new ModelReply { Text = text, Model = "test-model", PromptTokens = 10, CompletionTokens = 5 });
+        _answers.Enqueue(() => new ModelReply
+        {
+            Text = text,
+            Model = "test-model",
+            Provider = "test-host",
+            GenerationId = "gen-" + _answers.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            PromptTokens = 10,
+            CompletionTokens = 5,
+            CachedTokens = 4,
+            Cost = 0.0002,
+        });
+
+        return this;
+    }
+
+    /// <summary>Answers without the API saying what it charged, as some hosts do.</summary>
+    public ScriptedModel SaysUnpriced(string text)
+    {
+        _answers.Enqueue(() => new ModelReply
+        {
+            Text = text,
+            Model = "test-model",
+            PromptTokens = 10,
+            CompletionTokens = 5,
+        });
+
         return this;
     }
 
@@ -239,7 +264,10 @@ public sealed class LocalProviderTests : IDisposable
 
         var last = _model.Calls[^1];
         last[^1].Role.ShouldBe(ModelRole.System);
-        last[^1].Content.ShouldContain("user's actions");
+
+        // The reason's own substance, not a phrase from its wording: the sentences get
+        // rewritten, and a test that pinned one of them would fail for saying it better.
+        last[^1].Content.ShouldContain("Write only your own character");
     }
 
     [Fact]
