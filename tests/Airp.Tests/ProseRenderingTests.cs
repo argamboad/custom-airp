@@ -174,7 +174,9 @@ public class ProseRenderingTests
         rendered.ShouldContain("quiet");
         rendered.ShouldNotBe(unsearched);
         var after = Flat(Render(view.Render(Context())));
-        after.ShouldContain("The room is quiet.", customMessage: "rendered: <<" + after + ">>");
+        var tail = after[Math.Max(0, after.Length - 40)..];
+        var codes = string.Join(" ", tail.Select(c => ((int)c).ToString("X4")));
+        after.ShouldContain("The room is quiet.", customMessage: "tail codepoints: " + codes);
     }
 
     [Fact]
