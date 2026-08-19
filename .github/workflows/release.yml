@@ -1,0 +1,111 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    # One self-contained binary per platform, so that trying this needs a download
+    # rather than a .NET SDK. That barrier turns away most of the people who would
+    # otherwise have a look.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: osx-arm64
+            os: macos-latest
+          - rid: osx-x64
+            os: macos-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Not trimmed. EF Core resolves a good deal by reflection, and a trimmed
+      # build that starts and then dies on the first query is worse than a larger
+      # download.
+      - name: Publish
+        shell: bash
+        run: >
+          dotnet publish src/Airp.Terminal -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=none
+          -o publish
+
+      # appsettings.json is read as optional, so the binary is the whole product.
+      # Shipping a second file only invites someone to lose it.
+      - name: Package
+        shell: bash
+        run: |
+          rm -f publish/appsettings.json
+          cd publish
+          if [ -f airp.exe ]; then
+            7z a "../airp-${{ matrix.rid }}.zip" airp.exe
+          else
+            chmod +x airp
+            tar czf "../airp-${{ matrix.rid }}.tar.gz" airp
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: airp-${{ matrix.rid }}
+          path: airp-${{ matrix.rid }}.*
+          if-no-files-found: error
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Write the notes
+        run: |
+          cat > notes.md <<'END'
+          Download the one for your machine and run it. Nothing else is needed —
+          no .NET SDK, no runtime.
+
+          On macOS and Linux:
+
+          ```bash
+          chmod +x airp
+          ./airp library --samples
+          ./airp
+          ```
+
+          macOS refuses an unsigned binary the first time it is opened. Right-click,
+          Open, and confirm — or `xattr -d com.apple.quarantine airp`.
+
+          Everything it keeps lives in one folder: `%LOCALAPPDATA%\Airp` on Windows,
+          `~/.local/share/Airp` elsewhere.
+          END
+
+      # The GitHub CLI rather than a third-party action: it is already on the runner,
+      # and a job holding a write token is the wrong place to add a supply chain
+      # nobody here is watching.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" airp-* --generate-notes --notes-file notes.md

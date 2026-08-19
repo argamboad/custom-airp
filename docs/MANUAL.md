@@ -24,12 +24,26 @@ How to use it. For why each decision was made, see `CLAUDE.md`.
 
 ## Installing
 
-You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and a terminal that
-understands ANSI colour — Windows Terminal, iTerm2, Alacritty, WezTerm and the GNOME and macOS
-ones all work.
+The short way is a [release binary](https://github.com/argamboad/custom-airp/releases): one
+self-contained file per platform, with no SDK and no runtime to install. Download the one for
+your machine and run it.
 
 ```bash
-git clone <your-fork> airp
+chmod +x airp          # macOS and Linux
+./airp
+```
+
+macOS refuses an unsigned binary the first time — right-click, Open, and confirm, or
+`xattr -d com.apple.quarantine airp`.
+
+Either way you need a terminal that understands ANSI colour: Windows Terminal, iTerm2,
+Alacritty, WezTerm and the GNOME and macOS ones all work.
+
+To build it yourself instead, you need the
+[.NET 10 SDK](https://dotnet.microsoft.com/download).
+
+```bash
+git clone https://github.com/argamboad/custom-airp airp
 cd airp
 dotnet build -c Release
 ```
