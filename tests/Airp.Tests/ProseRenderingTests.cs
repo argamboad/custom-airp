@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Airp.Application.Abstractions;
 using Airp.Application.Options;
 using Airp.Domain.Conversations;
@@ -70,7 +71,7 @@ public class ProseRenderingTests
     }
 
     /// <summary>
-    /// The rendered text with every run of whitespace flattened to one space.
+    /// The words that were actually drawn: escape sequences removed, whitespace flattened.
     /// </summary>
     /// <remarks>
     /// Asserting on a phrase means asserting across a possible line break. Locally the console
@@ -81,7 +82,16 @@ public class ProseRenderingTests
     /// which is the actual claim.
     /// </remarks>
     private static string Flat(string rendered)
-        => string.Join(' ', rendered.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    {
+        // Colours come off with NoColors; decorations do not. An italic run is still
+        // announced with ESC[3m, so "The room is quiet." reaches a plain-text assertion
+        // with escapes through the middle of it — and whether they are emitted at all
+        // depends on what Spectre decides about the environment, which is why this
+        // passed on a terminal and failed on every build runner.
+        var text = Regex.Replace(rendered, "\u001b\\[[0-9;]*[A-Za-z]", " ");
+
+        return string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
 
     [Fact]
     public async Task The_markers_are_gone_from_what_is_drawn()
@@ -174,9 +184,7 @@ public class ProseRenderingTests
         rendered.ShouldContain("quiet");
         rendered.ShouldNotBe(unsearched);
         var after = Flat(Render(view.Render(Context())));
-        var tail = after[Math.Max(0, after.Length - 40)..];
-        var codes = string.Join(" ", tail.Select(c => ((int)c).ToString("X4")));
-        after.ShouldContain("The room is quiet.", customMessage: "tail codepoints: " + codes);
+        after.ShouldContain("The room is quiet.", customMessage: "rendered: <<" + after + ">>");
     }
 
     [Fact]
