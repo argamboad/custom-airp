@@ -1,0 +1,33 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # All three, because the paths, the console and the secret store each behave
+    # differently per platform and only one of them is exercised day to day.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: dotnet restore
+
+      # Warnings are errors in this repository, so a build that succeeds here is
+      # a build with none.
+      - run: dotnet build --no-restore -c Release
+
+      - run: dotnet test --no-build -c Release --verbosity normal

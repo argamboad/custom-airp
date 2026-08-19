@@ -69,11 +69,24 @@ the order you would actually do it.
 
 [`CLAUDE.md`](CLAUDE.md) — why each decision was made, and what was measured to make it.
 
+[`CONTRIBUTING.md`](CONTRIBUTING.md) — how to run it from source, what is most wanted, and the
+five invariants a change has to argue with.
+
 ---
 
 ## Getting started
 
-You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and a terminal that
+The quickest way in is a [release binary](https://github.com/argamboad/custom-airp/releases)
+— one self-contained file per platform, no SDK and no runtime needed:
+
+```bash
+chmod +x airp
+./airp library --samples
+./airp
+```
+
+To build it from source instead, you need the
+[.NET 10 SDK](https://dotnet.microsoft.com/download) and a terminal that
 understands ANSI colour.
 
 ```bash
