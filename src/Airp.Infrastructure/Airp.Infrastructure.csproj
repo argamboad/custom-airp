@@ -23,6 +23,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The worked example, carried inside the assembly so a globally installed tool
+         still has it. Visible in the repository as ordinary text, which is the point:
+         a card is a file a person writes, and it should read like one. -->
+    <EmbeddedResource Include="Samples\**\*.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Airp.Tests" />
   </ItemGroup>
 

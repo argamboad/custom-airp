@@ -103,13 +103,21 @@ public sealed class OpenRouterClient : ILanguageModelClient
 
         var usage = body?["usage"];
 
+        // Nothing is asked for to get this. The router returns full usage, cost included, on
+        // every response; the request flag that used to enable it is deprecated and ignored.
+        var prompt = usage?["prompt_tokens_details"];
+
         return new ModelReply
         {
             Text = text,
             Model = body?["model"]?.GetValue<string>(),
             Provider = body?["provider"]?.GetValue<string>(),
+            GenerationId = body?["id"]?.GetValue<string>(),
             PromptTokens = usage?["prompt_tokens"]?.GetValue<int>(),
             CompletionTokens = usage?["completion_tokens"]?.GetValue<int>(),
+            Cost = usage?["cost"]?.GetValue<double>(),
+            CachedTokens = prompt?["cached_tokens"]?.GetValue<int>(),
+            CacheWriteTokens = prompt?["cache_write_tokens"]?.GetValue<int>(),
             FinishReason = choice?["finish_reason"]?.GetValue<string>(),
         };
     }

@@ -88,11 +88,14 @@ internal static partial class Program
                     .ConfigureAwait(false),
                 "purge" => await PurgeAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
+                "cost" => await CostAsync(host.Services, args, lifetime.ApplicationStopping)
+                    .ConfigureAwait(false),
                 "fact" or "facts" => await FactAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
                 "send" => await SendMessageAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
-                "library" => Library(host.Services),
+                "library" => await LibraryAsync(host.Services, args, lifetime.ApplicationStopping)
+                    .ConfigureAwait(false),
                 "character" or "characters" => await LibraryEntryAsync(
                         host.Services, args, LibraryKind.Character, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
@@ -392,6 +395,11 @@ internal static partial class Program
         AnsiConsole.MarkupLine("  airp fact retire <id>   Mark one as no longer true");
         AnsiConsole.MarkupLine("  airp purge              List the deleted conversations still on disk");
         AnsiConsole.MarkupLine("  airp purge --yes        Erase them for good, and vacuum the database");
+
+        AnsiConsole.MarkupLine("  airp library --samples  Write a worked example into the library");
+        AnsiConsole.MarkupLine("  airp cost               What this month has cost, by chat");
+        AnsiConsole.MarkupLine("  airp cost --month 2026-07   A particular month");
+        AnsiConsole.MarkupLine("  airp cost --all --json  Everything, as JSON");
         AnsiConsole.MarkupLine("  airp import             Bring exported transcripts into the local store");
         AnsiConsole.MarkupLine("  airp import <path> --character elena.txt");
         AnsiConsole.MarkupLine("  airp new \"Name\"         Start a conversation in the local store");

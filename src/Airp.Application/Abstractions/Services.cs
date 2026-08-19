@@ -59,6 +59,10 @@ public interface IConversationService
     /// <remarks>This spends the account's credits and writes to the conversation.</remarks>
     /// <param name="conversationId">Identifier of the conversation.</param>
     /// <param name="text">The message to send.</param>
+    /// <param name="instruction">
+    /// A one-off direction for the reply, routed to the prompt's instruction layer rather than
+    /// stored as part of the message.
+    /// </param>
     /// <param name="progress">Receives status while waiting.</param>
     /// <param name="cancellationToken">Aborts waiting; it cannot un-send.</param>
     /// <returns>
@@ -70,6 +74,7 @@ public interface IConversationService
     Task<IReadOnlyList<Domain.Conversations.ChatMessage>> SendAsync(
         string conversationId,
         string text,
+        string? instruction = null,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default);
 
@@ -123,6 +128,7 @@ public interface IConversationService
     /// <returns>The transcript once the continuation has settled.</returns>
     Task<IReadOnlyList<Domain.Conversations.ChatMessage>> ContinueAsync(
         string conversationId,
+        string? instruction = null,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default);
 

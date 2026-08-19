@@ -10,13 +10,15 @@ How to use it. For why each decision was made, see `CLAUDE.md`.
 2. [First time](#first-time)
 3. [Starting a story](#starting-a-story)
 4. [The keys](#the-keys)
-5. [Tuning how it replies](#tuning-how-it-replies)
-6. [The memory](#the-memory)
-7. [Seeing what is going on](#seeing-what-is-going-on)
-8. [Importing old transcripts](#importing-old-transcripts)
-9. [Playing from Janitor](#playing-from-janitor)
-10. [Configuration](#configuration)
-11. [When something breaks](#when-something-breaks)
+5. [Commands in the composer](#commands-in-the-composer)
+6. [Tuning how it replies](#tuning-how-it-replies)
+7. [The memory](#the-memory)
+8. [What it costs](#what-it-costs)
+9. [Seeing what is going on](#seeing-what-is-going-on)
+10. [Importing old transcripts](#importing-old-transcripts)
+11. [Playing from Janitor](#playing-from-janitor)
+12. [Configuration](#configuration)
+13. [When something breaks](#when-something-breaks)
 
 ---
 
@@ -43,11 +45,24 @@ dotnet pack src/Airp.Terminal -c Release
 dotnet tool install --global --add-source ./src/Airp.Terminal/bin/Release Airp.Terminal
 ```
 
-Everything the application keeps lives in `%LOCALAPPDATA%\Airp` on Windows, or
-`~/.local/share/Airp` on Linux and macOS — the database, the library, the logs, the
-configuration. `AIRP_HOME` points it somewhere else, which is what the QA harness uses to
-stay out of your data. The paths in this manual are written Windows-style; substitute
-accordingly.
+### Where everything lives
+
+Everything the application keeps sits under one folder — `%LOCALAPPDATA%\Airp` on Windows,
+`~/.local/share/Airp` on Linux and macOS:
+
+| | |
+|---|---|
+| `airp.db` | the whole history. SQLite, one file, unencrypted |
+| `airp.json` | configuration |
+| `characters/` `personas/` `openings/` `snippets/` | the library, as plain `.txt` |
+| `exports/` | where `X` and `airp export` write, unless you pass `--out` |
+| `logs/` | five rolling files, keys and message bodies redacted |
+| `secrets/` | the API key, encrypted with your Windows account |
+
+`AIRP_HOME` moves the lot somewhere else, which is how you keep a test install away from your
+real one. Relative paths in the configuration resolve against that folder and **not** against
+the directory you launched from — otherwise exports would land wherever your shell happened to
+be standing. The paths in this manual are written Windows-style; substitute accordingly.
 
 ---
 
@@ -93,8 +108,28 @@ Characters and personas are **text files**:
 airp library
 ```
 
-Shows you what is there and where. To add something, drop a `.txt` in the folder — or let the
-client start one for you:
+Shows you what is there and where.
+
+**Start from something that works.** An empty library is a hard place to begin from, so there
+is a complete worked example — a character, the persona facing it, an opening, and a snippet:
+
+```bash
+airp library --samples
+```
+
+It writes four files and never overwrites one you already have, so it is safe to run twice.
+Then either press `N` in the terminal, or:
+
+```bash
+airp new "Cadgwith Point" --speaker Morwenna --character lighthouse --persona traveller
+```
+
+Read `characters/lighthouse.txt` next to this manual's [Starting a story](#starting-a-story)
+section: it is the shape every other card here follows, with nothing left in brackets. Note
+that the opening is named `lighthouse` too — that filename match is the entire association
+the new-chat flow uses to offer it.
+
+To add your own, drop a `.txt` in the folder — or let the client start one for you:
 
 ```bash
 airp character new elena          # a character file, seeded from the skeleton
@@ -246,6 +281,33 @@ first, name it: `airp send --chat vardhal --text "…"`.
 | `C` | Copy the message |
 | `X` | Export the transcript |
 
+### How a reply is drawn
+
+Two conventions in the text are read and drawn rather than shown:
+
+| Written | Drawn |
+|---|---|
+| `*she closes the lid*` | italic and dimmed, asterisks gone |
+| `"you are late"` | ordinary text, quotation marks gone |
+
+Straight and curly quotation marks both work. Doubled asterisks are treated the same as
+single ones — not a second convention to remember, only that models emit `**` now and then
+and a line that did would otherwise show its markers.
+
+A marker that never closes is left exactly as written — a reply cut off mid-action would
+otherwise dim everything after it — and a spaced asterisk is not a marker at all, so `2 * 3`
+stays arithmetic.
+
+**This is display only.** The stored message keeps every asterisk and every quotation mark,
+which is what `C` copies, what `X` exports, and what the next prompt sends. It has to be:
+changing the stored wording would break the prefix cache and rewrite what the model actually
+said, which the append-only store exists to prevent.
+
+If your console does not draw italics, the dimming still separates action from speech.
+
+While you are writing, a line that starts with `/` is a command to the client rather than
+something you said — see [Commands in the composer](#commands-in-the-composer).
+
 Deleting **hides**: the terminal stops showing them and the database keeps them, with a
 tombstone. That is deliberate — messages are append-only, so the store refuses to drop one —
 and it is why `airp audit` can still answer "why did it say that" about a reply you threw
@@ -261,8 +323,9 @@ airp purge --yes    # erase it
 
 Without `--yes` it only shows you the deleted conversations and their message counts, and
 touches nothing. With it, those conversations and everything they own — messages, summaries,
-facts, trackers — are removed and the database is vacuumed, so the space is released rather
-than merely marked free. It never touches a conversation you can still see. There is no undo,
+facts, trackers, and the questions you asked about them — are removed and the database is
+vacuumed, so the space is released rather than merely marked free. The spend ledger is kept
+on purpose; see [What it costs](#what-it-costs). It never touches a conversation you can still see. There is no undo,
 which is the point: the database holds your history in the clear, so "deleted" ought to be
 able to mean deleted.
 
@@ -281,6 +344,139 @@ the model, so it is the only thing that makes the second attempt differ from the
 | Too short / too long | |
 | Wrong format | the prose, dialogue or emphasis came out wrong |
 | AI refusing | it declined to continue |
+
+**Whatever you type in the instructions is a direction, not a message.** It is framed before
+it goes to the model, saying plainly that it is a note about how to write and not something to
+answer. Without that frame a bare line like `Use at least 30 words` gets read as the latest
+thing said, and the reply comes back as that line repeated — which is what used to happen.
+
+The reply being replaced is hidden from the prompt before the call, so the model never sees
+the wording it is superseding. That is deliberate: shown its own last attempt, a model tends
+to write it again. It also means a reason like *Guide the reply* asks for a fresh take rather
+than for a comparison against something invisible.
+
+---
+
+## Commands in the composer
+
+A line that starts with `/` is an instruction to the client, not something you said. It never
+enters the transcript.
+
+That distinction is the whole point. Typing `(OOC: skip to the evening)` as a message *sends*
+it: the model reads it, it is stored for good, it is counted in every prompt after it, it gets
+embedded for retrieval, and it may be summarised as something that happened. Messages are
+append-only, so there is no taking it back. A command carrying the same words puts them in the
+prompt layer they belong in and leaves the story alone.
+
+Type `/` and the names appear on the same strip the emoji and snippets use; `Tab` completes.
+A name that is not a command is **refused rather than sent** — a typo would otherwise cost what
+the message would have cost and stay in the transcript forever. To send a line that genuinely
+begins with a slash, double it: `//ask` sends `/ask`.
+
+### These call the model
+
+| | |
+|---|---|
+| `/do <direction>` | steer this turn |
+| `/ask <question>` | ask about the story out of character |
+| `/focus <who>` | hand the next turn to a named character |
+
+**`/do` is two commands wearing one name.** On its own it writes the next beat under your
+direction, with no message of yours in the transcript:
+
+```
+/do have Mariana leave before he answers
+```
+
+With a blank line and prose under it, the direction steers *that* message's reply instead —
+the message is stored, the direction is not:
+
+```
+/do keep this one short
+
+He sits down without a word.
+```
+
+It replaces most of what an OOC line was for: `/do skip to the evening`, `/do less
+description`, `/do she should be angrier about this than she is letting on`.
+
+**`/ask` is the one that does not move the story.** It sends the same prompt a real turn would
+— the same card, the same persona, the same history and summaries and facts — with a directive
+that says to answer as the author rather than act it out. The answer opens in a pane and is
+written into no prompt, ever.
+
+Because the prompt is identical up to that last directive, a caching provider charges you
+almost nothing for it. And because the answer is stored nowhere, it comes with a trap and a
+key for it. Models do not say "the story never mentions that"; asked how far the rehearsal
+room is, one will answer confidently, and that answer vanishes when you close the pane —
+leaving you playing on a detail the next turn has never heard of.
+
+So the pane offers exactly one thing to do about it. **`F` pins the answer as a fact**, which
+goes into the world layer from the next turn on and which the extractor cannot retire. `Esc`
+discards it. That turns the trap into the point: asking is how you find out what the story has
+implied, and `F` is how you make it binding.
+
+Recall is `/ask`'s weakest use — `/search` beats it at *did this happen*. Where it earns its
+keep is judgement:
+
+```
+/ask would Mariana be angry if she found out about the video?
+/ask what has Nicole not said out loud yet?
+/ask what is unresolved in this scene right now?
+/ask who has not appeared in a while and should?
+```
+
+It can only answer from what is in front of the model that turn: this conversation's card,
+persona, recent history, summaries, retrieved memories, facts and meters. Not another
+conversation — each chat is its own prompt — and not the stretches that were compressed away
+and that retrieval did not surface.
+
+### These only read what is already here
+
+Free, instant, no model call.
+
+| | |
+|---|---|
+| `/card` | the character definition this conversation resolves |
+| `/persona` | who you are playing, **and which file it came from** |
+| `/facts` | what is being injected as true right now |
+| `/trackers` | the meters and their values |
+| `/audit` | what the recent turns cost, layer by layer |
+| `/cost` | what this story has cost, and what was rerolled away |
+| `/search <words>` | find the turn where something was actually said |
+| `/help` | the list |
+
+`/card` and `/persona` resolve exactly the way a turn does — the conversation's own text, then
+the file it names, then the default — and say which of the three they used. That line is worth
+more than it looks: "I edited the file and it had no effect" is almost always a conversation
+holding its own copy, or naming a different file than the one being edited, and nothing else
+shows you which.
+
+`/audit` lists the asides too. They are billed and leave no message behind, so leaving them out
+is how a per-chat cost quietly stops adding up.
+
+### These write to the conversation
+
+| | |
+|---|---|
+| `/fact <statement>` | record something as true, pinned |
+| `/tracker <name> <value>` | set a meter |
+
+`/fact` is `airp fact add` without leaving the chat, filed under the character's name. Pinned
+means the extractor cannot retire it; you still can, with `airp fact retire`.
+
+`/tracker` takes the value as the **last** word, so a meter whose name is two words still
+works: `/tracker her patience 40`.
+
+### What is deliberately not here
+
+There is no `/lust`, `/creativity`, `/length` or `/thoughts` — `S` already shows all of those
+with the scale's own wording, which beats remembering what `3` means. And there is no
+`/skip`, `/narrate`, `/brief` or `/hot`: every one of them is `/do` with canned words, and
+`/do keep this one short` reads better than a flag.
+
+If you played on a site whose cards defined their own OOC commands — ourdream's `/image on`,
+for instance — those were that engine's plumbing and do nothing here.
 
 ---
 
@@ -417,6 +613,72 @@ it back. You compress it deliberately instead of waiting a hundred messages.
 
 ---
 
+## What it costs
+
+Every call that is billed is written to a ledger — one row, with what the provider said it
+charged. The figures are not worked out here from a price list: prices change, a router fans
+one model across hosts that charge differently, and a cached prefix is discounted, so any
+number this client computed itself would drift away from the invoice and never say by how much.
+
+### In the chat
+
+The conversation header carries the running total, and `/cost` opens the breakdown: which kinds
+of call it went on, how much of the prompt came from cache, and what was spent on replies you
+regenerated away.
+
+### Across everything
+
+```bash
+airp cost                      # this month, by chat
+airp cost --month 2026-07      # a particular month
+airp cost --all                # everything, ever
+airp cost --chat <id>          # one story
+airp cost --json               # the same numbers, for a script
+```
+
+```
+╭─────────────┬───────┬────────┬───────┬────────┬─────────┬───────────╮
+│ chat        │ calls │     in │   out │ cached │    cost │ discarded │
+├─────────────┼───────┼────────┼───────┼────────┼─────────┼───────────┤
+│ BJU (full)  │    13 │ 689.0k │  5.1k │   83 % │ $0.2023 │         — │
+│ Vardhal     │    50 │ 283.0k │ 14.2k │   82 % │ $0.1165 │   $0.0056 │
+╰─────────────┴───────┴────────┴───────┴────────┴─────────┴───────────╯
+August 2026: $0.3188 over 63 call(s), 972.0k in / 19.3k out, 82 % cached.
+  replies $0.3038 (52)  ·  questions $0.0030 (5)  ·  compression $0.0120 (6)
+  $0.0056 of that went on replies that were regenerated away.
+```
+
+Two columns matter more than the total.
+
+**Discarded** is what was paid for replies you then rerolled. Regenerating hides the old reply
+and asks for another; the first one was still generated and still charged. It is the one line
+of spending that bought nothing, and the only one you can do anything about directly.
+
+**Cached** is the share of the prompt the provider did not have to read again. That is the prompt's layer order doing its job or not doing it — a low share on a long
+conversation means either something before the transcript is changing between turns, or the
+host serving you that day does not cache at all.
+
+### What is and is not in the number
+
+Counted: replies, `/ask` questions, compression, and fact extraction. The last two fire on
+their own, without you asking for anything, and they are the ones worth watching as a story
+gets long.
+
+Not counted: embeddings. The whole corpus costs under a cent, and the report says so rather
+than pretending completeness.
+
+A call the API returns no price for is reported as *unpriced* rather than as zero — the total
+says it is a floor. Zero and "never said" are different facts.
+
+### The ledger survives a purge
+
+`airp purge` erases conversations, messages, summaries, facts, trackers and questions. It
+deliberately **keeps** the spend rows, and says how many. They hold no story text — model
+names, token counts and money — so keeping them takes nothing back from the erasure, and
+dropping them would quietly make every report covering that month wrong. A purged story still
+appears in `airp cost`, under the name `(purged)`.
+---
+
 ## Seeing what is going on
 
 ```bash
@@ -518,6 +780,41 @@ your store.
 `AIRP_*` variables override the configuration: `AIRP_Model__Name=…`. Ones ending in `_KEY` or
 `_TOKEN` **never** enter the configuration, so that no dump can print them.
 
+### Using a provider other than OpenRouter
+
+**Only OpenRouter has actually been tested.** Everything here should work with any
+OpenAI-compatible API — the request this client sends is plain OpenAI — but nobody has run it
+in anger anywhere else. If you do, the project would like to hear about it.
+
+```json
+"model": {
+  "baseUrl": "https://api.deepseek.com/v1",
+  "name": "deepseek-chat",
+  "apiKeyName": "DEEPSEEK_API_KEY"
+}
+```
+
+Two things go quiet on a provider that is not OpenRouter, and neither stops you playing:
+
+- **`airp cost` stops totalling.** The price of a call is something OpenRouter reports and
+  most others do not. Calls are counted as *unpriced* and the total says it is a floor,
+  rather than claiming everything was free.
+- **The audit's *served by* column empties**, since only a router has several hosts to name.
+
+**Embeddings may need their own address.** DeepSeek has no `/embeddings` endpoint at all, so
+pointing everything at it would leave the memory unable to recall specific old moments. Split
+them:
+
+```json
+"model": {
+  "baseUrl": "https://api.deepseek.com/v1",
+  "embeddingBaseUrl": "https://openrouter.ai/api/v1",
+  "embeddingApiKeyName": "OPENROUTER_API_KEY"
+}
+```
+
+Both fall back to the main ones when unset, so a single-service setup needs neither.
+
 ---
 
 ## When something breaks
@@ -558,3 +855,7 @@ stop there and hand the scene back to them"*. It is in the template.
 ```bash
 airp help
 ```
+
+That lists the verbs you type at a shell. The ones you type inside a conversation, starting
+with a slash, are their own thing — `/help` inside the composer lists those, and
+[Commands in the composer](#commands-in-the-composer) explains them.

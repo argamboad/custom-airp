@@ -44,6 +44,7 @@ public class KeyHandlingTests
         conversations.SendAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
+                Arg.Any<string?>(),
                 Arg.Any<IProgress<string>>(),
                 Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(call =>
@@ -325,6 +326,7 @@ public class KeyHandlingTests
         conversations.SendAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
+                Arg.Any<string?>(),
                 Arg.Any<IProgress<string>>(),
                 Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(_ =>
@@ -394,13 +396,14 @@ public class KeyHandlingTests
         conversations.SendAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
+                Arg.Any<string?>(),
                 Arg.Any<IProgress<string>>(),
                 Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(call =>
             {
                 // Reaching this phase is the site confirming it took the message; the stop
                 // lands after it, exactly as pressing Esc mid-wait would.
-                call.ArgAt<IProgress<string>>(2)?.Report(SendPhase.Waiting);
+                call.ArgAt<IProgress<string>>(3)?.Report(SendPhase.Waiting);
                 throw new OperationCanceledException();
             });
 
@@ -449,11 +452,12 @@ public class KeyHandlingTests
         conversations.SendAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
+                Arg.Any<string?>(),
                 Arg.Any<IProgress<string>>(),
                 Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(call =>
             {
-                call.ArgAt<IProgress<string>>(2)?.Report(SendPhase.Typing);
+                call.ArgAt<IProgress<string>>(3)?.Report(SendPhase.Typing);
                 throw new OperationCanceledException();
             });
 
@@ -536,6 +540,7 @@ public class KeyHandlingTests
         await conversations.DidNotReceive().SendAsync(
             Arg.Any<string>(),
             Arg.Any<string>(),
+            Arg.Any<string?>(),
             Arg.Any<IProgress<string>>(),
             Arg.Any<CancellationToken>());
 
@@ -553,6 +558,7 @@ public class KeyHandlingTests
         conversations.SendAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
+                Arg.Any<string?>(),
                 Arg.Any<IProgress<string>>(),
                 Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(_ => []);
@@ -572,6 +578,7 @@ public class KeyHandlingTests
         await conversations.Received(1).SendAsync(
             "c",
             "h",
+            Arg.Any<string?>(),
             Arg.Any<IProgress<string>>(),
             Arg.Any<CancellationToken>());
     }
@@ -616,7 +623,7 @@ public class KeyHandlingTests
             [
                 new() { Id = "1", ConversationId = "c", Role = ChatRole.Assistant, Text = "a reply" },
             ]);
-        conversations.ContinueAsync(Arg.Any<string>(), Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>())
+        conversations.ContinueAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IProgress<string>>(), Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(_ =>
             [
                 new() { Id = "1", ConversationId = "c", Role = ChatRole.Assistant, Text = "a reply, carried on" },
@@ -633,6 +640,7 @@ public class KeyHandlingTests
 
         await conversations.Received(1).ContinueAsync(
             "c",
+            Arg.Any<string?>(),
             Arg.Any<IProgress<string>>(),
             Arg.Any<CancellationToken>());
 
@@ -657,6 +665,7 @@ public class KeyHandlingTests
 
         await conversations.DidNotReceive().ContinueAsync(
             Arg.Any<string>(),
+            Arg.Any<string?>(),
             Arg.Any<IProgress<string>>(),
             Arg.Any<CancellationToken>());
     }

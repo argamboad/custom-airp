@@ -22,7 +22,7 @@ namespace Airp.Terminal.Views;
 /// and truncating them loses exactly the content the reader came for.
 /// </para>
 /// </remarks>
-internal sealed class ConversationView : ViewBase
+internal sealed partial class ConversationView : ViewBase
 {
     private readonly Chat _conversation;
     private readonly IConversationService _conversations;
@@ -51,6 +51,15 @@ internal sealed class ConversationView : ViewBase
     private string _activeQuery = string.Empty;
     private readonly PendingStatus _pending = new();
 
+    /// <summary>
+    /// What this story has cost so far, or null before it has been read.
+    /// </summary>
+    /// <remarks>
+    /// Read when the conversation opens and again after anything that spends, rather than on
+    /// every render: it is a query, and the transcript redraws on every keystroke.
+    /// </remarks>
+    private Airp.Infrastructure.Providers.ConversationSpend? _spent;
+
     /// <summary>How many completions the composer offers at once.</summary>
     private const int SuggestionLimit = 7;
 
@@ -74,18 +83,29 @@ internal sealed class ConversationView : ViewBase
     /// <param name="conversations">Transcript access.</param>
     /// <param name="clipboard">Clipboard access.</param>
     /// <param name="export">Export renderer.</param>
+    /// <param name="library">The four shelves, for snippets and for showing a card.</param>
+    /// <param name="provider">
+    /// The local store, when this conversation is on it. Optional because the terminal is
+    /// written against the provider seam and a future backend would have none of this; the
+    /// commands that need it say so rather than failing.
+    /// </param>
+    /// <param name="options">Application options, for the default persona a pane has to resolve.</param>
     public ConversationView(
         Chat conversation,
         IConversationService conversations,
         IClipboardService clipboard,
         IExportService export,
-        Airp.Infrastructure.TextLibrary? library = null)
+        Airp.Infrastructure.TextLibrary? library = null,
+        Airp.Infrastructure.Providers.LocalConversationProvider? provider = null,
+        Microsoft.Extensions.Options.IOptionsMonitor<Application.Options.AirpOptions>? options = null)
     {
         _library = library ?? new Airp.Infrastructure.TextLibrary();
         _conversation = conversation;
         _conversations = conversations;
         _clipboard = clipboard;
         _export = export;
+        _provider = provider;
+        _options = options;
     }
 
     /// <inheritdoc />
@@ -504,7 +524,13 @@ internal sealed class ConversationView : ViewBase
                         _selected = Math.Max(0, Visible.Count - 1);
                         _scroll = PinToSelection;
 
-                        return ViewAction.Status("A new reply arrived.", StatusKind.Success);
+                        // The one action that both spends and throws something away, so it is
+                        // the one after which the header would be most misleading if left.
+                        return ViewAction.Run("Refreshing", async ct =>
+                        {
+                            await RefreshSpendAsync(ct).ConfigureAwait(false);
+                            return ViewAction.Status("A new reply arrived.", StatusKind.Success);
+                        });
                     })));
 
             case AppCommand.Generate:
@@ -566,11 +592,44 @@ internal sealed class ConversationView : ViewBase
             _selected = Math.Max(0, Visible.Count - 1);
             _scroll = PinToSelection;
 
+            await RefreshSpendAsync(ct).ConfigureAwait(false);
+
             var replies = _messages.Count(static m => m.Role == ChatRole.Assistant);
             var yours = _messages.Count(static m => m.Role == ChatRole.User);
 
             return ViewAction.Status($"{yours} from you, {replies} replies.", StatusKind.Success);
         });
+
+    /// <summary>
+    /// Re-reads what this conversation has cost.
+    /// </summary>
+    /// <remarks>
+    /// Never allowed to break the screen it decorates. A ledger that cannot be read is a header
+    /// without a figure on it, not a conversation the reader cannot open — which is why the
+    /// failure is swallowed rather than reported.
+    /// </remarks>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>A task that completes once the figure is current, or given up on.</returns>
+    private async Task RefreshSpendAsync(CancellationToken cancellationToken)
+    {
+        if (_provider is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var report = await _provider
+                .SpendAsync(conversationId: _conversation.Id, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            _spent = report.Conversations.FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _spent = null;
+        }
+    }
 
     private void Move(int delta, IReadOnlyList<ChatMessage> visible)
     {
@@ -733,6 +792,23 @@ internal sealed class ConversationView : ViewBase
         var line = _composer.Lines[_composer.CursorLine];
         var column = _composer.CursorColumn;
 
+        // A command name being typed wins over everything, and only in the one place a command
+        // can start: the very first character of the message. Anywhere else a slash is
+        // punctuation — and/or, a date, a closing tag — and a rail that opened on those would
+        // be in the way constantly.
+        if (CommandBeingTyped(line, column) is { } typed)
+        {
+            Offer(
+                0,
+                typed.Length + 1,
+                [.. Application.Text.SlashCommands
+                    .Matching(typed)
+                    .Take(SuggestionLimit)
+                    .Select(static c => new Completion($"/{c.Name}", $"/{c.Name} "))]);
+
+            return;
+        }
+
         if (Application.Text.ShortcodeScanner.At(line, column) is { } shortcode)
         {
             var emoji = Application.Text.EmojiShortcodes.Suggest(shortcode.Query, SuggestionLimit);
@@ -763,6 +839,35 @@ internal sealed class ConversationView : ViewBase
                 word.Length,
                 [.. words.Select(w => new Completion(w, Application.Text.WordList.MatchCase(word.Prefix, w)))]);
         }
+    }
+
+    /// <summary>
+    /// The command name being typed, when the caret is inside one.
+    /// </summary>
+    /// <remarks>
+    /// Only on the first line, only from the first column, and only while no space has been
+    /// typed yet: past the space the reader is writing the argument, and offering command names
+    /// for the words of a question would put a Tab away from rewriting them.
+    /// </remarks>
+    /// <param name="line">The line the caret is on.</param>
+    /// <param name="column">The caret's column.</param>
+    /// <returns>What has been typed after the slash, or <see langword="null"/>.</returns>
+    private string? CommandBeingTyped(string line, int column)
+    {
+        if (_composer.CursorLine != 0 || line.Length == 0 || line[0] != '/' || column < 1)
+        {
+            return null;
+        }
+
+        // A doubled slash is the escape for prose, not the start of a command.
+        if (line.Length > 1 && line[1] == '/')
+        {
+            return null;
+        }
+
+        var typed = line[1..Math.Min(column, line.Length)];
+
+        return typed.Any(char.IsWhiteSpace) ? null : typed;
     }
 
     /// <summary>Puts a set of completions on offer for a span of the current line.</summary>
@@ -818,6 +923,8 @@ internal sealed class ConversationView : ViewBase
     private IReadOnlyList<string>? _snippetNames;
 
     private readonly Airp.Infrastructure.TextLibrary _library;
+    private readonly Airp.Infrastructure.Providers.LocalConversationProvider? _provider;
+    private readonly Microsoft.Extensions.Options.IOptionsMonitor<Application.Options.AirpOptions>? _options;
 
     private string SnippetsFolder => _library.Snippets;
 
@@ -883,8 +990,28 @@ internal sealed class ConversationView : ViewBase
     /// <returns>The action that performs the send.</returns>
     private ViewAction Send(RenderContext context)
     {
-        var text = _composer.Text.Trim();
+        var parsed = Application.Text.SlashCommands.Parse(_composer.Text);
 
+        if (parsed.Kind != Application.Text.SlashParseKind.Message)
+        {
+            return Dispatch(parsed, context);
+        }
+
+        return Send(context, parsed.Text, instruction: null);
+    }
+
+    /// <summary>
+    /// Sends a message, optionally under a direction for the reply it asks for.
+    /// </summary>
+    /// <param name="context">The render context, for the limits.</param>
+    /// <param name="text">The message. Already parsed, so a leading double slash is gone.</param>
+    /// <param name="instruction">
+    /// A direction for the reply, routed to the prompt's instruction layer. It steers the turn
+    /// without becoming part of it — nothing of it is stored as something the reader said.
+    /// </param>
+    /// <returns>The action that performs the send.</returns>
+    private ViewAction Send(RenderContext context, string text, string? instruction)
+    {
         if (text.Length == 0)
         {
             return ViewAction.Status("Nothing to send.", StatusKind.Warning);
@@ -919,7 +1046,12 @@ internal sealed class ConversationView : ViewBase
             try
             {
                 updated = await _conversations
-                    .SendAsync(_conversation.Id, text, _pending, ct)
+                    .SendAsync(
+                        _conversation.Id,
+                        text,
+                        instruction: instruction,
+                        progress: _pending,
+                        cancellationToken: ct)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (SendPhase.IsSubmitted(_pending.Phase))
@@ -954,6 +1086,7 @@ internal sealed class ConversationView : ViewBase
             }
 
             Accept(updated);
+            await RefreshSpendAsync(ct).ConfigureAwait(false);
 
             var added = Visible.Count(static m => m.Role == ChatRole.Assistant) - before;
             return ViewAction.Status(
@@ -1008,7 +1141,7 @@ internal sealed class ConversationView : ViewBase
             try
             {
                 _messages = await _conversations
-                    .ContinueAsync(_conversation.Id, _pending, ct)
+                    .ContinueAsync(_conversation.Id, instruction: null, progress: _pending, cancellationToken: ct)
                     .ConfigureAwait(false);
             }
             finally
@@ -1018,6 +1151,8 @@ internal sealed class ConversationView : ViewBase
 
             _selected = Math.Max(0, Visible.Count - 1);
             _scroll = PinToSelection;
+
+            await RefreshSpendAsync(ct).ConfigureAwait(false);
 
             var after = _messages.LastOrDefault(static m => m.Role == ChatRole.Assistant)?.Text.Length ?? 0;
 
@@ -1163,13 +1298,30 @@ internal sealed class ConversationView : ViewBase
         var position = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
         var words = Selected?.WordCount ?? 0;
 
-        return Draw.Literal($"message {position}", theme.Accent)
+        var header = Draw.Literal($"message {position}", theme.Accent)
                + Draw.Literal(
                    $"  ·  {visible.Count(static m => m.Role == ChatRole.User)} yours"
                    + $"  ·  {visible.Count(static m => m.Role == ChatRole.Assistant)} replies"
                    + $"  ·  {words} words in this one"
                    + (_activeQuery.Length > 0 ? $"  ·  filter \"{_activeQuery}\"" : string.Empty),
                    theme.Muted);
+
+        if (_spent is not { Calls: > 0 } spent)
+        {
+            return header;
+        }
+
+        // The money is its own colour, not more grey. It is the one figure here that is about
+        // the world outside the story, and the reason for showing it at all is that it should
+        // be noticed before it adds up rather than after.
+        header += Draw.Literal($"  ·  {spent.Cost:$0.0000}", theme.Warning);
+
+        if (spent.DiscardedCost > 0)
+        {
+            header += Draw.Literal($" ({spent.DiscardedCost:$0.0000} rerolled away)", theme.Muted);
+        }
+
+        return header;
     }
 
     /// <summary>
@@ -1215,13 +1367,16 @@ internal sealed class ConversationView : ViewBase
 
             foreach (var line in message.Text.Split('\n'))
             {
-                foreach (var segment in Draw.Wrap(line, width))
-                {
-                    var body = _activeQuery.Length > 0
-                        ? Draw.Highlight(segment, _activeQuery, theme.Text, theme.Highlight)
-                        : Draw.Literal(segment, theme.Text);
+                // Formatted before wrapping, not after. The markers are removed here, so the
+                // widths the wrapper measures are the widths actually drawn — wrapping the raw
+                // line would budget columns for asterisks nobody ever sees and leave every
+                // action-heavy paragraph short of the margin.
+                var formatted = Application.Text.ProseFormat.Format(line);
 
-                    rows.Add((i, Draw.Literal(marker + " ", selected ? theme.Accent : theme.Border) + body));
+                foreach (var (start, segment) in Draw.WrapSegments(formatted.Text, width))
+                {
+                    rows.Add((i, Draw.Literal(marker + " ", selected ? theme.Accent : theme.Border)
+                                 + Body(formatted, start, segment, theme)));
                 }
             }
 
@@ -1230,6 +1385,69 @@ internal sealed class ConversationView : ViewBase
 
         return rows;
     }
+
+    /// <summary>
+    /// Paints one wrapped segment, giving each run of it the style its markers asked for.
+    /// </summary>
+    /// <remarks>
+    /// The runs are offsets into the whole formatted line and a segment is a window onto it, so
+    /// each run is clipped to the window before it is drawn. An action that wraps across three
+    /// rows is one run and stays one colour, which is the reason the styling is computed on the
+    /// line and not on the piece.
+    /// </remarks>
+    /// <param name="formatted">The whole line, stripped of markers, with its runs.</param>
+    /// <param name="start">Where this segment begins within that line.</param>
+    /// <param name="segment">The segment's text.</param>
+    /// <param name="theme">The palette.</param>
+    /// <returns>Markup for the segment.</returns>
+    private string Body(Application.Text.FormattedProse formatted, int start, string segment, Theme theme)
+    {
+        var end = start + segment.Length;
+        var markup = new System.Text.StringBuilder();
+        var cursor = start;
+
+        foreach (var run in formatted.Runs)
+        {
+            var from = Math.Max(run.Start, start);
+            var to = Math.Min(run.Start + run.Length, end);
+
+            if (to <= from)
+            {
+                continue;
+            }
+
+            // Whatever the runs did not claim is ordinary narration. Drawn rather than skipped:
+            // a gap would silently drop the reader's words off the screen.
+            if (from > cursor)
+            {
+                markup.Append(Paint(formatted.Text[cursor..from], theme.Text, theme));
+            }
+
+            markup.Append(Paint(
+                formatted.Text[from..to],
+                run.Kind == Application.Text.ProseKind.Action ? theme.Action : theme.Text,
+                theme));
+
+            cursor = to;
+        }
+
+        if (cursor < end)
+        {
+            markup.Append(Paint(formatted.Text[cursor..end], theme.Text, theme));
+        }
+
+        return markup.ToString();
+    }
+
+    /// <summary>Draws a stretch of text, letting an active search still show through it.</summary>
+    /// <param name="text">The stretch.</param>
+    /// <param name="style">The style its run asked for.</param>
+    /// <param name="theme">The palette.</param>
+    /// <returns>Markup for the stretch.</returns>
+    private string Paint(string text, Style style, Theme theme)
+        => _activeQuery.Length > 0
+            ? Draw.Highlight(text, _activeQuery, style, theme.Highlight)
+            : Draw.Literal(text, style);
 
     private string SpeakerName() => _conversation.Speaker ?? "Reply";
 

@@ -57,6 +57,8 @@ internal sealed class HelpView : ViewBase
             ("Conversation", "C  /  X", "Copy the message / export the transcript"),
 
             ("Composer", "Enter", "Send"),
+            ("Composer", "/", "Start a command; Tab completes the name"),
+            ("Composer", "/help", "Every command, with what each one costs"),
             ("Composer", "Alt+Enter", "New line"),
             ("Composer", "Ctrl+Z / Ctrl+Y", "Undo / redo"),
             ("Composer", "Esc", "Stop writing, keeping the draft"),

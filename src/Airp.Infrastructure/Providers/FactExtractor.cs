@@ -148,6 +148,10 @@ internal sealed class FactExtractor
                 choice.MaxTokens,
                 cancellationToken).ConfigureAwait(false);
 
+            // Same reasoning as the summariser: it runs on its own, and an extraction that
+            // came back unparseable cost what a good one would have.
+            store.Spend.Add(Ledger.Row(conversation.Id, SpendKind.Facts, reply));
+
             parsed = Parse(reply.Text);
 
             if (parsed is null)

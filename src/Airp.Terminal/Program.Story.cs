@@ -487,8 +487,18 @@ internal static partial class Program
 
         AnsiConsole.MarkupLine(
             $"[green]Purged {report.Conversations} conversation(s): {report.Messages} message(s), "
-            + $"{report.Summaries} summary(ies), {report.Facts} fact(s), {report.Trackers} tracker(s).[/]");
+            + $"{report.Summaries} summary(ies), {report.Facts} fact(s), {report.Trackers} tracker(s), "
+            + $"{report.Asides} question(s).[/]");
         AnsiConsole.MarkupLine("[grey]The database was vacuumed, so the space is actually released.[/]");
+
+        if (report.LedgerKept.Rows > 0)
+        {
+            // Said plainly, because it is the one thing purge deliberately does not erase.
+            AnsiConsole.MarkupLine(
+                $"[grey]{report.LedgerKept.Rows} spend record(s) worth "
+                + $"{report.LedgerKept.Cost:$0.0000} were kept: they hold no story text, and "
+                + "dropping them would make every cost report covering that period wrong.[/]");
+        }
 
         return 0;
     }

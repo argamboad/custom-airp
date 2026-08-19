@@ -154,7 +154,7 @@ internal static partial class Program
         }
 
         var added = await services.GetRequiredService<IConversationProvider>()
-            .SendAsync(chat.Id, text, progress: null, cancellationToken)
+            .SendAsync(chat.Id, text, instruction: null, progress: null, cancellationToken)
             .ConfigureAwait(false);
 
         var reply = added.LastOrDefault(static m => m.Role == ChatRole.Assistant);

@@ -36,6 +36,13 @@ public static class DependencyInjection
 
         services.AddOptions<AirpOptions>()
             .Bind(configuration.GetSection(AirpOptions.SectionName))
+            // Made absolute once, here, rather than at each place that reads it. A configured
+            // "./exports" left relative is resolved by the runtime against the working
+            // directory, so exports landed wherever the shell happened to be standing — which
+            // is the exact scattering AppPaths exists to prevent, arriving through the one
+            // path that did not go through it.
+            .PostConfigure(static options => options.ExportDirectory =
+                AppPaths.Resolve(options.ExportDirectory))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 

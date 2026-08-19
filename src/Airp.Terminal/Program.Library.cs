@@ -194,10 +194,18 @@ internal static partial class Program
 
     
 
-    private static int Library(IServiceProvider services)
+    private static async Task<int> LibraryAsync(
+        IServiceProvider services,
+        string[] args,
+        CancellationToken cancellationToken)
     {
         var library = new TextLibrary();
         library.EnsureCreated();
+
+        if (args.Contains("--samples", StringComparer.OrdinalIgnoreCase))
+        {
+            return await SamplesAsync(library, cancellationToken).ConfigureAwait(false);
+        }
 
         var configured = services.GetRequiredService<IOptionsMonitor<AirpOptions>>().CurrentValue;
 
@@ -231,6 +239,48 @@ internal static partial class Program
         AnsiConsole.MarkupLine(
             "[grey]A conversation stores the name, so editing a file reaches every conversation "
             + "using it.[/]");
+
+        if (TextLibrary.Names(library.Characters).Count == 0)
+        {
+            AnsiConsole.MarkupLine(
+                "[grey]Nothing to play yet? 'airp library --samples' writes a worked example "
+                + "you can start a story with.[/]");
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Writes the worked example into the four shelves.
+    /// </summary>
+    /// <remarks>
+    /// Separate from the skeletons a new file starts from, and doing a different job. A
+    /// skeleton says what the shape of a card is; it cannot say what a good one reads like,
+    /// because it is square brackets. This one can be played straight away, which is the
+    /// fastest way to find out whether any of this is for you.
+    /// </remarks>
+    private static async Task<int> SamplesAsync(TextLibrary library, CancellationToken cancellationToken)
+    {
+        var written = await library.InstallSamplesAsync(cancellationToken).ConfigureAwait(false);
+
+        if (written.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[green]The example is already in your library; nothing was touched.[/]");
+            AnsiConsole.MarkupLine("[grey]Existing files are never overwritten — yours stay yours.[/]");
+            return 0;
+        }
+
+        foreach (var name in written)
+        {
+            AnsiConsole.MarkupLine($"  [green]+[/] {Markup.Escape(name)}");
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[green]Written. Start it with 'airp' and press N, or:[/]");
+        AnsiConsole.MarkupLine("[grey]  airp new \"Cadgwith Point\" --speaker Morwenna --character lighthouse --persona traveller[/]");
+        AnsiConsole.MarkupLine(
+            "[grey]The opening is named 'lighthouse' to match the character, which is the whole "
+            + "association the new-chat flow uses to offer it.[/]");
 
         return 0;
     }

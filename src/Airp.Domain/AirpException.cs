@@ -143,8 +143,9 @@ public sealed class ModelUnavailableException : AirpException
     /// <inheritdoc />
     public override string RecoveryHint => StatusCode switch
     {
-        401 or 403 => "The API key was rejected. Run 'airp secret set OPENROUTER_API_KEY' to store a new one.",
-        402 => "The account is out of credit. Top it up at openrouter.ai/credits.",
+        401 or 403 => "The API key was rejected. Store a new one with 'airp secret set', "
+            + "under the name in Model:ApiKeyName.",
+        402 => "The account is out of credit. Top it up with whoever Model:BaseUrl points at.",
         404 => "No model by that name. Run 'airp models' to see what the account can reach.",
         429 => "Rate limited. Wait a moment and try again.",
         >= 500 => "The provider is having trouble. Try again, or switch model with --model.",

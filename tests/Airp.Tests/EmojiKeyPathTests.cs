@@ -95,6 +95,7 @@ public class EmojiKeyPathTests
         conversations.SendAsync(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
+                Arg.Any<string?>(),
                 Arg.Any<IProgress<string>>(),
                 Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(call =>

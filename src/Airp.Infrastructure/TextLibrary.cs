@@ -51,6 +51,94 @@ public sealed class TextLibrary
     /// <summary>Folder holding opening messages, named after the character they belong to.</summary>
     public string Openings => Path.Combine(_root, "openings");
 
+    /// <summary>
+    /// Writes the worked example into the four shelves, skipping anything already there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The skeletons a new file starts from say what the shape is; they cannot say what a good
+    /// one reads like, because they are square brackets. This installs one that can be played
+    /// immediately — a character, the persona facing it, an opening named to match, and a
+    /// snippet — so the first question a new reader has is answered by something working rather
+    /// than by prose about it.
+    /// </para>
+    /// <para>
+    /// <strong>It never overwrites.</strong> A file the reader has since edited is theirs, and
+    /// a command that quietly restored the shipped version would be a command nobody could run
+    /// twice safely. Running it again after editing is a no-op, which is what makes it safe to
+    /// suggest in a manual.
+    /// </para>
+    /// <para>
+    /// Carried as embedded resources rather than as files beside the executable: a global tool
+    /// is installed as a package, and anything next to the binary is a thing that can go
+    /// missing.
+    /// </para>
+    /// </remarks>
+    /// <param name="cancellationToken">Token used to abort the writes.</param>
+    /// <returns>What was installed, as shelf-relative names, in the order written.</returns>
+    public async Task<IReadOnlyList<string>> InstallSamplesAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureCreated();
+
+        var assembly = typeof(TextLibrary).Assembly;
+        const string prefix = "Airp.Infrastructure.Samples.";
+        var written = new List<string>();
+
+        foreach (var resource in assembly.GetManifestResourceNames().Order(StringComparer.Ordinal))
+        {
+            if (!resource.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // "…Samples.characters.lighthouse.txt" — the shelf, then the file. The extension
+            // carries a dot of its own, so the split is from the left and bounded.
+            var parts = resource[prefix.Length..].Split('.');
+
+            if (parts.Length != 3)
+            {
+                continue;
+            }
+
+            var folder = parts[0] switch
+            {
+                "characters" => Characters,
+                "personas" => Personas,
+                "openings" => Openings,
+                "snippets" => Snippets,
+                _ => null,
+            };
+
+            if (folder is null)
+            {
+                continue;
+            }
+
+            var name = parts[1] + "." + parts[2];
+            var path = Path.Combine(folder, name);
+
+            if (File.Exists(path))
+            {
+                continue;
+            }
+
+            await using var stream = assembly.GetManifestResourceStream(resource);
+
+            if (stream is null)
+            {
+                continue;
+            }
+
+            using var reader = new StreamReader(stream);
+            var text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+
+            await File.WriteAllTextAsync(path, text, cancellationToken).ConfigureAwait(false);
+            written.Add(parts[0] + "/" + name);
+        }
+
+        return written;
+    }
+
     /// <summary>Creates the folders if they are not there.</summary>
     public void EnsureCreated()
     {
