@@ -118,6 +118,42 @@ public static class ContextBuilder
         public const string Instruction = "instruction";
     }
 
+    /// <summary>The persona layer as it is actually sent.</summary>
+    /// <remarks>
+    /// Framed rather than sent raw. A persona is usually written in the third person — "Allan
+    /// is a Scottish philosopher who…" — which on its own reads as one more person in the
+    /// scene, and a model that mistakes it for one will introduce them and wait. The frame says
+    /// whose description this is, and states the rule where it is most likely to be broken.
+    /// <para>
+    /// Public because anyone costing this layer before it is built has to cost the frame too,
+    /// and a second copy of the wording would drift from this one.
+    /// </para>
+    /// </remarks>
+    /// <param name="persona">Who the reader is playing, or null.</param>
+    /// <returns>The text of the layer, or null when there is no persona.</returns>
+    public static string? PersonaLayer(string? persona)
+        => string.IsNullOrWhiteSpace(persona)
+            ? null
+            : "The user is playing the following person. Speak to them as this person, and "
+              + "never write their words or actions for them.\n\n" + persona;
+
+    /// <summary>What a set of layers will cost, counted the way the prompt counts them.</summary>
+    /// <remarks>
+    /// The transcript gets whatever the other layers leave, so anything deciding in advance how
+    /// much room the transcript has must count them exactly as <see cref="Build"/> does —
+    /// per-message overhead included. Counting them any other way is how a summariser comes to
+    /// believe there is twice the room there is, compresses nothing, and lets the builder drop
+    /// the turns instead.
+    /// </remarks>
+    /// <param name="layers">The layer texts; null and blank entries cost nothing.</param>
+    /// <returns>The tokens those layers will occupy.</returns>
+    public static int Reserve(params string?[] layers)
+        => layers is null
+            ? 0
+            : layers
+                .Where(static text => !string.IsNullOrWhiteSpace(text))
+                .Sum(static text => TokenEstimator.ForMessage(new ModelMessage(ModelRole.System, text!)));
+
     /// <summary>Builds a prompt.</summary>
     /// <param name="characterDefinition">The character, or null.</param>
     /// <param name="directives">The conversation's dials rendered as text, or null.</param>
@@ -161,17 +197,7 @@ public static class ContextBuilder
 
         var character = Fixed(Layer.Character, characterDefinition);
 
-        // Framed rather than sent raw. A persona is usually written in the third person —
-        // "Allan is a Scottish philosopher who…" — which on its own reads as one more person in
-        // the scene, and a model that mistakes it for one will introduce them and wait. The
-        // frame says whose description this is, and states the rule where it is most likely to
-        // be broken.
-        var you = Fixed(
-            Layer.Persona,
-            string.IsNullOrWhiteSpace(persona)
-                ? null
-                : "The user is playing the following person. Speak to them as this person, and "
-                  + "never write their words or actions for them.\n\n" + persona);
+        var you = Fixed(Layer.Persona, PersonaLayer(persona));
         var dials = Fixed(Layer.Directives, directives);
         var world = Fixed(Layer.WorldState, worldState);
         var summary = Fixed(

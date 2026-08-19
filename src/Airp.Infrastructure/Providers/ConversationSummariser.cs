@@ -84,6 +84,16 @@ internal sealed class ConversationSummariser
     /// <param name="conversation">The conversation.</param>
     /// <param name="history">The visible transcript, oldest first.</param>
     /// <param name="settings">Model settings, for the budget and the summarising model.</param>
+    /// <param name="character">
+    /// The character layer as it will be sent — <em>resolved</em>, not the conversation's own
+    /// text. Nearly every conversation names a file rather than carrying a copy, so reading
+    /// <see cref="ConversationRecord.CharacterDefinition"/> here reserved nothing for a layer
+    /// that was half the prompt.
+    /// </param>
+    /// <param name="persona">The persona, resolved the same way. Framed before it is counted.</param>
+    /// <param name="directives">The dials rendered as text, or null.</param>
+    /// <param name="worldState">What the story holds to be true, or null.</param>
+    /// <param name="trackers">The meters rendered as text, or null.</param>
     /// <param name="cancellationToken">Token used to abort.</param>
     /// <returns>The summaries, the turns to send whole, and whether compression was lost.</returns>
     public async Task<SummarisedHistory> PrepareAsync(
@@ -91,6 +101,11 @@ internal sealed class ConversationSummariser
         ConversationRecord conversation,
         IReadOnlyList<MessageRecord> history,
         ModelOptions settings,
+        string? character,
+        string? persona,
+        string? directives,
+        string? worldState,
+        string? trackers,
         CancellationToken cancellationToken)
     {
         var existing = await store.Summaries
@@ -102,9 +117,18 @@ internal sealed class ConversationSummariser
         var covered = existing.Count > 0 ? existing[^1].ToSequence : 0;
         var uncovered = history.Where(m => m.Sequence > covered).ToList();
 
-        // What the transcript may spend: the budget less everything else the prompt carries.
-        var reserved = TokenEstimator.ForText(conversation.CharacterDefinition)
-                       + existing.Sum(s => TokenEstimator.ForText(s.Text))
+        // What the transcript may spend: the budget less everything else the prompt carries,
+        // counted exactly as the builder will count it. This has to agree with the builder or
+        // the two disagree about how much room the transcript has — and the builder wins,
+        // because it is the one that drops turns.
+        var reserved = ContextBuilder.Reserve(
+                           character,
+                           ContextBuilder.PersonaLayer(persona),
+                           directives,
+                           worldState,
+                           existing.Count > 0 ? string.Join("\n\n", existing.Select(s => s.Text)) : null,
+                           trackers)
+                       + Retrieval(history, settings)
                        + settings.MaxTokens
                        + 200;
 
@@ -186,6 +210,32 @@ internal sealed class ConversationSummariser
             [.. existing.Select(s => s.Text)],
             [.. history.Where(m => m.Sequence > recentFrom)],
             CompressionFailed: false);
+    }
+
+    /// <summary>Room to leave for the turns retrieval will bring back.</summary>
+    /// <remarks>
+    /// The one layer whose size cannot be known here: which turns are recalled depends on what
+    /// this call is about to compress. It is bounded, though — <c>RecallCount</c> turns of the
+    /// same transcript — so the mean turn is a fair estimate, and it grows with the story the
+    /// way the real layer does.
+    /// <para>
+    /// Erring high is the safe direction. Reserving too much compresses a turn or two earlier
+    /// than strictly necessary, which costs one summarising call; reserving too little lets the
+    /// builder drop turns nothing was written down about, which costs the story.
+    /// </para>
+    /// </remarks>
+    /// <param name="history">The visible transcript.</param>
+    /// <param name="settings">Model settings, for how many turns retrieval returns.</param>
+    /// <returns>The tokens to hold back for the memories layer.</returns>
+    private static int Retrieval(IReadOnlyList<MessageRecord> history, ModelOptions settings)
+    {
+        if (settings.RecallCount <= 0 || history.Count == 0)
+        {
+            return 0;
+        }
+
+        var mean = history.Sum(m => TokenEstimator.ForText(m.Text)) / history.Count;
+        return Math.Min(settings.RecallCount, history.Count) * mean;
     }
 
     /// <summary>Asks the model to compress a stretch of transcript.</summary>
