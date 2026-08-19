@@ -173,7 +173,8 @@ public class ProseRenderingTests
         // against a fixed escape sequence, which would only be testing the palette.
         rendered.ShouldContain("quiet");
         rendered.ShouldNotBe(unsearched);
-        Flat(Render(view.Render(Context()))).ShouldContain("The room is quiet.");
+        var after = Flat(Render(view.Render(Context())));
+        after.ShouldContain("The room is quiet.", customMessage: "rendered: <<" + after + ">>");
     }
 
     [Fact]
