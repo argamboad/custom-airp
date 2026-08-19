@@ -39,6 +39,20 @@ public sealed class TextLibrary
     /// </param>
     public TextLibrary(string? root = null) => _root = root ?? AppPaths.Root;
 
+    /// <summary>
+    /// Characters no entry may be named with, on any operating system.
+    /// </summary>
+    /// <remarks>
+    /// The Windows set, applied everywhere, rather than
+    /// <see cref="Path.GetInvalidFileNameChars"/> — which on Unix is only the separator and
+    /// NUL. Taking the platform's answer would let a Linux machine create <c>con:trol.txt</c>
+    /// that a Windows one then cannot open, and this library is a folder of text files people
+    /// copy between machines and put in sync services. The stricter rule is the portable one,
+    /// and being refused a colon is a smaller surprise than a file that only exists on one
+    /// computer.
+    /// </remarks>
+    private static readonly char[] ReservedInNames = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+
     /// <summary>Folder holding character descriptions.</summary>
     public string Characters => Path.Combine(_root, "characters");
 
@@ -341,9 +355,7 @@ public sealed class TextLibrary
         // named "b" — an entry under a name nobody asked for.
         var given = name.Trim();
 
-        if (given.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
-            || given.Contains(Path.DirectorySeparatorChar)
-            || given.Contains(Path.AltDirectorySeparatorChar))
+        if (given.IndexOfAny(ReservedInNames) >= 0 || given.Any(char.IsControl))
         {
             throw new ArgumentException($"'{name}' cannot be used as a file name.", nameof(name));
         }

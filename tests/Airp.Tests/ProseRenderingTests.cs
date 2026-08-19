@@ -69,6 +69,20 @@ public class ProseRenderingTests
         return writer.ToString();
     }
 
+    /// <summary>
+    /// The rendered text with every run of whitespace flattened to one space.
+    /// </summary>
+    /// <remarks>
+    /// Asserting on a phrase means asserting across a possible line break. Locally the console
+    /// is a real terminal and the transcript fits; on a build runner there is no terminal, the
+    /// profile falls back to a narrower default, and a sentence wraps — so "The room is quiet."
+    /// arrives with a newline inside it and a substring check fails for a reason that has
+    /// nothing to do with what is being tested. Flattening compares the words that were drawn,
+    /// which is the actual claim.
+    /// </remarks>
+    private static string Flat(string rendered)
+        => string.Join(' ', rendered.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
     [Fact]
     public async Task The_markers_are_gone_from_what_is_drawn()
     {
@@ -77,8 +91,8 @@ public class ProseRenderingTests
 
         var rendered = Render(view.Render(Context()));
 
-        rendered.ShouldContain("She closes the lid.");
-        rendered.ShouldContain("You are late.");
+        Flat(rendered).ShouldContain("She closes the lid.");
+        Flat(rendered).ShouldContain("You are late.");
         rendered.ShouldNotContain("*");
         rendered.ShouldNotContain("\"You are late");
     }
@@ -159,7 +173,7 @@ public class ProseRenderingTests
         // against a fixed escape sequence, which would only be testing the palette.
         rendered.ShouldContain("quiet");
         rendered.ShouldNotBe(unsearched);
-        Render(view.Render(Context())).ShouldContain("The room is quiet.");
+        Flat(Render(view.Render(Context()))).ShouldContain("The room is quiet.");
     }
 
     [Fact]
@@ -180,6 +194,6 @@ public class ProseRenderingTests
 
         await RunAsync(await view.OnActivatedAsync(CancellationToken.None));
 
-        Render(view.Render(Context())).ShouldContain("She closes the lid and says nothing.");
+        Flat(Render(view.Render(Context()))).ShouldContain("She closes the lid and says nothing.");
     }
 }
