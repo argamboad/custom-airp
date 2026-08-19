@@ -400,6 +400,7 @@ internal static partial class Program
         AnsiConsole.MarkupLine("  airp cost               What this month has cost, by chat");
         AnsiConsole.MarkupLine("  airp cost --month 2026-07   A particular month");
         AnsiConsole.MarkupLine("  airp cost --all --json  Everything, as JSON");
+        AnsiConsole.MarkupLine("  airp cost --providers   Which host served what, and how well");
         AnsiConsole.MarkupLine("  airp import             Bring exported transcripts into the local store");
         AnsiConsole.MarkupLine("  airp import <path> --character elena.txt");
         AnsiConsole.MarkupLine("  airp new \"Name\"         Start a conversation in the local store");

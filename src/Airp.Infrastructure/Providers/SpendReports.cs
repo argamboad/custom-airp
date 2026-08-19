@@ -8,6 +8,35 @@ namespace Airp.Infrastructure.Providers;
 /// <param name="Cost">What they came to, counting only the calls the API priced.</param>
 public readonly record struct SpendByKind(SpendKind Kind, int Calls, decimal Cost);
 
+/// <summary>
+/// What one host served, and how well.
+/// </summary>
+/// <remarks>
+/// The row that decides a deny list. A router fans one model across machines that differ in
+/// what they charge, whether they cache, and — measured once, painfully — whether they can
+/// apply the chat template at all. None of that is visible until it is counted per host.
+/// </remarks>
+/// <param name="Provider">The host, as replies reported it. Lower-cased it is usually the slug.</param>
+/// <param name="Calls">Billed calls it served.</param>
+/// <param name="Cost">What they came to.</param>
+/// <param name="PromptTokens">Prompt tokens sent to it.</param>
+/// <param name="CachedTokens">Prompt tokens it served from cache rather than reading again.</param>
+/// <param name="CompletionTokens">Tokens it generated. A host producing far fewer is worth a look.</param>
+public readonly record struct ProviderSpend(
+    string Provider,
+    int Calls,
+    decimal Cost,
+    long PromptTokens,
+    long CachedTokens,
+    long CompletionTokens)
+{
+    /// <summary>The share of prompt tokens this host did not have to read again.</summary>
+    public double? CachedShare => PromptTokens > 0 ? (double)CachedTokens / PromptTokens : null;
+
+    /// <summary>Tokens generated per call, which is how a host that returns noise stands out.</summary>
+    public long PerCall => Calls > 0 ? CompletionTokens / Calls : 0;
+}
+
 /// <summary>What one conversation has cost.</summary>
 /// <param name="ConversationId">Its identifier.</param>
 /// <param name="Name">Its name at the time the report was run.</param>
@@ -83,6 +112,9 @@ public sealed record SpendReport(
 
     /// <summary>The share of prompt tokens that did not have to be read again.</summary>
     public double? CachedShare => PromptTokens > 0 ? (double)CachedTokens / PromptTokens : null;
+
+    /// <summary>The window split by which host served it, dearest first.</summary>
+    public IReadOnlyList<ProviderSpend> ByProvider { get; init; } = [];
 
     /// <summary>The whole window's money split by what it was doing.</summary>
     public IReadOnlyList<SpendByKind> ByKind =>

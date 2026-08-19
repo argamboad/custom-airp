@@ -190,3 +190,115 @@ public class ExportPathTests
         options.ExportDirectory.ShouldBe(Path.GetFullPath(wanted));
     }
 }
+
+/// <summary>
+/// Telling the router which hosts to avoid.
+/// </summary>
+/// <remarks>
+/// Measured in one session: a single host returned four consecutive replies of token soup
+/// opening with the model's own start-of-sequence marker, while two others answered the same
+/// prompt with eight hundred coherent tokens. The model was never the problem; the machine it
+/// landed on was. A denied host costs nothing and cannot be reached again.
+/// </remarks>
+public class ProviderRoutingTests
+{
+    private const string SuccessBody = """
+        {
+          "choices": [ { "message": { "content": "She looks up." }, "finish_reason": "stop" } ],
+          "usage": { "prompt_tokens": 10, "completion_tokens": 5 }
+        }
+        """;
+
+    private static OpenRouterClient Build(ScriptedHandler handler, Action<AirpOptions>? configure = null)
+    {
+        var secrets = Substitute.For<ISecretStore>();
+        secrets.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<string?>("sk-test"));
+
+        return new OpenRouterClient(
+            new HttpClient(handler),
+            secrets,
+            TestOptions.Default(configure),
+            NullLogger<OpenRouterClient>.Instance);
+    }
+
+    private static async Task<System.Text.Json.Nodes.JsonNode> SendAsync(
+        ScriptedHandler handler,
+        Action<AirpOptions>? configure = null)
+    {
+        await Build(handler, configure).CompleteAsync([new ModelMessage(ModelRole.User, "hello")]);
+        return System.Text.Json.Nodes.JsonNode.Parse(handler.LastBody!)!;
+    }
+
+    [Fact]
+    public async Task With_nothing_configured_the_request_carries_no_routing_at_all()
+    {
+        // The one field here that is not OpenAI's. Anything else speaking the same shape would
+        // either ignore it or refuse the call, and there is no reason to find out which on every
+        // turn when nobody asked for routing.
+        var sent = await SendAsync(new ScriptedHandler(HttpStatusCode.OK, SuccessBody));
+
+        sent["provider"].ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task A_denied_host_is_sent_as_the_router_spells_it()
+    {
+        var handler = new ScriptedHandler(HttpStatusCode.OK, SuccessBody);
+
+        var sent = await SendAsync(handler, o => o.Model.IgnoreProviders = ["deepinfra"]);
+
+        sent["provider"]!["ignore"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(["deepinfra"]);
+        sent["provider"]!["order"].ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Preferred_hosts_keep_the_order_they_were_written_in()
+    {
+        // It is a preference list, so the order is the whole content of it.
+        var handler = new ScriptedHandler(HttpStatusCode.OK, SuccessBody);
+
+        var sent = await SendAsync(handler, o => o.Model.PreferProviders = ["gmicloud", "baidu"]);
+
+        sent["provider"]!["order"]!.AsArray().Select(n => n!.GetValue<string>())
+            .ShouldBe(["gmicloud", "baidu"]);
+    }
+
+    [Fact]
+    public async Task Fallbacks_are_only_mentioned_when_a_choice_has_been_made()
+    {
+        var handler = new ScriptedHandler(HttpStatusCode.OK, SuccessBody);
+
+        var quiet = await SendAsync(handler, o => o.Model.IgnoreProviders = ["deepinfra"]);
+        quiet["provider"]!["allow_fallbacks"].ShouldBeNull();
+
+        var stated = await SendAsync(handler, o =>
+        {
+            o.Model.PreferProviders = ["gmicloud"];
+            o.Model.AllowProviderFallbacks = false;
+        });
+
+        stated["provider"]!["allow_fallbacks"]!.GetValue<bool>().ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Blank_entries_are_dropped_rather_than_sent_as_empty_names()
+    {
+        // An empty string is not a host, and a routing object full of them would be refused or
+        // ignored wholesale — taking the real entries with it.
+        var handler = new ScriptedHandler(HttpStatusCode.OK, SuccessBody);
+
+        var sent = await SendAsync(handler, o => o.Model.IgnoreProviders = ["  ", "deepinfra", ""]);
+
+        sent["provider"]!["ignore"]!.AsArray().Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_list_of_nothing_but_blanks_sends_no_routing()
+    {
+        var handler = new ScriptedHandler(HttpStatusCode.OK, SuccessBody);
+
+        var sent = await SendAsync(handler, o => o.Model.IgnoreProviders = ["   "]);
+
+        sent["provider"].ShouldBeNull();
+    }
+}

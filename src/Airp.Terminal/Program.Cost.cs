@@ -63,6 +63,12 @@ internal static partial class Program
             return 0;
         }
 
+        if (args.Contains("--providers", StringComparer.OrdinalIgnoreCase))
+        {
+            PrintProviders(report, label);
+            return 0;
+        }
+
         Print(report, label);
         return 0;
     }
@@ -176,6 +182,53 @@ internal static partial class Program
         }
 
         AnsiConsole.MarkupLine("[grey]  Embeddings are not counted; the whole corpus costs under a cent.[/]");
+    }
+
+    /// <summary>
+    /// Draws what each host served, which is what a deny list is decided from.
+    /// </summary>
+    /// <remarks>
+    /// <em>out/call</em> earns its column. A host whose serving stack is broken does not fail
+    /// the request — it answers, is charged for, and returns a few dozen tokens of noise where
+    /// the others return eight hundred. Averaged per call that stands out at a glance, where in
+    /// a total it hides.
+    /// </remarks>
+    private static void PrintProviders(SpendReport report, string label)
+    {
+        if (report.ByProvider.Count == 0)
+        {
+            AnsiConsole.MarkupLine($"[green]Nothing was spent in {Markup.Escape(label)}.[/]");
+            return;
+        }
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("served by");
+        table.AddColumn(new TableColumn("slug").LeftAligned());
+        table.AddColumn(new TableColumn("calls").RightAligned());
+        table.AddColumn(new TableColumn("in").RightAligned());
+        table.AddColumn(new TableColumn("cached").RightAligned());
+        table.AddColumn(new TableColumn("out/call").RightAligned());
+        table.AddColumn(new TableColumn("cost").RightAligned());
+
+        foreach (var host in report.ByProvider)
+        {
+            table.AddRow(
+                Markup.Escape(host.Provider),
+                Markup.Escape(host.Provider.ToLowerInvariant().Replace(" ", string.Empty, StringComparison.Ordinal)),
+                host.Calls.ToString(CultureInfo.CurrentCulture),
+                Tokens(host.PromptTokens),
+                Share(host.CachedShare),
+                host.PerCall.ToString("N0", CultureInfo.CurrentCulture),
+                Money(host.Cost));
+        }
+
+        AnsiConsole.Write(table);
+
+        AnsiConsole.MarkupLine(
+            "[grey]The slug column is a guess at the name the router wants in "
+            + "Model:IgnoreProviders — usually right, and copyable from the model's page when "
+            + "it is not. A slug matching no host is dropped in silence, so play a turn and "
+            + "check 'served by' before believing it took.[/]");
     }
 
     /// <summary>Renders the report as JSON, for anything that is not a person reading it.</summary>

@@ -641,7 +641,22 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             .ThenBy(static c => c.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        return new SpendReport(fromUtc, toUtc, lines);
+        // Grouped over the same window, not per conversation: the question a host answers is
+        // "should I keep using this one", which spans every story.
+        var hosts = window
+            .GroupBy(static s => s.Provider ?? "unknown", StringComparer.OrdinalIgnoreCase)
+            .Select(static g => new ProviderSpend(
+                Provider: g.Key,
+                Calls: g.Count(),
+                Cost: g.Sum(static s => s.Cost ?? 0),
+                PromptTokens: g.Sum(static s => (long)(s.PromptTokens ?? 0)),
+                CachedTokens: g.Sum(static s => (long)(s.CachedTokens ?? 0)),
+                CompletionTokens: g.Sum(static s => (long)(s.CompletionTokens ?? 0))))
+            .OrderByDescending(static p => p.Cost)
+            .ThenBy(static p => p.Provider, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new SpendReport(fromUtc, toUtc, lines) { ByProvider = hosts };
     }
 
     /// <summary>The questions asked about a conversation, newest first.</summary>

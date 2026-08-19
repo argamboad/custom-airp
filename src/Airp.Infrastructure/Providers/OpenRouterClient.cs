@@ -88,6 +88,11 @@ public sealed class OpenRouterClient : ILanguageModelClient
             })]),
         };
 
+        if (Routing(settings) is { } routing)
+        {
+            payload["provider"] = routing;
+        }
+
         var body = await SendAsync("chat/completions", payload, settings, cancellationToken).ConfigureAwait(false);
         var choice = body?["choices"]?.AsArray().FirstOrDefault();
 
@@ -120,6 +125,55 @@ public sealed class OpenRouterClient : ILanguageModelClient
             CacheWriteTokens = prompt?["cache_write_tokens"]?.GetValue<int>(),
             FinishReason = choice?["finish_reason"]?.GetValue<string>(),
         };
+    }
+
+    /// <summary>
+    /// The router's own routing preferences, or null when none are configured.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Omitted entirely rather than sent empty, because this is the one field in the request
+    /// that is not OpenAI's. Anything else speaking the same shape would either ignore an
+    /// unknown key or refuse the call, and there is no reason to find out which on every turn
+    /// when nobody has asked for routing.
+    /// </para>
+    /// <para>
+    /// The values go out exactly as configured. They are slugs, and a slug that matches no host
+    /// is dropped silently by the router — so mangling the case here to be helpful would only
+    /// make a wrong one harder to spot. What actually served the reply is recorded per message
+    /// and shown by <c>airp audit</c>.
+    /// </para>
+    /// </remarks>
+    /// <param name="settings">The configured model options.</param>
+    /// <returns>The <c>provider</c> object, or null.</returns>
+    private static JsonObject? Routing(ModelOptions settings)
+    {
+        var ignore = settings.IgnoreProviders?.Where(static p => !string.IsNullOrWhiteSpace(p)).ToArray() ?? [];
+        var order = settings.PreferProviders?.Where(static p => !string.IsNullOrWhiteSpace(p)).ToArray() ?? [];
+
+        if (ignore.Length == 0 && order.Length == 0 && settings.AllowProviderFallbacks is null)
+        {
+            return null;
+        }
+
+        var routing = new JsonObject();
+
+        if (order.Length > 0)
+        {
+            routing["order"] = new JsonArray([.. order.Select(static p => (JsonNode)p.Trim())]);
+        }
+
+        if (ignore.Length > 0)
+        {
+            routing["ignore"] = new JsonArray([.. ignore.Select(static p => (JsonNode)p.Trim())]);
+        }
+
+        if (settings.AllowProviderFallbacks is { } fallbacks)
+        {
+            routing["allow_fallbacks"] = fallbacks;
+        }
+
+        return routing;
     }
 
     /// <inheritdoc />
