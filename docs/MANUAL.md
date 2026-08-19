@@ -794,6 +794,55 @@ your store.
 `AIRP_*` variables override the configuration: `AIRP_Model__Name=…`. Ones ending in `_KEY` or
 `_TOKEN` **never** enter the configuration, so that no dump can print them.
 
+### Choosing which host serves you
+
+OpenRouter fans one model across many machines, and **they are not interchangeable.** They
+differ in price, in whether they cache your prompt, in what they are willing to write — and
+occasionally in whether they work at all. Measured in one real session, same model, same
+conversation, minutes apart:
+
+```
+airp cost --providers
+```
+
+```
+│ served by     │ slug         │ calls │     in │ cached │ out/call │    cost │
+│ GMICloud      │ gmicloud     │     5 │ 305.0k │   61 % │      575 │ $0.0137 │
+│ Baidu         │ baidu        │     2 │ 122.1k │   47 % │      791 │ $0.0064 │
+│ DigitalOcean  │ digitalocean │     5 │ 305.2k │    0 % │      291 │ $0.0210 │
+│ DeepInfra     │ deepinfra    │     5 │ 305.3k │  100 % │      128 │ $0.0057 │
+```
+
+**`out/call` is the column that catches a broken host.** DeepInfra there was returning token
+soup beginning with the model's own start-of-sequence marker — its serving stack applying the
+chat template wrongly. It does not fail the request; it answers, charges you, and hands back a
+hundred tokens of nonsense where the others give eight hundred. Averaged per call that stands
+out instantly.
+
+**`cached` decides most of the bill.** On a 60,000-token prompt the difference between 61% and
+0% is most of what a turn costs, and it is a coin flip unless you say otherwise.
+
+Two settings, both lists of provider **slugs** — the lower-case name in the table:
+
+```json
+"model": {
+  "ignoreProviders": ["deepinfra"],
+  "preferProviders": ["gmicloud", "baidu"]
+}
+```
+
+`ignoreProviders` is never routed to again. `preferProviders` is tried in order, with the rest
+still available behind it — add `"allowProviderFallbacks": false` to make it a restriction
+rather than a preference.
+
+**A slug that matches no host is dropped without complaint.** So after changing this, play a
+turn and check what `airp audit` says served it. If the name was wrong you will see the same
+host you meant to avoid.
+
+One thing worth thinking about before pinning: choosing a host is also choosing who is willing
+to write your scenes. The cheapest one that caches is not automatically the one that will
+carry a scene where you want it to go.
+
 ### Using a provider other than OpenRouter
 
 **Only OpenRouter has actually been tested.** Everything here should work with any

@@ -14,6 +14,47 @@ public sealed class ModelOptions
     /// <summary>Base address of an OpenAI-compatible API, without a trailing slash.</summary>
     public string BaseUrl { get; set; } = "https://openrouter.ai/api/v1";
 
+    /// <summary>
+    /// Hosts never to send this conversation to, by provider slug.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A router fans one model across many machines, and they are not interchangeable. Measured
+    /// in a single session: one host returned four consecutive replies of token soup beginning
+    /// with the model's own start-of-sequence marker — its serving stack applying the chat
+    /// template wrongly — while two others answered the same prompt with eight hundred coherent
+    /// tokens. A denied host costs nothing and is the difference between playing and rerolling.
+    /// </para>
+    /// <para>
+    /// <strong>Slugs, not the names replies come back with.</strong> The response says
+    /// <c>DeepInfra</c>; the request wants <c>deepinfra</c>. A slug that matches nothing is
+    /// ignored without complaint, so the check is to play a turn and look at what
+    /// <c>airp audit</c> says served it.
+    /// </para>
+    /// </remarks>
+    public IList<string> IgnoreProviders { get; set; } = [];
+
+    /// <summary>
+    /// Hosts to try first, in order, by provider slug. Others still follow unless fallbacks
+    /// are switched off.
+    /// </summary>
+    /// <remarks>
+    /// Worth setting once you know which hosts cache: the same conversation measured 61% of its
+    /// prompt served from cache on one and nothing at all on four others, which on a 60,000
+    /// token prompt is most of what a turn costs.
+    /// </remarks>
+    public IList<string> PreferProviders { get; set; } = [];
+
+    /// <summary>
+    /// Whether the router may fall back to hosts outside <see cref="PreferProviders"/>.
+    /// </summary>
+    /// <remarks>
+    /// Null leaves the decision to the router, which allows them. Setting it false makes the
+    /// preference a restriction — fewer surprises, and a failed call rather than a reply from
+    /// somewhere unvetted.
+    /// </remarks>
+    public bool? AllowProviderFallbacks { get; set; }
+
     /// <summary>Model identifier passed to the API.</summary>
     /// <remarks>
     /// DeepSeek V4 Flash by default: it carries over half the roleplay traffic on OpenRouter

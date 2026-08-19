@@ -260,7 +260,7 @@ dotnet build
 dotnet test
 ```
 
-629 tests cover the parts worth testing: the editor buffer, fuzzy matching, the LCS diff, the
+635 tests cover the parts worth testing: the editor buffer, fuzzy matching, the LCS diff, the
 context builder's layering and budgets, retrieval, idempotency and the append-only guard, and
 each business service against substituted providers. There are no tests of getters.
 

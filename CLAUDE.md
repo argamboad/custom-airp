@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       629 tests
+tests/Airp.Tests/       635 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -329,7 +329,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 629 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 635 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
@@ -394,4 +394,11 @@ nothing ahead of the transcript is moving between turns; the prefix is stable an
 works exactly as designed. Seven hosts appeared in fifteen calls and four of them cache
 nothing at all, which on a 60k prompt is most of what a turn costs, decided by a coin flip.
 **Pinning or ordering providers is the largest saving available, and it is a request field
-rather than a prompt change.**
+rather than a prompt change.** It exists now: `Model:IgnoreProviders` and `PreferProviders`,
+sent as OpenRouter's `provider` object and omitted entirely when unset, since that field is
+the one part of the request that is not OpenAI's. `airp cost --providers` is what they are
+decided from — and its `out/call` column is how a host that answers with token soup rather
+than failing is spotted, which happened the same day: `deepinfra` returned 128 tokens a call
+against 575 to 791 elsewhere, four replies running, opening with the model's own
+`<|begin_of_sentence|>` marker. Slugs are lower-case and a wrong one is dropped in silence,
+so the audit's `served by` is the only confirmation that a change took.
