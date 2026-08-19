@@ -823,35 +823,6 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
         var settings = _options.CurrentValue.Model;
 
-        // Compress before building, not after. The builder's only tool for an over-budget
-        // prompt is to drop the oldest turns, which is the forgetting this project exists to
-        // avoid; summarising first means what leaves the prompt stays in the conversation.
-        var prepared = await new ConversationSummariser(_model, _logger)
-            .PrepareAsync(store, conversation, history, settings, cancellationToken)
-            .ConfigureAwait(false);
-
-        // The budget is a target for cost and for attention, not a limit the model imposes —
-        // it sits far below the window. When compression failed, going over it is the cheaper
-        // mistake: a larger bill against a character that has forgotten.
-        var budget = prepared.CompressionFailed
-            ? int.MaxValue
-            : settings.ContextBudget;
-
-        // Retrieval covers exactly the gap summarising leaves: a summary says what happened
-        // over a stretch, and loses the wording. Only turns already compressed out are
-        // candidates — the recent ones are being sent whole anyway.
-        var memories = await RecallAsync(store, conversation, prepared, cancellationToken)
-            .ConfigureAwait(false);
-
-        var live = await FactExtractor.LiveAsync(store, conversation.Id, cancellationToken)
-            .ConfigureAwait(false);
-
-        var meters = await store.Trackers
-            .Where(t => t.ConversationId == conversation.Id)
-            .OrderBy(t => t.Name)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
         // One rule for both: text the conversation holds, then the file it names, then the
         // configured default. They are the same shape of thing and resolving them differently
         // was where this got confusing.
@@ -872,6 +843,68 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 cancellationToken)
             .ConfigureAwait(false);
 
+        var known = await FactExtractor.LiveAsync(store, conversation.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        var meters = await store.Trackers
+            .Where(t => t.ConversationId == conversation.Id)
+            .OrderBy(t => t.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var directives = SettingScales.Directives(
+                new ChatSettings
+                {
+                    Lust = conversation.Lust,
+                    ResponseLength = conversation.ResponseLength,
+                    Creativity = conversation.Creativity,
+                },
+                _options.CurrentValue)
+            + LocalPrompt.InnerThoughtsDirective(conversation);
+
+        // Resolved first, and then handed over, because the summariser has to reserve room for
+        // the same layers this builds. Reading them off the conversation record instead
+        // reserved nothing for a character kept in a file — which is every conversation — and
+        // the summariser spent a 202-turn story believing the transcript had twice the room it
+        // had. Nothing was ever compressed; the builder dropped twenty-four turns instead.
+        //
+        // Compress before building, not after. The builder's only tool for an over-budget
+        // prompt is to drop the oldest turns, which is the forgetting this project exists to
+        // avoid; summarising first means what leaves the prompt stays in the conversation.
+        var prepared = await new ConversationSummariser(_model, _logger)
+            .PrepareAsync(
+                store: store,
+                conversation: conversation,
+                history: history,
+                settings: settings,
+                character: character,
+                persona: persona,
+                directives: directives,
+                worldState: FactExtractor.Render(known),
+                trackers: Trackers.Render(meters),
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        // Read again, because compressing is also when facts are extracted: the turns leaving
+        // the prompt are read for what they left true on their way out. The snapshot above was
+        // taken to size the layer and is one extraction out of date by now, and a fact the
+        // model just established has to reach this turn's prompt rather than the next one's.
+        var live = await FactExtractor.LiveAsync(store, conversation.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        // The budget is a target for cost and for attention, not a limit the model imposes —
+        // it sits far below the window. When compression failed, going over it is the cheaper
+        // mistake: a larger bill against a character that has forgotten.
+        var budget = prepared.CompressionFailed
+            ? int.MaxValue
+            : settings.ContextBudget;
+
+        // Retrieval covers exactly the gap summarising leaves: a summary says what happened
+        // over a stretch, and loses the wording. Only turns already compressed out are
+        // candidates — the recent ones are being sent whole anyway.
+        var memories = await RecallAsync(store, conversation, prepared, cancellationToken)
+            .ConfigureAwait(false);
+
         // Named, every one of them. Three separate bugs today came from a layer being added in
         // the middle of a positional list and silently shifting the ones after it — the dials
         // arriving as the character definition, and nobody noticing until a test did.
@@ -886,15 +919,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             worldState: FactExtractor.Render(live),
             trackers: Trackers.Render(meters),
             character: character,
-            directives: SettingScales.Directives(
-                new ChatSettings
-                {
-                    Lust = conversation.Lust,
-                    ResponseLength = conversation.ResponseLength,
-                    Creativity = conversation.Creativity,
-                },
-                _options.CurrentValue)
-                + LocalPrompt.InnerThoughtsDirective(conversation));
+            directives: directives);
 
         if (context.Dropped > 0)
         {

@@ -581,8 +581,15 @@ scene can start arranging itself to move the number. That is why they are off by
 There is nothing to configure. It fires on its own and **only when needed**: a conversation
 that fits in the budget does not spend one extra call.
 
-In English with the budget at 32,000 tokens, that is around 120 messages. Before that,
-nothing happens.
+In English with the budget at 32,000 tokens and a small character, that is around 120
+messages. Before that, nothing happens.
+
+**Your character card comes out of the same budget**, so a big one moves that number a long
+way. A 30,000-token card in a 60,000-token budget leaves the transcript half of what a
+3,000-token card would, and compression starts in the first twenty turns rather than the
+hundredth. `airp audit` shows the split — the `character` figure against the `history` one —
+and it is the first thing to look at if a story starts compressing sooner than you expected.
+Raising `contextBudget` is the other lever, at the cost of a larger bill on every turn.
 
 When it does go over:
 

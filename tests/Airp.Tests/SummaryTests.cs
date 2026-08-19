@@ -132,19 +132,59 @@ public sealed class SummaryTests : IDisposable
     [Fact]
     public async Task Already_summarised_turns_are_not_summarised_again()
     {
+        // Covered ground is never revisited: each summary picks up where the last one ended.
+        // Paying twice to compress the same turns would be the cheap half of the damage — the
+        // expensive half is two accounts of one stretch, disagreeing.
         var id = await SeedAsync(40);
-        _model.Says("Summary.").Says("One.").Says("Two.");
+        _model.Says("Summary.").Says("One.").Says("Two.").Says("Three.");
 
         await Provider().SendAsync(id, "Hello.");
-        var afterFirst = _model.Calls.Count;
+
+        await using (var first = _factory.CreateDbContext())
+        {
+            (await first.Summaries.CountAsync(s => s.ConversationId == id)).ShouldBe(1);
+        }
 
         await Provider().SendAsync(id, "Again.");
 
         await using var store = _factory.CreateDbContext();
-        (await store.Summaries.CountAsync()).ShouldBe(1);
 
-        // One more call, not two: the second send needed a reply and no new compression.
-        _model.Calls.Count.ShouldBe(afterFirst + 1);
+        var summaries = await store.Summaries
+            .Where(s => s.ConversationId == id)
+            .OrderBy(s => s.FromSequence)
+            .ToListAsync();
+
+        for (var i = 1; i < summaries.Count; i++)
+        {
+            summaries[i].FromSequence.ShouldBeGreaterThan(summaries[i - 1].ToSequence);
+        }
+    }
+
+    [Fact]
+    public async Task Compression_is_occasional_rather_than_a_toll_on_every_turn()
+    {
+        // Reserving room honestly leaves the transcript sitting near the budget, which raises
+        // the obvious worry: does every send now pay for a summarising call and a fact
+        // extraction on top of the reply? Measured, no — a summary frees far more room than it
+        // occupies, so compressing buys headroom for several turns at a time. This is the
+        // guarantee, and it is the one worth a test: it is what stops the memory from costing
+        // three calls a turn.
+        var id = await SeedAsync(40);
+
+        for (var i = 0; i < 60; i++)
+        {
+            _model.Says("Summary.");
+        }
+
+        for (var send = 1; send <= 8; send++)
+        {
+            await Provider().SendAsync(id, $"Message {send}.");
+        }
+
+        await using var store = _factory.CreateDbContext();
+
+        (await store.Summaries.CountAsync(s => s.ConversationId == id))
+            .ShouldBeLessThanOrEqualTo(4);
     }
 
     [Fact]

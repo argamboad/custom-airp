@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       635 tests
+tests/Airp.Tests/       639 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -329,7 +329,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 635 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 639 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
@@ -355,6 +355,10 @@ about ten to one in real replies; both are read.
 - The keymap resolves `n`/`N` to `SearchNext` in every mode. A view wanting N handles
   `SearchNext`, and **view tests must resolve strokes through the real `KeyMap`** — a
   hand-built stroke once shipped a dead key.
+- **A test that sets `CharacterDefinition` inline is not testing a real conversation.** Real
+  ones name a file. Anything that reasons about the size of the prompt has to be tested against
+  a resolved character, or it is being tested against four tokens. This one cost twenty-four
+  turns of a real story.
 - The global tool refresh (`dotnet tool uninstall/install`) fails while any `airp` session
   runs — the exe is locked; it is not a build problem.
 - OpenRouter fans the model across backends; some intermittently return empty content and
@@ -368,10 +372,40 @@ about ten to one in real replies; both are read.
   (the scene itself, never a repetition or acknowledgement of the note). `LocalDirections`,
   `AskDirective` and `RegenerateDirective` all carry that frame; anything new must too.
 
-**What has never run:** the memory against a real long conversation (compression, retrieval
-and extraction have 500+ tests and zero lived turns — around message ~120 a turn runs slow;
-`airp audit` and `airp fact` right after is the moment of truth), and the proxy against real
-Janitor.
+**What has never run:** the proxy against real Janitor.
+
+**The memory has now run against a real long conversation, and it failed.** A 202-message BJU
+story with a 30k-token character had **zero summaries, zero facts and zero embeddings**, while
+the audit read `history 28791 (24 dropped)`. Twenty-four turns left the prompt with nothing
+written down about them — the exact forgetting this project exists to prevent, undetected
+behind five hundred passing tests.
+
+The cause: the summariser reserved room for the character by reading
+`conversation.CharacterDefinition`, the conversation's *own inline text* — which is empty in
+every conversation the application creates, because a conversation stores the **name** and the
+text lives in a file. So it reserved zero for half the prompt, believed the transcript had
+58,776 tokens when the builder gave it ~28,900, and never found anything to compress. The
+builder dropped the turns instead.
+
+**The lesson is bigger than the fix: every test set the character inline.** `SummaryTests` uses
+`CharacterDefinition = "You are Elena."`, four tokens, so the wrong reservation could not show.
+Five hundred tests of the memory, and not one of them built a conversation the way the
+application does. `CharacterInAFileTests` now does, with a real file and a real
+`TextLibrary` root — **any new test of the memory belongs there, not beside the inline ones.**
+
+Two things follow, both now enforced:
+
+- **The reservation and the builder must agree, or the builder wins** — it is the one that
+  drops turns. `ContextBuilder.Reserve` and `ContextBuilder.PersonaLayer` exist so there is one
+  answer to "what do the layers around the transcript cost", counted with the same per-message
+  overhead, including the persona's frame.
+- **Reserving honestly did not make compression a per-turn toll.** The obvious worry — the
+  transcript now sits at the budget edge, so every send pays for a summary and an extraction on
+  top of the reply — was measured and is wrong: 2 compressions over 8 sends, because a summary
+  frees far more room than it occupies. That is a test, not an anecdote.
+
+The BJU turns are still in `Messages`, so a backfill can produce the summaries after the fact —
+which is invariant 6 doing its job.
 
 **The spend ledger has now seen real money.** A 146-message BJU session reported
 `$0.0553` over 12 calls, 731.8k in / 5.8k out, with `$0.0208` correctly attributed to replies
