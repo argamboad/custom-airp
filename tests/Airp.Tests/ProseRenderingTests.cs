@@ -88,7 +88,11 @@ public class ProseRenderingTests
         // with escapes through the middle of it — and whether they are emitted at all
         // depends on what Spectre decides about the environment, which is why this
         // passed on a terminal and failed on every build runner.
-        var text = Regex.Replace(rendered, "\u001b\\[[0-9;]*[A-Za-z]", " ");
+        //
+        // Removed rather than replaced with a space: an escape sits between the highlighted
+        // word and the punctuation after it, so a space would put one there too and turn
+        // "quiet." into "quiet ." — which is how this was got wrong the first time.
+        var text = Regex.Replace(rendered, "\u001b\\[[0-9;]*[A-Za-z]", string.Empty);
 
         return string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
