@@ -371,7 +371,13 @@ and extraction have 500+ tests and zero lived turns — around message ~120 a tu
 `airp audit` and `airp fact` right after is the moment of truth), and the proxy against real
 Janitor.
 
-**And one thing verified only on paper:** the spend ledger has never seen a priced response.
-`usage.cost` and `prompt_tokens_details.cached_tokens` are parsed against the documented shape
-and a scripted model, not against a live OpenRouter reply. The first real turn is the check —
-if `airp cost` shows every call unpriced, the field names are what to look at, not the ledger.
+**The spend ledger has now seen real money.** A 146-message BJU session reported
+`$0.0553` over 12 calls, 731.8k in / 5.8k out, with `$0.0208` correctly attributed to replies
+that were regenerated away. So `usage.cost` and `prompt_tokens_details.cached_tokens` arrive in
+the documented shape from a live reply, and the field names are right.
+
+**What that same reading raises:** 21% cached over 731.8k prompt tokens is low for a
+conversation that long. The layer order exists to keep everything up to the first change of
+the turn cacheable, so either something before the transcript is moving between turns, or the
+backends OpenRouter fanned that session across mostly do not cache. The audit's `served by`
+column is where to start.

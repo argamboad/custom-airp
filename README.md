@@ -10,23 +10,24 @@ rather than dropped, old moments come back by meaning when they become relevant,
 story established stays true until the story says otherwise. Every reply records exactly what
 it was built from, so "why did it say that" has an answer.
 
-```text
-──────────────────────────────────────────────────────────────────────────────
-airp  Local                                        deepseek/deepseek-v4-flash
-Chats › Vardhal
-──────────────────────────────────────────────────────────────────────────────
-message 96/96  ·  47 yours  ·  48 replies  ·  412 words in this one
-──────────────────────────────────────────────────────────────────────────────
-  You  Mon 21:02
-  so what happened out there?
+![A conversation in progress: the transcript with actions in italic and dimmed, speech as plain text, and the running cost in the header](docs/images/transcript.png)
 
-▌ Elena  Mon 21:03
-▌ She sets the whetstone down and studies you for a moment, working out how
-▌ much of the truth she wants to hand over…
-──────────────────────────────────────────────────────────────────────────────
-I / Enter Write a message   ↑↓ Previous / next   PgUp/PgDn Scroll   / Search
-> Carry on   G Regenerate reply   S Settings   Del Delete from here   Esc Back
-```
+*Actions render italic and dimmed, speech as plain text, and both lose their markers — display
+only, since the stored wording is what the next prompt sends. The header carries what this story
+has cost so far, and what of that went on replies that were regenerated away.*
+
+![The output of airp cost: a table of conversations with calls, tokens in and out, cached share, cost and discarded cost](docs/images/cost.png)
+
+*`airp cost` reports a month by conversation, as a table or as JSON. **Discarded** is money spent
+on replies you rerolled — the one line of spending that bought nothing. **Cached** is the share of
+the prompt the provider did not have to read again, which is the layer order working or not.*
+
+![The ask pane: a question answered out of character, with F to pin it as a fact and Esc to discard it](docs/images/ask.png)
+
+*`/ask` puts a question to the story out of character. The answer is shown and written into no
+prompt, ever — `F` pins it as a fact the next turn will carry, `Esc` throws it away. Note the last
+paragraph: it says what the story has **not** established rather than inventing it, which is what
+the directive is written to get.*
 
 ---
 
