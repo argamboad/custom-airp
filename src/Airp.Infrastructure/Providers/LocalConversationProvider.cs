@@ -1048,6 +1048,122 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         return [.. waiting.OrderBy(static c => c.DeletedAtUtc)];
     }
 
+    /// <summary>
+    /// Throws away a conversation's derived memory and produces it again from the transcript.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Invariant 6 says summaries, facts and embeddings are derived: dropping those tables
+    /// loses nothing, because <c>Messages</c> can produce all of it again. This is that
+    /// invariant being spent. It exists because the memory can be produced <em>badly</em> — by
+    /// a version with a bug in it — and a story that has already been played cannot be played
+    /// again to fix it.
+    /// </para>
+    /// <para>
+    /// <b>Hand-written facts are the one exception and are kept.</b> A pinned fact was stated by
+    /// a person, possibly about something the transcript never says, so it is not derived from
+    /// anything and deleting it would be the only unrecoverable act available here.
+    /// </para>
+    /// <para>
+    /// Embeddings are left alone. They are derived too, but from message text that has not
+    /// changed, so the same call would buy the same vectors.
+    /// </para>
+    /// <para>
+    /// What this cannot give back is the money the first attempt cost. The ledger is not
+    /// derived and is not touched: those calls happened, and rebuilding adds its own rows
+    /// beside them.
+    /// </para>
+    /// </remarks>
+    /// <param name="conversationId">The conversation to rebuild.</param>
+    /// <param name="progress">Told what is being compressed, for a long transcript.</param>
+    /// <param name="cancellationToken">Token used to abort.</param>
+    /// <returns>What the rebuild produced.</returns>
+    public async Task<MemoryRebuild> RebuildMemoryAsync(
+        string conversationId,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var conversation = await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+
+        var summaries = await store.Summaries
+            .Where(s => s.ConversationId == conversationId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var derived = await store.Facts
+            .Where(f => f.ConversationId == conversationId && !f.Pinned)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var pinned = await store.Facts
+            .CountAsync(f => f.ConversationId == conversationId && f.Pinned, cancellationToken)
+            .ConfigureAwait(false);
+
+        store.Summaries.RemoveRange(summaries);
+        store.Facts.RemoveRange(derived);
+        await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Cleared {Summaries} summary(ies) and {Facts} extracted fact(s) from {Conversation}; "
+            + "{Pinned} pinned fact(s) kept.",
+            summaries.Count,
+            derived.Count,
+            conversationId,
+            pinned);
+
+        // Replayed through the ordinary send path rather than a second implementation of it.
+        // Composing is what compresses, so calling it repeatedly works the backlog down exactly
+        // as playing the conversation would have — and a rebuild that used its own rules would
+        // produce a memory the application never would.
+        var written = 0;
+
+        // Every pass either compresses a stretch or finds nothing to do. The bound is the
+        // transcript itself: a pass that writes no summary ends the loop, so this only stops
+        // early if something is wrong, and then it says so rather than spinning.
+        for (var pass = 0; pass < 200; pass++)
+        {
+            var before = await store.Summaries
+                .CountAsync(s => s.ConversationId == conversationId, cancellationToken)
+                .ConfigureAwait(false);
+
+            progress?.Report(written == 0
+                ? "Reading the transcript…"
+                : $"{written} stretch(es) compressed…");
+
+            await ComposeAsync(store, conversation, instruction: null, cancellationToken)
+                .ConfigureAwait(false);
+
+            var after = await store.Summaries
+                .CountAsync(s => s.ConversationId == conversationId, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (after == before)
+            {
+                break;
+            }
+
+            written = after;
+        }
+
+        var facts = await store.Facts
+            .CountAsync(f => f.ConversationId == conversationId && !f.Pinned, cancellationToken)
+            .ConfigureAwait(false);
+
+        var covered = await store.Summaries
+            .Where(s => s.ConversationId == conversationId)
+            .SumAsync(s => (int?)s.MessageCount, cancellationToken)
+            .ConfigureAwait(false) ?? 0;
+
+        return new MemoryRebuild(
+            SummariesRemoved: summaries.Count,
+            FactsRemoved: derived.Count,
+            PinnedKept: pinned,
+            SummariesWritten: written,
+            FactsExtracted: facts,
+            MessagesCovered: covered);
+    }
+
     /// <summary>Erases the conversations already deleted, and everything they own.</summary>
     /// <remarks>
     /// Deleting a chat hides it, because messages are append-only and dropping the row would

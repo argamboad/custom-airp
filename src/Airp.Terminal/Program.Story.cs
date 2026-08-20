@@ -502,4 +502,105 @@ internal static partial class Program
 
         return 0;
     }
+
+    /// <summary>
+    /// Throws away a conversation's derived memory and builds it again from the transcript.
+    /// </summary>
+    /// <remarks>
+    /// The escape hatch for a memory produced by a version with a bug in it. A story that has
+    /// already been played cannot be played again, but summaries, facts and embeddings are
+    /// derived, so they can be. Hand-written facts are not derived and are kept.
+    /// </remarks>
+    /// <param name="services">Resolved services.</param>
+    /// <param name="args">The command line.</param>
+    /// <param name="cancellationToken">Token used to abort the work.</param>
+    /// <returns>The process exit code.</returns>
+    private static async Task<int> RebuildAsync(
+        IServiceProvider services,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        if (services.GetService<LocalConversationProvider>() is not { } local)
+        {
+            AnsiConsole.MarkupLine("[red]Only the local provider keeps a memory to rebuild.[/]");
+            AnsiConsole.MarkupLine("[grey]Pass --provider local.[/]");
+            return 64;
+        }
+
+        var chats = await local.ListAsync(cancellationToken).ConfigureAwait(false);
+        var wanted = Positional(args).ElementAtOrDefault(1);
+
+        var chat = wanted is null
+            ? null
+            : chats.FirstOrDefault(c =>
+                c.Id == wanted || c.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase));
+
+        if (chat is null)
+        {
+            // No default conversation here, unlike 'airp audit'. Reading the wrong story's audit
+            // wastes a glance; rebuilding the wrong story's memory spends money on it.
+            AnsiConsole.MarkupLine(wanted is null
+                ? "[red]Name the conversation to rebuild.[/]"
+                : $"[red]No conversation matching '{Markup.Escape(wanted)}'.[/]");
+
+            foreach (var candidate in chats)
+            {
+                AnsiConsole.MarkupLine($"[grey]  {Markup.Escape(candidate.Name)}[/]");
+            }
+
+            return 64;
+        }
+
+        var summaries = await local.SummariesAsync(chat.Id, cancellationToken).ConfigureAwait(false);
+        var facts = await local.FactsAsync(chat.Id, cancellationToken).ConfigureAwait(false);
+        var pinned = facts.Count(static f => f.Pinned);
+
+        AnsiConsole.MarkupLine($"[bold]{Markup.Escape(chat.Name)}[/]");
+        AnsiConsole.MarkupLine(
+            $"[grey]{summaries.Count} summary(ies) and {facts.Count - pinned} extracted fact(s) "
+            + $"would be thrown away and produced again.[/]");
+
+        if (pinned > 0)
+        {
+            AnsiConsole.MarkupLine($"[grey]{pinned} pinned fact(s) will be kept — those are yours, not the model's.[/]");
+        }
+
+        if (!args.Contains("--yes", StringComparer.OrdinalIgnoreCase))
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]This spends model calls: one summary and one extraction per stretch.[/]");
+            AnsiConsole.MarkupLine(
+                Markup.Escape("Nothing has been touched. Run 'airp rebuild "
+                    + (wanted ?? chat.Name) + " --yes' to go ahead."));
+
+            return 0;
+        }
+
+        var report = await AnsiConsole.Status()
+            .StartAsync("Rebuilding…", async ctx =>
+            {
+                var progress = new Progress<string>(message => ctx.Status(Markup.Escape(message)));
+                return await local.RebuildMemoryAsync(chat.Id, progress, cancellationToken).ConfigureAwait(false);
+            })
+            .ConfigureAwait(false);
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn(string.Empty);
+        table.AddColumn(new TableColumn("before").RightAligned());
+        table.AddColumn(new TableColumn("after").RightAligned());
+
+        table.AddRow("summaries", report.SummariesRemoved.ToString(), report.SummariesWritten.ToString());
+        table.AddRow("extracted facts", report.FactsRemoved.ToString(), report.FactsExtracted.ToString());
+        table.AddRow("pinned facts", report.PinnedKept.ToString(), report.PinnedKept.ToString());
+
+        AnsiConsole.Write(table);
+
+        AnsiConsole.MarkupLine(
+            $"[green]{report.MessagesCovered} message(s) are now covered by a summary.[/]");
+        AnsiConsole.MarkupLine(
+            "[grey]What it cost is in 'airp cost --chat'. The old calls are still there: "
+            + "the ledger records money spent, not memory kept.[/]");
+
+        return 0;
+    }
 }

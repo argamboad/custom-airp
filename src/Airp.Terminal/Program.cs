@@ -86,6 +86,8 @@ internal static partial class Program
                     .ConfigureAwait(false),
                 "audit" => await AuditAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
+                "rebuild" => await RebuildAsync(host.Services, args, lifetime.ApplicationStopping)
+                    .ConfigureAwait(false),
                 "purge" => await PurgeAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
                 "cost" => await CostAsync(host.Services, args, lifetime.ApplicationStopping)
@@ -393,6 +395,8 @@ internal static partial class Program
         AnsiConsole.MarkupLine("  airp fact               List what the story holds to be true");
         AnsiConsole.MarkupLine("  airp fact add \"…\" --subject Elena   State one yourself; the model cannot retire it");
         AnsiConsole.MarkupLine("  airp fact retire <id>   Mark one as no longer true");
+        AnsiConsole.MarkupLine("  airp rebuild <chat>     Show what rebuilding its memory would replace");
+        AnsiConsole.MarkupLine("  airp rebuild <chat> --yes   Make the summaries and facts again from the transcript");
         AnsiConsole.MarkupLine("  airp purge              List the deleted conversations still on disk");
         AnsiConsole.MarkupLine("  airp purge --yes        Erase them for good, and vacuum the database");
 
