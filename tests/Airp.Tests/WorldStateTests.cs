@@ -99,7 +99,7 @@ public sealed class WorldStateTests : IDisposable
     {
         var id = await SeedAsync(40);
         _model
-            .Says("Summary of the stretch.")
+            .Summarises("Summary of the stretch.")
             .Says(Extraction(new[] { new { subject = "Elena", text = "Has a scar on her forearm" } }))
             .Says("Fine.");
 
@@ -118,7 +118,7 @@ public sealed class WorldStateTests : IDisposable
     {
         var id = await SeedAsync(40);
         _model
-            .Says("Summary.")
+            .Summarises("Summary.")
             .Says(Extraction(new[] { new { subject = "Elena", text = "Distrusts the user" } }))
             .Says("Fine.");
 
@@ -139,7 +139,7 @@ public sealed class WorldStateTests : IDisposable
         // turn on it. Only the live set is sent.
         var id = await SeedAsync(40);
         _model
-            .Says("Summary.")
+            .Summarises("Summary.")
             .Says(Extraction(new[] { new { subject = "Elena", text = "Distrusts the user" } }))
             .Says("Fine.");
 
@@ -226,7 +226,7 @@ public sealed class WorldStateTests : IDisposable
         // Asked for JSON, models sometimes answer in sentences. That is a reason to leave the
         // world state alone, not a reason to fail the reader's turn.
         var id = await SeedAsync(40);
-        _model.Says("Summary.").Says("Sure, here are the facts: Elena has a scar.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Sure, here are the facts: Elena has a scar.").Says("Fine.");
 
         var added = await Provider().SendAsync(id, "Hello.");
 
@@ -242,7 +242,7 @@ public sealed class WorldStateTests : IDisposable
         // Refusing a correct answer over its packaging would be throwing away the work.
         var id = await SeedAsync(40);
         _model
-            .Says("Summary.")
+            .Summarises("Summary.")
             .Says("```json\n" + Extraction(new[] { new { subject = "Elena", text = "Has a knife" } }) + "\n```")
             .Says("Fine.");
 
@@ -274,7 +274,7 @@ public sealed class WorldStateTests : IDisposable
         var pinned = await Provider().AddFactAsync(id, "Elena", "Is allergic to shellfish");
 
         _model
-            .Says("Summary.")
+            .Summarises("Summary.")
             .Says(Extraction(Array.Empty<object>(), pinned.Id[..8]))
             .Says("Fine.");
 
@@ -333,7 +333,7 @@ public sealed class WorldStateTests : IDisposable
     {
         var id = await SeedAsync(40);
         _model
-            .Says("Summary.")
+            .Summarises("Summary.")
             .Says(Extraction(new[] { new { subject = "Elena", text = "Has a knife" } }))
             .Says("Fine.");
 

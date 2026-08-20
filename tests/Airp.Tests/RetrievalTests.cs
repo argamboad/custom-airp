@@ -135,7 +135,7 @@ public sealed class RetrievalTests : IDisposable
     public async Task A_buried_turn_comes_back_when_the_new_message_is_about_it()
     {
         var id = await SeedAsync(40, "Ferrin paid me in clipped silver at the dock.");
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
 
         await Provider().SendAsync(id, "What happened with Ferrin?");
 
@@ -149,7 +149,7 @@ public sealed class RetrievalTests : IDisposable
         // The cache contract. Memories change every turn, so everything stable has to precede
         // them or it is reprocessed along with them.
         var id = await SeedAsync(40, "Ferrin paid me in clipped silver at the dock.");
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
 
         await Provider().SendAsync(id, "What happened with Ferrin?");
 
@@ -166,7 +166,7 @@ public sealed class RetrievalTests : IDisposable
         // A threshold, not a top-N. Four near-misses crowd out the recent turns and read as
         // noise; sending none is the better answer when none are about anything.
         var id = await SeedAsync(40, "Ferrin paid me in clipped silver at the dock.");
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
 
         await Provider().SendAsync(id, "It's cold today.");
 
@@ -193,7 +193,7 @@ public sealed class RetrievalTests : IDisposable
     public async Task Only_compressed_turns_are_embedded()
     {
         var id = await SeedAsync(40, "Ferrin paid me in clipped silver.");
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
 
         await Provider().SendAsync(id, "And Ferrin?");
 
@@ -213,7 +213,7 @@ public sealed class RetrievalTests : IDisposable
 
         // Three calls, in order: the summary, the fact extraction, then the reply the reader
         // is actually waiting on.
-        _model.Says("Summary.").Says("""{"facts":[],"retired":[]}""").Says("Fine.");
+        _model.Summarises("Summary.").Says("""{"facts":[],"retired":[]}""").Says("Fine.");
         _embedder.Broken = true;
 
         var added = await Provider().SendAsync(id, "And Ferrin?");
@@ -226,7 +226,7 @@ public sealed class RetrievalTests : IDisposable
     public async Task Retrieval_is_optional_and_its_absence_changes_nothing_else()
     {
         var id = await SeedAsync(40, "Ferrin paid me in clipped silver.");
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
 
         var withoutEmbedder = new LocalConversationProvider(
             _factory,
@@ -246,7 +246,7 @@ public sealed class RetrievalTests : IDisposable
     public async Task The_recall_count_is_a_ceiling()
     {
         var id = await SeedAsync(40, "Ferrin paid me in clipped silver at the dock, with a knife.");
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
 
         await Provider(o =>
         {

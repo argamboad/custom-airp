@@ -53,7 +53,7 @@ public sealed class BackgroundRetryTests : IDisposable
     [Fact]
     public async Task A_host_that_answers_with_nothing_is_asked_once_more()
     {
-        _model.Empty().Says("They met at the dock.");
+        _model.Empty().Summarises("They met at the dock.");
 
         var reply = await Background.CompleteAsync(
             _model,
@@ -63,7 +63,7 @@ public sealed class BackgroundRetryTests : IDisposable
             "The summary",
             CancellationToken.None);
 
-        reply.Text.ShouldBe("They met at the dock.");
+        reply.Text.ShouldStartWith("They met at the dock.");
         _model.Calls.Count.ShouldBe(2);
     }
 
@@ -137,7 +137,7 @@ public sealed class BackgroundRetryTests : IDisposable
             await store.SaveChangesAsync();
         }
 
-        _model.Empty().Says("They met at the dock.").Says("{\"facts\":[],\"retired\":[]}").Says("Fine.");
+        _model.Empty().Summarises("They met at the dock.").Says("{\"facts\":[],\"retired\":[]}").Says("Fine.");
 
         var provider = new LocalConversationProvider(
             _factory,

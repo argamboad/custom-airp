@@ -82,7 +82,7 @@ public sealed class SummaryTests : IDisposable
     public async Task Turns_that_no_longer_fit_are_summarised_instead_of_dropped()
     {
         var id = await SeedAsync(40);
-        _model.Says("A summary of what happened.").Says("Fine.");
+        _model.Summarises("A summary of what happened.").Says("Fine.");
 
         await Provider().SendAsync(id, "Hello.");
 
@@ -92,14 +92,14 @@ public sealed class SummaryTests : IDisposable
         summary.FromSequence.ShouldBe(1);
         summary.ToSequence.ShouldBeGreaterThan(1);
         summary.MessageCount.ShouldBeGreaterThan(1);
-        summary.Text.ShouldBe("A summary of what happened.");
+        summary.Text.ShouldStartWith("A summary of what happened.");
     }
 
     [Fact]
     public async Task The_summary_reaches_the_prompt_ahead_of_the_recent_turns()
     {
         var id = await SeedAsync(40);
-        _model.Says("They met at the dock.").Says("Fine.");
+        _model.Summarises("They met at the dock.").Says("Fine.");
 
         await Provider().SendAsync(id, "Hello.");
 
@@ -117,7 +117,7 @@ public sealed class SummaryTests : IDisposable
     {
         // The whole distinction. They leave the prompt; they do not leave the conversation.
         var id = await SeedAsync(40);
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
 
         await Provider().SendAsync(id, "Hello.");
 
@@ -136,7 +136,7 @@ public sealed class SummaryTests : IDisposable
         // Paying twice to compress the same turns would be the cheap half of the damage — the
         // expensive half is two accounts of one stretch, disagreeing.
         var id = await SeedAsync(40);
-        _model.Says("Summary.").Says("One.").Says("Two.").Says("Three.");
+        _model.Summarises("Summary.").Says("One.").Says("Two.").Says("Three.");
 
         await Provider().SendAsync(id, "Hello.");
 
@@ -173,7 +173,7 @@ public sealed class SummaryTests : IDisposable
 
         for (var i = 0; i < 60; i++)
         {
-            _model.Says("Summary.");
+            _model.Summarises("Summary.");
         }
 
         for (var send = 1; send <= 8; send++)
@@ -215,7 +215,7 @@ public sealed class SummaryTests : IDisposable
         // The success criterion of the project, made reachable: after the fact, explain why the
         // model said what it said.
         var id = await SeedAsync(40);
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
         await Provider().SendAsync(id, "Hello.");
 
         var audit = await Provider().AuditAsync(id);
@@ -257,7 +257,7 @@ public sealed class SummaryTests : IDisposable
         // Invariant 1: the summary table can go entirely and the conversation is intact,
         // because everything it stood for is still in Messages.
         var id = await SeedAsync(40);
-        _model.Says("Summary.").Says("Fine.");
+        _model.Summarises("Summary.").Says("Fine.");
         await Provider().SendAsync(id, "Hello.");
 
         await using (var store = _factory.CreateDbContext())

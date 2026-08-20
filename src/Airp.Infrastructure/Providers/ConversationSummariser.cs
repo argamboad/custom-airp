@@ -227,6 +227,18 @@ internal sealed class ConversationSummariser
     private const int WorthACall = 10;
 
     /// <summary>
+    /// How many messages one summary may stand in for.
+    /// </summary>
+    /// <remarks>
+    /// The output ceiling for a summarising call is fixed, so fidelity falls as the stretch
+    /// grows: sixty-two messages came back as a good 428-token account, and ninety-nine came
+    /// back as two characters. A backlog larger than this is compressed in several passes
+    /// instead of one, which costs another call and keeps the detail that makes a summary worth
+    /// having.
+    /// </remarks>
+    private const int AtMostPerSummary = 40;
+
+    /// <summary>
     /// How much of the recent transcript is never compressed, however tight the budget.
     /// </summary>
     /// <remarks>
@@ -264,7 +276,28 @@ internal sealed class ConversationSummariser
         // takes what there is, which is still the minimum that has to go.
         var room = Math.Max(overflowing, Math.Min(WorthACall, uncovered.Count - AlwaysWhole));
 
-        return [.. uncovered.Take(room)];
+        // Capped as well as floored. A backlog of a hundred turns arrives here as one stretch,
+        // and one summarising call cannot carry a hundred turns — the caller compresses again
+        // on the next pass, and the transcript is over budget only until it does.
+        return [.. uncovered.Take(Math.Min(room, AtMostPerSummary))];
+    }
+
+    /// <summary>
+    /// The least a summary of these turns could plausibly be.
+    /// </summary>
+    /// <remarks>
+    /// Scaled to what it is standing in for rather than a flat floor: ten short messages
+    /// genuinely do compress to a couple of sentences, while a hundred cannot. The ratio is
+    /// deliberately far looser than anything observed working — the real summaries ran between
+    /// 3× and 37× — so this only ever catches an answer that is not an account of anything.
+    /// </remarks>
+    /// <param name="messages">The stretch being compressed.</param>
+    /// <returns>The smallest believable summary, in tokens.</returns>
+    private static int Credible(IReadOnlyList<MessageRecord> messages)
+    {
+        var source = messages.Sum(m => TokenEstimator.ForText(m.Text));
+
+        return Math.Max(20, source / 200);
     }
 
     /// <summary>Room to leave for the turns retrieval will bring back.</summary>
@@ -326,6 +359,29 @@ internal sealed class ConversationSummariser
 
             if (string.IsNullOrWhiteSpace(reply.Text))
             {
+                return null;
+            }
+
+            // A reply is not automatically a summary. Observed on the real story: ninety-nine
+            // messages went up and "##" came back — two characters, accepted, stored, and left
+            // standing in for the first hundred turns of a conversation while the turns
+            // themselves left the prompt. Nothing downstream ever looks at a summary again, so
+            // the more useless it is, the longer it survives.
+            //
+            // Refusing it here reaches the branch that already exists for a summary that could
+            // not be written at all: the turns go whole and the budget is exceeded, which costs
+            // cents, against a character that has forgotten, which costs the story.
+            var produced = TokenEstimator.ForText(reply.Text);
+
+            if (produced < Credible(messages))
+            {
+                _logger.LogWarning(
+                    "Summarising {Count} message(s) of {Conversation} produced {Tokens} token(s), "
+                    + "which cannot be an account of them; refusing it.",
+                    messages.Count,
+                    conversation.Id,
+                    produced);
+
                 return null;
             }
 
