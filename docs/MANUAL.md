@@ -634,7 +634,10 @@ It goes in **batches**, not one turn at a time. Once the transcript is at the ce
 send pushes it over by exactly the exchange you just had, so compressing only the overflow
 would run on every turn — and a summary of two messages is not shorter than two messages. One
 measured at 0.91×: the summary came out *longer* than the turns it replaced. So compression
-takes at least ten messages when it takes any, and never reaches into the six most recent.
+takes at least ten messages when it takes any, at most forty, and never reaches into the six
+most recent. The cap is there because one summarising call has a fixed output ceiling: a
+backlog handed over whole came back as two characters, which is worse than not compressing at
+all. A summary too short to be an account of its turns is now refused, and the turns go whole.
 
 **What was compressed is embedded**, and when you write something related to an old moment,
 that moment comes back into the prompt in its exact words.

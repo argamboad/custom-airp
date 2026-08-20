@@ -124,7 +124,7 @@ public sealed class RebuildMemoryTests : IDisposable
     {
         for (var i = 0; i < 40; i++)
         {
-            _model.Says("They talked by the water.");
+            _model.Summarises("They talked by the water.");
         }
     }
 

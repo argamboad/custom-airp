@@ -58,6 +58,22 @@ internal sealed class ScriptedModel : ILanguageModelClient
         return this;
     }
 
+    /// <summary>
+    /// Answers the way a summariser does: prose, long enough to be an account of something.
+    /// </summary>
+    /// <remarks>
+    /// A summary is refused now if it is too short to be one, because a real host returned
+    /// <c>##</c> for ninety-nine messages and it was stored and believed. Scripting
+    /// <c>"Summary."</c> for a stretch of forty turns is that same shape, so the tests would be
+    /// proving the memory works on data the memory is now right to reject. The gist is kept at
+    /// the front, where assertions look for it.
+    /// </remarks>
+    /// <param name="gist">The words a test wants to find in the summary.</param>
+    public ScriptedModel Summarises(string gist)
+        => Says(gist + " " + string.Join(
+            ' ',
+            Enumerable.Repeat("They spoke at length and something was settled between them.", 4)));
+
     /// <summary>Fails the way a host does when it answers 200 and sends nothing.</summary>
     public ScriptedModel Empty()
     {

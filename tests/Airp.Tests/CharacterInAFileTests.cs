@@ -111,7 +111,7 @@ public sealed class CharacterInAFileTests : IDisposable
         // The regression test, stated as the failure: turns must not leave the prompt without
         // a summary having been written for them.
         var id = await SeedAsync(60);
-        _model.Says("They met at the dock.").Says("Fine.");
+        _model.Summarises("They met at the dock.").Says("Fine.");
 
         await Provider().SendAsync(id, "Hello.");
 
@@ -128,7 +128,7 @@ public sealed class CharacterInAFileTests : IDisposable
         // The stronger claim, and the one that actually matters. Compressing something is not
         // enough: what the builder drops has to be a subset of what the summariser covered.
         var id = await SeedAsync(60);
-        _model.Says("They met at the dock.").Says("Fine.");
+        _model.Summarises("They met at the dock.").Says("Fine.");
 
         await Provider().SendAsync(id, "Hello.");
 
@@ -161,7 +161,7 @@ public sealed class CharacterInAFileTests : IDisposable
 
         for (var i = 0; i < 40; i++)
         {
-            _model.Says("They talked by the water.");
+            _model.Summarises("They talked by the water.");
         }
 
         for (var send = 1; send <= 6; send++)
@@ -188,6 +188,61 @@ public sealed class CharacterInAFileTests : IDisposable
                 2,
                 "a stretch this short costs a call and yields neither a shorter prompt nor a fact");
         }
+    }
+
+    [Fact]
+    public async Task A_reply_too_short_to_be_a_summary_is_refused_rather_than_believed()
+    {
+        // What actually happened, and the worst outcome this project has produced. A backlog of
+        // ninety-nine messages went up in one call and "##" came back — two characters. It was
+        // not empty, so it was stored, and it stood in for the first hundred turns of a real
+        // story while those turns left the prompt. The forgetting this exists to prevent,
+        // arriving through the machinery built to prevent it.
+        var id = await SeedAsync(60);
+        _model.Says("##").Says("##").Says("Fine.");
+
+        await Provider().SendAsync(id, "Hello.");
+
+        await using var store = _factory.CreateDbContext();
+
+        (await store.Summaries.CountAsync(s => s.ConversationId == id))
+            .ShouldBe(0, "an answer that cannot be an account of the turns must not stand in for them");
+
+        // And the turns are still whole in the prompt, over budget, which is the branch that
+        // already exists for a summary that could not be written at all.
+        var audited = await store.Messages
+            .Where(m => m.ConversationId == id && m.ContextAudit != null)
+            .OrderBy(m => m.Sequence)
+            .LastAsync();
+
+        audited.ContextAudit.ShouldNotBeNull();
+        audited.ContextAudit.ShouldNotContain("dropped", Case.Sensitive);
+    }
+
+    [Fact]
+    public async Task No_single_summary_is_asked_to_carry_a_whole_backlog()
+    {
+        // The other half of the same failure. The summarising call has a fixed output ceiling,
+        // so fidelity falls as the stretch grows: sixty-two messages came back as a usable
+        // account and ninety-nine came back as punctuation. A backlog is worked down in several
+        // passes instead of being handed over in one.
+        var id = await SeedAsync(120);
+
+        for (var i = 0; i < 40; i++)
+        {
+            _model.Summarises("They talked by the water.");
+        }
+
+        await Provider().SendAsync(id, "Hello.");
+
+        await using var store = _factory.CreateDbContext();
+
+        var summaries = await store.Summaries
+            .Where(s => s.ConversationId == id)
+            .ToListAsync();
+
+        summaries.ShouldNotBeEmpty();
+        summaries.ShouldAllBe(s => s.MessageCount <= 40);
     }
 
     [Fact]

@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       667 tests
+tests/Airp.Tests/       669 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -161,13 +161,23 @@ does not spend one extra call.
 Summaries and facts are produced at the same point: the moment some turns stop being seen in
 their own words is the last chance to get anything cheap out of them.
 
-**Compression goes in batches — at least 10 messages, never touching the 6 most recent.** Once
-the transcript sits at the ceiling, every send overflows by exactly the exchange just added, so
-compressing only the overflow runs every turn on one or two messages. Measured on the real BJU
-story: 37× over 62 messages, 1.06× over two, and one two-message stretch whose summary came out
-**longer** than the turns it replaced. The extractor was being damaged by the same thing — four
-runs in a row returned empty arrays, correctly, because nothing durable is established in two
-messages.
+**Compression goes in batches — at least 10 messages, at most 40, never touching the 6 most
+recent.** Once the transcript sits at the ceiling, every send overflows by exactly the exchange
+just added, so compressing only the overflow runs every turn on one or two messages. Measured on
+the real BJU story: 37× over 62 messages, 1.06× over two, and one two-message stretch whose
+summary came out **longer** than the turns it replaced. The extractor was damaged by the same
+thing — four runs in a row returned empty arrays, correctly, because nothing durable is
+established in two messages.
+
+**The cap matters as much as the floor, and cost more to learn.** The first version had only a
+floor, so a rebuild handed the whole 99-message backlog to one call against a fixed 700-token
+output ceiling — and the answer was `##`. Two characters, non-empty, stored, standing in for the
+first hundred turns of a real story while those turns left the prompt. **A summary is now
+refused unless it is long enough to be an account of what it replaces** (`ConversationSummariser.
+Credible`, deliberately far looser than any observed ratio), which reaches the branch that
+already existed for a summary that could not be written at all: send the turns whole and go over
+budget. An empty reply was checked for; a useless one was not, and useless is what a bad host
+returns.
 
 **The reader is named by their persona, never "User".** Both background readers used to label
 the reader's turns `User`, and the extractor — told that a subject is a character's name —
@@ -356,7 +366,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 667 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 669 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
