@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       671 tests
+tests/Airp.Tests/       674 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -179,14 +179,24 @@ already existed for a summary that could not be written at all: send the turns w
 budget. An empty reply was checked for; a useless one was not, and useless is what a bad host
 returns.
 
-**Three shapes of bad summary, found one at a time, all now refused.** Empty (checked from the
-start), too short to be an account of its stretch (`Credible` — a compression ratio above 60×,
-against 3–19× for every one that worked), and **cut off far below the ceiling** — a real answer
-that stops mid-word, which survived the first two guards because it reads like prose. A summary
-is chronological, so a clipped one loses its tail: the newest events in the stretch, the ones
-the next turn needs. A summary that runs *to* the ceiling is kept; it is as much as was asked
-for. **The ceiling itself was measured too low at 700 and is now 1200** — three of four summaries
-of a real 40-message batch ended mid-word against it.
+**Two shapes of bad summary, both refused, and one guard too many.** Empty was checked from the
+start; too short to be an account of its stretch is `Credible`, a compression ratio above 60×
+against 3–19× for every one that worked. A summary cut off mid-word — the third shape, and real
+— fails that same ratio, so **the extra "was it truncated" guard written for it was removed the
+same hour**: keyed on a fraction of the output ceiling, it refused a 582-token account of ten
+messages for being eighteen tokens under an arbitrary line. A fraction of the ceiling says
+nothing about whether an answer covers what it replaced. And refusing a clipped-but-substantial
+summary is the worse failure anyway — against a host that always clips it means never
+compressing, and a transcript permanently over budget beats no summary only in theory.
+
+**The ceiling itself was measured too low at 700 and is now 1200** — three of four summaries of
+a real 40-message batch ended mid-word against it.
+
+**A 200 with no message content now says why.** It is the most common failure the background
+readers hit, and the message could not tell a host that generated nothing from one that refused:
+`finish_reason` separates `content_filter` from `length` from `stop`, and a `reasoning` field
+with null content is a third thing again. Five extractions in a row died on this during one
+rebuild, and none of them said which.
 
 **The reader is named by their persona, never "User".** Both background readers used to label
 the reader's turns `User`, and the extractor — told that a subject is a character's name —
@@ -375,7 +385,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 671 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 674 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the

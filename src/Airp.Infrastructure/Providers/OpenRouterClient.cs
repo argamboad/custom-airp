@@ -101,8 +101,29 @@ public sealed class OpenRouterClient : ILanguageModelClient
         {
             // A 200 with no content is not a reply. Saying so beats handing back an empty
             // string that would be stored as though the model had answered with silence.
+            //
+            // Named in as much detail as the response allows, because this failure is common
+            // enough to have cost a real story its fact extraction five times running and the
+            // message alone could not distinguish a host that produced nothing from one that
+            // refused. 'finish_reason' separates them: content_filter is a refusal, length is
+            // a ceiling hit before the first token, stop is a host with nothing to say. The
+            // reasoning field is checked too — some models put everything there and leave
+            // content null, which looks identical from here and is not the same problem.
+            var why = choice?["finish_reason"]?.GetValue<string>();
+            var host = body?["provider"]?.GetValue<string>();
+            var reasoned = choice?["message"]?["reasoning"] is not null;
+
+            _logger.LogWarning(
+                "No message content from {Host}: finish_reason {Reason}, reasoning present: {Reasoned}.",
+                host ?? "an unnamed provider",
+                why ?? "(absent)",
+                reasoned);
+
             throw new ModelUnavailableException(
-                "The API returned a response with no message content.",
+                $"The API returned a response with no message content (finish_reason: {why ?? "absent"}"
+                + (host is { Length: > 0 } ? $", served by {host}" : string.Empty)
+                + (reasoned ? ", reasoning only" : string.Empty)
+                + ").",
                 (int)HttpStatusCode.OK);
         }
 

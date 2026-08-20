@@ -378,14 +378,18 @@ internal sealed class ConversationSummariser
             // cents, against a character that has forgotten, which costs the story.
             var produced = TokenEstimator.ForText(reply.Text);
 
-            // Cut off, and not because it was asked for less than it had to say. A summary
-            // that runs to the ceiling is as much of an account as was paid for and is kept;
-            // one that stopped at a tenth of it stopped for the host's reasons, and what it
-            // lost is its tail — which in a chronological account is the newest events, the
-            // ones the next turn actually needs.
-            var stopped = reply.WasTruncated && produced < choice.MaxTokens / 2;
-
-            if (produced < Credible(messages) || stopped)
+            // Judged against the stretch, and only against the stretch. A guard on "was it cut
+            // off, and below half the ceiling" was tried here and removed the same day: it
+            // refused a 582-token account of ten messages for being eighteen tokens under an
+            // arbitrary line, while the summary it was written to catch — seventy tokens for
+            // twenty-seven messages — fails the ratio on its own. A fraction of the ceiling says
+            // nothing about whether an answer covers what it replaced.
+            //
+            // Refusing a clipped-but-substantial summary is also the worse failure. It loses the
+            // tail of the stretch, which is bad; refusing it means never compressing at all
+            // against a host that always clips, and a transcript permanently over budget is
+            // worse than one summary missing its last sentence.
+            if (produced < Credible(messages))
             {
                 _logger.LogWarning(
                     "Summarising {Count} message(s) of {Conversation} produced {Tokens} token(s), "

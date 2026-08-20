@@ -302,3 +302,74 @@ public class ProviderRoutingTests
         sent["provider"].ShouldBeNull();
     }
 }
+
+/// <summary>
+/// What a 200 with no content is allowed to leave unsaid.
+/// </summary>
+/// <remarks>
+/// This failure cost one real story its fact extraction five times running, and the message it
+/// produced — "the API returned a response with no message content" — could not tell a host that
+/// generated nothing from one that refused the request. They want different answers: a refusal
+/// means the content tripped a filter and another host would do, an empty generation means the
+/// lottery. The response says which, and it was being thrown away.
+/// </remarks>
+public class EmptyContentTests
+{
+    private static OpenRouterClient Build(ScriptedHandler handler)
+    {
+        var secrets = Substitute.For<ISecretStore>();
+        secrets.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<string?>("sk-test"));
+
+        return new OpenRouterClient(
+            new HttpClient(handler),
+            secrets,
+            TestOptions.Default(),
+            NullLogger<OpenRouterClient>.Instance);
+    }
+
+    [Fact]
+    public async Task A_refusal_says_so_rather_than_reading_as_an_empty_generation()
+    {
+        var handler = new ScriptedHandler(HttpStatusCode.OK, """
+            {
+              "provider": "SomeHost",
+              "choices": [ { "message": { "role": "assistant" }, "finish_reason": "content_filter" } ]
+            }
+            """);
+
+        var thrown = await Should.ThrowAsync<Airp.Domain.ModelUnavailableException>(
+            async () => await Build(handler).CompleteAsync([new ModelMessage(ModelRole.User, "hello")]));
+
+        thrown.Message.ShouldContain("content_filter");
+        thrown.Message.ShouldContain("SomeHost");
+    }
+
+    [Fact]
+    public async Task A_model_that_answered_only_in_its_reasoning_is_named_as_that()
+    {
+        // Identical from the outside — content is null either way — and not the same problem.
+        var handler = new ScriptedHandler(HttpStatusCode.OK, """
+            {
+              "choices": [ { "message": { "reasoning": "thinking about it" }, "finish_reason": "stop" } ]
+            }
+            """);
+
+        var thrown = await Should.ThrowAsync<Airp.Domain.ModelUnavailableException>(
+            async () => await Build(handler).CompleteAsync([new ModelMessage(ModelRole.User, "hello")]));
+
+        thrown.Message.ShouldContain("reasoning only");
+    }
+
+    [Fact]
+    public async Task With_nothing_to_go_on_it_still_says_the_reason_was_absent()
+    {
+        var handler = new ScriptedHandler(HttpStatusCode.OK, """
+            { "choices": [ { "message": {} } ] }
+            """);
+
+        var thrown = await Should.ThrowAsync<Airp.Domain.ModelUnavailableException>(
+            async () => await Build(handler).CompleteAsync([new ModelMessage(ModelRole.User, "hello")]));
+
+        thrown.Message.ShouldContain("absent");
+    }
+}

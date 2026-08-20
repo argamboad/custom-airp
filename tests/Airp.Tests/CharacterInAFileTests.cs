@@ -229,6 +229,10 @@ public sealed class CharacterInAFileTests : IDisposable
         //
         // A summary is written in chronological order, so a clipped one loses its tail — the
         // newest events in the stretch, which are the ones the next turn needs most.
+        //
+        // Caught by the ratio rather than by the truncation flag. A guard on "cut off, and below
+        // half the ceiling" was written for this and removed within the hour: it refused a
+        // 582-token account of ten messages, while this case fails the ratio on its own.
         var id = await SeedAsync(60);
 
         _model
