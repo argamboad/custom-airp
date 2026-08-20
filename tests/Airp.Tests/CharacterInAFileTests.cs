@@ -149,6 +149,48 @@ public sealed class CharacterInAFileTests : IDisposable
     }
 
     [Fact]
+    public async Task A_transcript_sitting_at_the_budget_edge_is_compressed_in_batches()
+    {
+        // The shape that only appears with a character in a file: a card big enough to hold the
+        // transcript against the ceiling, so every send overflows by exactly the exchange that
+        // was just added. Compressing only that overflow means a summarising call per turn over
+        // two messages — and a two-message summary is not smaller than the two messages.
+        // Observed on a real story before this was fixed: six summaries in forty minutes, one of
+        // them longer than the turns it replaced.
+        var id = await SeedAsync(60);
+
+        for (var i = 0; i < 40; i++)
+        {
+            _model.Says("They talked by the water.");
+        }
+
+        for (var send = 1; send <= 6; send++)
+        {
+            await Provider().SendAsync(id, $"Message {send}.");
+        }
+
+        await using var store = _factory.CreateDbContext();
+
+        var summaries = await store.Summaries
+            .Where(s => s.ConversationId == id)
+            .OrderBy(s => s.FromSequence)
+            .ToListAsync();
+
+        summaries.ShouldNotBeEmpty("the card fills most of the budget, so the transcript must be compressed");
+
+        summaries.Count.ShouldBeLessThan(
+            6,
+            "compressing only what overflowed fires again on the very next send");
+
+        foreach (var summary in summaries)
+        {
+            summary.MessageCount.ShouldBeGreaterThan(
+                2,
+                "a stretch this short costs a call and yields neither a shorter prompt nor a fact");
+        }
+    }
+
+    [Fact]
     public async Task A_conversation_that_fits_beside_its_character_is_still_never_compressed()
     {
         // Reserving honestly must not tip into compressing eagerly: the guarantee that a short

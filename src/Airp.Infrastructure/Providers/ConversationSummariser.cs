@@ -152,7 +152,7 @@ internal sealed class ConversationSummariser
             kept++;
         }
 
-        var toCompress = uncovered.Take(uncovered.Count - kept).ToList();
+        var toCompress = Worthwhile(uncovered, uncovered.Count - kept);
 
         if (toCompress.Count > 0)
         {
@@ -210,6 +210,61 @@ internal sealed class ConversationSummariser
             [.. existing.Select(s => s.Text)],
             [.. history.Where(m => m.Sequence > recentFrom)],
             CompressionFailed: false);
+    }
+
+    /// <summary>
+    /// How few turns are too few to be worth a summarising call.
+    /// </summary>
+    /// <remarks>
+    /// Measured on a real story rather than chosen. Compressing the minimum that overflows
+    /// means compressing whatever the last send pushed over the edge — two messages — and the
+    /// instruction asks for six things about them: what happened, what was established, what
+    /// changed, what was promised, where the scene was left. On two messages that scaffolding
+    /// produces about as much text as it replaced. Observed ratios in one conversation: 37×
+    /// over 62 messages, 1.06× over two, and one stretch of two that came out <em>longer</em>
+    /// than the turns it stood in for — a paid call that made the prompt bigger.
+    /// </remarks>
+    private const int WorthACall = 10;
+
+    /// <summary>
+    /// How much of the recent transcript is never compressed, however tight the budget.
+    /// </summary>
+    /// <remarks>
+    /// The turn just sent is in here. Reaching the batch size by swallowing the exchange the
+    /// reader is in the middle of would trade the bug for a worse one.
+    /// </remarks>
+    private const int AlwaysWhole = 6;
+
+    /// <summary>
+    /// Widens a compression to a stretch worth compressing.
+    /// </summary>
+    /// <remarks>
+    /// Compressing exactly what overflowed refires on the next send, because the next send
+    /// overflows again by exactly one exchange. Taking a batch buys headroom for several turns
+    /// and — the part that matters more — hands the extractor a stretch with something durable
+    /// in it. Four extractions in a row returned empty arrays over two-message stretches, which
+    /// was the model being right: nothing is established in two messages.
+    /// <para>
+    /// The extra turns are not lost. They leave the prompt for the summary, stay whole in the
+    /// store, and are embedded for retrieval on the way out — which is the trade this whole
+    /// design is built on.
+    /// </para>
+    /// </remarks>
+    /// <param name="uncovered">Turns no summary covers yet, oldest first.</param>
+    /// <param name="overflowing">How many must go for the transcript to fit.</param>
+    /// <returns>The stretch to compress, oldest first.</returns>
+    private static List<MessageRecord> Worthwhile(IReadOnlyList<MessageRecord> uncovered, int overflowing)
+    {
+        if (overflowing <= 0)
+        {
+            return [];
+        }
+
+        // Never past the turns being played. When there is not room for a full batch this
+        // takes what there is, which is still the minimum that has to go.
+        var room = Math.Max(overflowing, Math.Min(WorthACall, uncovered.Count - AlwaysWhole));
+
+        return [.. uncovered.Take(room)];
     }
 
     /// <summary>Room to leave for the turns retrieval will bring back.</summary>
