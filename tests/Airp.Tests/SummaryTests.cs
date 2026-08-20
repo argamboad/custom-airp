@@ -191,8 +191,12 @@ public sealed class SummaryTests : IDisposable
     public async Task A_summariser_that_fails_sends_the_turns_whole_rather_than_forgetting_them()
     {
         // Going over budget is recoverable; a character that has forgotten is not.
+        //
+        // Two failures, because one is retried now: a host answering with nothing is the lottery
+        // rather than the request, and giving up on the first of those lost a real story its
+        // most valuable extraction. "Failed" here means failed twice.
         var id = await SeedAsync(40);
-        _model.Fails("summariser down").Says("Fine.");
+        _model.Fails("summariser down").Fails("summariser down").Says("Fine.");
 
         var added = await Provider().SendAsync(id, "Hello.");
 

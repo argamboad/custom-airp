@@ -629,11 +629,25 @@ When it does go over:
 **The oldest stretch is summarised.** It leaves the prompt, not the conversation — the
 messages are still whole in the database and in your transcript.
 
+It goes in **batches**, not one turn at a time. Once the transcript is at the ceiling every
+send pushes it over by exactly the exchange you just had, so compressing only the overflow
+would run on every turn — and a summary of two messages is not shorter than two messages. One
+measured at 0.91×: the summary came out *longer* than the turns it replaced. So compression
+takes at least ten messages when it takes any, and never reaches into the six most recent.
+
 **What was compressed is embedded**, and when you write something related to an old moment,
 that moment comes back into the prompt in its exact words.
 
 **Facts are extracted**: what ended up being true. With a validity range, so when the story
-contradicts one, it is retired rather than accumulated.
+contradicts one, it is retired rather than accumulated. The batching matters here too — asked
+about two messages the extractor returns nothing, correctly, because nothing durable is
+established in two messages.
+
+Both are **retried once** if the host answers with nothing. That happens: the same lottery that
+produces token soup also returns 200 with an empty body, and unlike a reply — which you see
+fail, and can ask for again — a summary failing is a line in the log. One real story lost the
+extraction over its first sixty-two messages that way, and nothing will look at those turns
+again.
 
 ### The facts are yours to edit
 

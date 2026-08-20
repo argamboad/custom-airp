@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       658 tests
+tests/Airp.Tests/       662 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -160,6 +160,26 @@ does not spend one extra call.
 
 Summaries and facts are produced at the same point: the moment some turns stop being seen in
 their own words is the last chance to get anything cheap out of them.
+
+**Compression goes in batches — at least 10 messages, never touching the 6 most recent.** Once
+the transcript sits at the ceiling, every send overflows by exactly the exchange just added, so
+compressing only the overflow runs every turn on one or two messages. Measured on the real BJU
+story: 37× over 62 messages, 1.06× over two, and one two-message stretch whose summary came out
+**longer** than the turns it replaced. The extractor was being damaged by the same thing — four
+runs in a row returned empty arrays, correctly, because nothing durable is established in two
+messages.
+
+**The reader is named by their persona, never "User".** Both background readers used to label
+the reader's turns `User`, and the extractor — told that a subject is a character's name —
+filed everything about them under `User`, directly beneath a summary calling the same person by
+name. `Transcript` is the one place that renders a stretch for a model to read; there is no
+second copy to drift.
+
+**Background calls are retried once**, and only for failures a second attempt could answer
+(no status, 200-with-no-content, 408, 429, 5xx). A rejected key fails identically twice and
+costs twice. This exists because a failed reply is visible and a failed summary is a log line:
+the real story lost the extraction over its first 62 messages to a single empty response, and
+nothing will ever look at those turns again.
 
 If compressing fails, **go over budget** rather than discard. Going over costs cents; a
 character that has forgotten is irreversible — and discarding is exactly what the services
@@ -329,7 +349,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 658 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 662 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the

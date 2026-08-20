@@ -137,14 +137,15 @@ internal sealed class FactExtractor
 
         try
         {
-            var reply = await _model.CompleteAsync(
+            var reply = await Background.CompleteAsync(
+                _model,
                 [
                     new ModelMessage(ModelRole.System, Instruction),
                     new ModelMessage(ModelRole.User, $"Existing facts:\n{known}\n\nNew transcript:\n{transcript}"),
                 ],
-                choice.Model,
-                choice.Temperature,
-                choice.MaxTokens,
+                choice,
+                _logger,
+                "The fact extraction",
                 cancellationToken).ConfigureAwait(false);
 
             // Same reasoning as the summariser: it runs on its own, and an extraction that
