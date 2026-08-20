@@ -36,6 +36,13 @@ the directive is written to get.*
 - **Memory that does not forget.** Turns that no longer fit are compressed rather than
   dropped; specific old moments are recalled by meaning; what the story established is kept
   as facts with a validity range, so a thing that stopped being true stops being sent.
+- **A memory you can rebuild.** All of it is derived from a transcript that is never deleted,
+  so `airp rebuild` throws the summaries and extracted facts away and makes them again — the
+  answer to a version that produced them badly, which cannot be fixed by playing the story
+  twice. Facts you wrote yourself are kept: those are derived from nothing.
+- **Branch a story at any turn.** `B` in the transcript copies everything up to that message
+  into a new conversation — character, dials, summaries, the facts that were true then — so a
+  scene can go two ways without losing the way it already went.
 - **A context budget you can inspect.** Every reply records its prompt layer by layer, with
   estimated and reported token counts side by side — `airp audit` shows it all.
 - **A spend ledger and a report.** Every billed call is recorded with what the provider said
@@ -206,16 +213,38 @@ Embeddings can point somewhere else entirely:
 Both embedding settings fall back to the chat ones when unset, so a single-service setup needs
 no configuration at all.
 
+One more OpenRouter-ism, this time in the request and omitted entirely unless asked for:
+
+```jsonc
+"Model": {
+  "IgnoreProviders": ["deepinfra"],            // never route here again
+  "PreferProviders": ["gmicloud", "baidu"]     // try these first
+}
+```
+
+A router fanning one model across many hosts means the host decides both the prose and the
+bill. Measured over fifteen calls on one conversation: cache hit rates of 61%, 47% and 0%
+depending on who answered, and one host returning 128 completion tokens a call against 575–791
+elsewhere — token soup, billed the same. `airp cost --providers` is what these lists are
+decided from; its `out/call` column is how a host that answers with nonsense rather than
+failing gets spotted. Slugs are lower-case and a wrong one is dropped in silence, so
+`airp config` prints the lists back and the audit's *served by* column is the confirmation
+that they took.
+
 **Adding a provider** should be configuration, not code. If it is not, the interesting places
 are `OpenRouterClient` (one `CompleteAsync`, one response parse) and `OpenRouterEmbeddingClient`
 — both are thin, and both are named after a default rather than a dependency.
+
 ### The local store
 
 EF Core over SQLite, append-only by construction rather than by convention: `SaveChanges`
 refuses to persist a deleted message or an edited one, so the invariant does not depend on
 anyone remembering it. Deleting from the terminal writes a tombstone. Summaries, extracted
 facts and embeddings are all derived — dropping any of those tables loses nothing that
-`Messages` does not still hold.
+`Messages` does not still hold. `airp rebuild` is that property being spent: it deletes a
+conversation's summaries and extracted facts and produces them again by replaying the ordinary
+send path, which is the only repair available for a memory built by a version with a bug in it.
+Facts written by hand are pinned and kept, being the one thing in there derived from nothing.
 
 The one exception is the spend ledger, which is not derived and cannot be rebuilt: token
 counts could be re-estimated, but what a router actually charged — after its own pricing, its
