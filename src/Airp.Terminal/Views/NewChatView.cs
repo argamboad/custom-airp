@@ -17,10 +17,11 @@ namespace Airp.Terminal.Views;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The opening gets the multi-line document and most of the screen because it does the real
-/// establishing work — a greeting where each character speaks once, in their own voice, sets
-/// them better than paragraphs describing them, and it sits at the top of the transcript for
-/// the rest of the story.
+/// The opening gets the multi-line document because it does the real establishing work — a
+/// greeting where each character speaks once, in their own voice, sets them better than
+/// paragraphs describing them, and it sits at the top of the transcript for the rest of the
+/// story. It shares the panel under the rule with the picked character's world, and whichever
+/// of the two the reader is looking at gets the room: choosing a card means reading it.
 /// </para>
 /// <para>
 /// The pickers offer names, never contents, because that is what a conversation stores: the
@@ -48,15 +49,17 @@ internal sealed class NewChatView : ViewBase
     private readonly string _openingsFolder;
     private readonly string _charactersFolder;
 
-    /// <summary>How much of the picked character's world is shown while choosing.</summary>
+    /// <summary>The picked character's world, whole, as the card states it.</summary>
     /// <remarks>
-    /// Enough to recognise a place, not enough to read it. Three of the cards in a real
-    /// library are resort scenarios whose names differ by one word, and the name alone does
-    /// not tell you which one you are about to play.
+    /// Whole rather than a taste of it: three of the cards in a real library are resort
+    /// scenarios whose names differ by one word, and the paragraph that tells them apart is
+    /// rarely the first one. It gets the big panel and scrolls, which is the only way to
+    /// read a section that runs to forty lines.
     /// </remarks>
-    private const int PreviewLines = 6;
-
     private IReadOnlyList<string> _preview = [];
+
+    /// <summary>First visible line of the world, in wrapped lines.</summary>
+    private int _previewScroll;
 
     /// <summary>
     /// What the picked character costs, every turn, for the life of the conversation.
@@ -121,6 +124,7 @@ internal sealed class NewChatView : ViewBase
     private void DescribeCharacter()
     {
         _preview = [];
+        _previewScroll = 0;
         _characterTokens = 0;
 
         if (_characters[_character] is not { } name)
@@ -133,7 +137,7 @@ internal sealed class NewChatView : ViewBase
             return;
         }
 
-        _preview = TextLibrary.Preview(path, PreviewLines);
+        _preview = TextLibrary.Preview(path, int.MaxValue);
 
         try
         {
@@ -158,6 +162,7 @@ internal sealed class NewChatView : ViewBase
     [
         new("Tab", "Next field"),
         new("←→", "Pick"),
+        new("PgUp/PgDn", "Read the world"),
         new("Ctrl+Enter", "Create"),
         new("Esc", "Cancel"),
     ];
@@ -204,14 +209,6 @@ internal sealed class NewChatView : ViewBase
                     _characterTokens >= 20000 ? theme.Warning : theme.Muted)
                 : string.Empty)));
 
-        // The world, as the card itself states it. Shown under the picker rather than after
-        // the decision, because three of these names differ by a single word and the card is
-        // the thing being chosen.
-        foreach (var line in _preview.SelectMany(l => Draw.Wrap(l, width - 13)).Take(PreviewLines))
-        {
-            rows.Add(new Markup(Draw.Literal("           " + line, theme.Muted)));
-        }
-
         rows.Add(new Markup(
             Label(PersonaField, "Persona")
             + Draw.Literal(
@@ -221,6 +218,40 @@ internal sealed class NewChatView : ViewBase
             + Draw.Literal(_focus == PersonaField ? "  ←→" : string.Empty, theme.Muted)));
 
         rows.Add(new Rule { Style = theme.Border });
+
+        var height = Panel(context);
+
+        // The panel goes to whichever of the two is being looked at. Writing the opening needs
+        // the document; everything else is choosing a card, and the world is what is being
+        // chosen — so it gets the room, and the opening keeps a line saying it is there.
+        if (_focus != OpeningField && _preview.Count > 0)
+        {
+            rows.Add(new Markup(
+                Label(OpeningField, "Opening") + Draw.Literal(Waiting(), theme.Muted)));
+
+            // One row of the panel goes to the caption, so the text gets the rest.
+            var body = height - 1;
+            var world = Wrapped(width);
+
+            _previewScroll = Math.Min(_previewScroll, Math.Max(0, world.Count - body));
+
+            var last = Math.Min(world.Count, _previewScroll + body);
+
+            rows.Add(new Markup(Draw.Literal(
+                $"  {_characters[_character]} — the world it belongs to"
+                + (world.Count > body
+                    ? $"    {_previewScroll + 1}–{last} of {world.Count}   PgUp/PgDn"
+                    : string.Empty),
+                theme.Muted)));
+
+            foreach (var line in world.Skip(_previewScroll).Take(body))
+            {
+                rows.Add(new Markup(Draw.Literal("  " + line, theme.Text)));
+            }
+
+            return new Rows(rows);
+        }
+
         rows.Add(new Markup(
             Label(OpeningField, "Opening")
             + Draw.Literal("the first message, written by you — worth more than it looks", theme.Muted)));
@@ -229,7 +260,6 @@ internal sealed class NewChatView : ViewBase
 
         if (text.Length > 0)
         {
-            var height = Math.Max(3, context.Height - 12);
             var lines = _opening.Lines.SelectMany(line => Draw.Wrap(line, width)).ToList();
 
             foreach (var line in lines.TakeLast(height))
@@ -248,6 +278,33 @@ internal sealed class NewChatView : ViewBase
         }
 
         return new Rows(rows);
+    }
+
+    /// <summary>How many rows the panel under the rule gets.</summary>
+    private static int Panel(RenderContext context) => Math.Max(3, context.Height - 12);
+
+    /// <summary>The world, wrapped to the panel, as the lines scrolling moves through.</summary>
+    private List<string> Wrapped(int width)
+        => [.. _preview.SelectMany(line => Draw.Wrap(line, width - 2))];
+
+    /// <summary>What the opening holds, said in one line while the panel shows the world.</summary>
+    /// <remarks>
+    /// The field is still there and still reachable with Tab; a reader who cannot see its text
+    /// should at least be told whether anything is in it, and where it came from.
+    /// </remarks>
+    private string Waiting()
+    {
+        if (_opening.CharacterCount == 0)
+        {
+            return "empty — Tab here to write the first message";
+        }
+
+        var count = _opening.Lines.Count;
+        var lines = $"{count} line{(count == 1 ? string.Empty : "s")}";
+
+        return _openingFromShelf
+            ? $"{lines} from the shelf — Tab here to read or rewrite it"
+            : $"{lines} of your own — Tab here to keep writing";
     }
 
     /// <inheritdoc />
@@ -324,6 +381,17 @@ internal sealed class NewChatView : ViewBase
 
             case AppCommand.MoveRight when _focus == PersonaField:
                 _persona = (_persona + 1) % _personas.Count;
+                return ViewAction.None;
+
+            // The arrows walk the form and the world is often longer than the panel, so the
+            // page keys are what reads it. Clamped at the bottom by the renderer, which is
+            // the only place that knows how many lines the text wrapped to.
+            case AppCommand.PageUp when _focus != OpeningField:
+                _previewScroll = Math.Max(0, _previewScroll - (Panel(context) - 1));
+                return ViewAction.None;
+
+            case AppCommand.PageDown when _focus != OpeningField:
+                _previewScroll += Panel(context) - 1;
                 return ViewAction.None;
 
             case AppCommand.MoveUp when _focus == OpeningField:

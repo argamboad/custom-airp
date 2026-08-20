@@ -340,4 +340,90 @@ public sealed class NewChatFlowTests : IDisposable
         screen.ShouldNotContain("Cornish");
         screen.ShouldNotContain("tokens every turn");
     }
+
+    [Fact]
+    public async Task The_world_scrolls_rather_than_stopping_at_the_panel()
+    {
+        // A real card's world runs to forty lines and the paragraph that separates it from
+        // the card next to it is rarely the first one. Showing the top and nothing else is
+        // the same as showing the name.
+        File.WriteAllText(
+            Path.Combine(_root, "characters", "long.txt"),
+            "=== THE WORLD ===\n\n"
+            + string.Join('\n', Enumerable.Range(1, 60).Select(n => $"paragraph-{n:00}")));
+
+        var view = View(Provider());
+        await PickFirstCharacterAsync(view);
+
+        var top = Screen(view);
+        top.ShouldContain("paragraph-01");
+        top.ShouldNotContain("paragraph-40");
+
+        await view.HandleKeyAsync(Pressed(ConsoleKey.PageDown), Context(), CancellationToken.None);
+
+        var next = Screen(view);
+        next.ShouldNotContain("paragraph-01");
+        next.ShouldContain("paragraph-20");
+        next.ShouldContain("of 60");
+    }
+
+    [Fact]
+    public async Task Scrolling_stops_at_the_end_and_comes_back()
+    {
+        File.WriteAllText(
+            Path.Combine(_root, "characters", "long.txt"),
+            "=== THE WORLD ===\n\n"
+            + string.Join('\n', Enumerable.Range(1, 60).Select(n => $"paragraph-{n:00}")));
+
+        var view = View(Provider());
+        await PickFirstCharacterAsync(view);
+
+        for (var page = 0; page < 20; page++)
+        {
+            await view.HandleKeyAsync(Pressed(ConsoleKey.PageDown), Context(), CancellationToken.None);
+        }
+
+        // Twenty pages of a four-page world: the last line is still on screen rather than
+        // scrolled past into an empty panel.
+        Screen(view).ShouldContain("paragraph-60");
+
+        for (var page = 0; page < 20; page++)
+        {
+            await view.HandleKeyAsync(Pressed(ConsoleKey.PageUp), Context(), CancellationToken.None);
+        }
+
+        Screen(view).ShouldContain("paragraph-01");
+    }
+
+    [Fact]
+    public async Task Writing_the_opening_takes_the_panel_back()
+    {
+        // Two things want the same room. The world is what a card is being chosen by; the
+        // opening is what is being written. Whichever is being looked at gets the panel.
+        File.WriteAllText(
+            Path.Combine(_root, "characters", "lighthouse.txt"),
+            "=== THE WORLD ===\n\nA lighthouse on the Cornish coast in 1963.");
+        Directory.CreateDirectory(Path.Combine(_root, "openings"));
+        File.WriteAllText(
+            Path.Combine(_root, "openings", "lighthouse.txt"),
+            "*The lamp turns, and the rain comes in sideways off the Atlantic.*");
+
+        var view = View(Provider());
+        await PickFirstCharacterAsync(view);
+
+        var choosing = Screen(view);
+        choosing.ShouldContain("Cornish");
+        choosing.ShouldContain(
+            "from the shelf",
+            Case.Sensitive,
+            "the opening is out of sight, so its line has to say that something is in it");
+
+        // Tab past the persona and into the opening.
+        await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
+        await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
+
+        var writing = Screen(view);
+        writing.ShouldContain("rain comes in sideways");
+        writing.ShouldNotContain("Cornish");
+    }
 }
