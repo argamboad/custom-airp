@@ -41,7 +41,7 @@ public class ModelRouterTests
         var choice = ModelRouter.For(ModelTask.Summary, Settings(), temperature: 1.4, maxTokens: 2600);
 
         choice.Temperature.ShouldBe(0.3);
-        choice.MaxTokens.ShouldBe(700);
+        choice.MaxTokens.ShouldBe(1200);
     }
 
     [Fact]

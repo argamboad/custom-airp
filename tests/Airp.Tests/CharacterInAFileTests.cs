@@ -220,6 +220,50 @@ public sealed class CharacterInAFileTests : IDisposable
     }
 
     [Fact]
+    public async Task A_summary_the_host_cut_short_is_refused_rather_than_stored_half_written()
+    {
+        // The variant that got through the first guard. Not two characters this time but the
+        // opening of a real answer, ending mid-word, reported as cut off at a fraction of the
+        // ceiling it was given. Observed on the real story as "…a free practice room (Room",
+        // standing in for twenty-seven messages.
+        //
+        // A summary is written in chronological order, so a clipped one loses its tail — the
+        // newest events in the stretch, which are the ones the next turn needs most.
+        var id = await SeedAsync(60);
+
+        _model
+            .Truncated("Allan ate ramen at the food court and wrote in his journal. He received an email about a free practice room (Room")
+            .Truncated("Allan ate ramen at the food court and wrote in his journal. He received an email about a free practice room (Room")
+            .Says("Fine.");
+
+        await Provider().SendAsync(id, "Hello.");
+
+        await using var store = _factory.CreateDbContext();
+
+        (await store.Summaries.CountAsync(s => s.ConversationId == id))
+            .ShouldBe(0, "half an account is not an account of the turns it replaces");
+    }
+
+    [Fact]
+    public async Task A_summary_that_ran_to_the_ceiling_is_kept()
+    {
+        // The other side of it, and the reason the check is not simply "was it truncated". A
+        // long account clipped at the ceiling is as much as was paid for; refusing that would
+        // mean never compressing a busy stretch at all.
+        var id = await SeedAsync(60);
+
+        _model
+            .Truncated(string.Join(' ', Enumerable.Repeat("They spoke at length and something was settled.", 200)))
+            .Says("Fine.");
+
+        await Provider().SendAsync(id, "Hello.");
+
+        await using var store = _factory.CreateDbContext();
+
+        (await store.Summaries.CountAsync(s => s.ConversationId == id)).ShouldBe(1);
+    }
+
+    [Fact]
     public async Task No_single_summary_is_asked_to_carry_a_whole_backlog()
     {
         // The other half of the same failure. The summarising call has a fixed output ceiling,

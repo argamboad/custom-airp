@@ -61,7 +61,14 @@ public static class ModelRouter
                 // Cold on purpose: an invented detail here becomes a fact the character
                 // believes for the rest of the conversation.
                 Temperature: 0.3,
-                MaxTokens: 700),
+
+                // Raised from 700, which was measured too low the day compression started
+                // taking real batches: three of four summaries of a real story ended
+                // mid-word — "KKG Facility Tour (" — because the account ran past the
+                // ceiling. A summary is written in chronological order, so what a clipped
+                // one loses is its tail: the most recent events in the stretch, which are
+                // exactly the ones the next turn needs.
+                MaxTokens: 1200),
 
             // The main model, not the background one: the question is about an adult scene and
             // whatever answers it has to be as willing to read that as the model writing it.

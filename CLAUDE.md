@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       669 tests
+tests/Airp.Tests/       671 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -178,6 +178,15 @@ Credible`, deliberately far looser than any observed ratio), which reaches the b
 already existed for a summary that could not be written at all: send the turns whole and go over
 budget. An empty reply was checked for; a useless one was not, and useless is what a bad host
 returns.
+
+**Three shapes of bad summary, found one at a time, all now refused.** Empty (checked from the
+start), too short to be an account of its stretch (`Credible` — a compression ratio above 60×,
+against 3–19× for every one that worked), and **cut off far below the ceiling** — a real answer
+that stops mid-word, which survived the first two guards because it reads like prose. A summary
+is chronological, so a clipped one loses its tail: the newest events in the stretch, the ones
+the next turn needs. A summary that runs *to* the ceiling is kept; it is as much as was asked
+for. **The ceiling itself was measured too low at 700 and is now 1200** — three of four summaries
+of a real 40-message batch ended mid-word against it.
 
 **The reader is named by their persona, never "User".** Both background readers used to label
 the reader's turns `User`, and the extractor — told that a subject is a character's name —
@@ -366,7 +375,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 669 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 671 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
