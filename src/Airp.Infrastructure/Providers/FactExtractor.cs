@@ -43,7 +43,9 @@ internal sealed class FactExtractor
         - "facts" holds only what the new transcript establishes and the existing list does not
           already say. Say nothing twice.
         - "subject" is who or what it is about: a character's name, a place, or a pair such as
-          "Elena and the user".
+          "Elena and Marcus". Always a name. Never "User", "the user" or "the reader" — every
+          person in the transcript is named there, and the story does not know who "the user"
+          is.
         - "text" is one plain sentence, in the language of the transcript, stating something
           durable: a trait, a possession, an injury, a commitment, a standing between people.
         - Do not record what merely happened; that is the summary's job. Record what it left true.
@@ -128,10 +130,7 @@ internal sealed class FactExtractor
             ? "(none yet)"
             : string.Join("\n", live.Select(f => $"{f.Id[..8]} | {f.Subject} | {f.Text}"));
 
-        var transcript = string.Join(
-            "\n\n",
-            messages.Select(m =>
-                $"{(m.Role == ChatRole.Assistant ? conversation.Speaker ?? "Character" : "User")}: {m.Text}"));
+        var transcript = Transcript.Render(conversation, messages);
 
         var choice = ModelRouter.For(ModelTask.Summary, settings);
         JsonNode? parsed;

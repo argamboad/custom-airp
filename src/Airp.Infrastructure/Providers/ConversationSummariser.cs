@@ -302,9 +302,7 @@ internal sealed class ConversationSummariser
         ModelOptions settings,
         CancellationToken cancellationToken)
     {
-        var transcript = string.Join(
-            "\n\n",
-            messages.Select(m => $"{(m.Role == ChatRole.Assistant ? conversation.Speaker ?? "Character" : "User")}: {m.Text}"));
+        var transcript = Transcript.Render(conversation, messages);
 
         var choice = ModelRouter.For(ModelTask.Summary, settings);
 
