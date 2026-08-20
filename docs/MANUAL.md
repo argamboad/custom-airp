@@ -19,6 +19,7 @@ How to use it. For why each decision was made, see `CLAUDE.md`.
 11. [Playing from Janitor](#playing-from-janitor)
 12. [Configuration](#configuration)
 13. [When something breaks](#when-something-breaks)
+14. [All the commands](#all-the-commands)
 
 ---
 
@@ -870,6 +871,11 @@ your store.
 | `recallThreshold` | how similar something has to be to come back |
 | `backgroundModel` | model for summarising and extracting facts. Empty = the same one that replies |
 | `messageCharacterLimit` | refuse to send a message longer than this. 0 = no limit |
+| `ignoreProviders` | hosts never to route to — see [Choosing which host serves you](#choosing-which-host-serves-you) |
+| `preferProviders` | hosts to try first, in order |
+| `allowProviderFallbacks` | `false` makes `preferProviders` a restriction rather than a preference |
+| `embeddingBaseUrl` | where retrieval's embeddings come from. Empty = wherever the replies do |
+| `embeddingApiKeyName` | the secret for that endpoint. Empty = the same one |
 
 `AIRP_*` variables override the configuration: `AIRP_Model__Name=…`. Ones ending in `_KEY` or
 `_TOKEN` **never** enter the configuration, so that no dump can print them.
@@ -995,6 +1001,26 @@ extracted, with `airp fact`, and retire it.
 
 **One turn took far longer than usual** — that was the turn where compression happened. It
 happens once per stretch, not on every message.
+
+**The reply is a wall of unrelated words**, sometimes opening with something like
+`<|begin_of_sentence|>` — that is one broken host, not the model and not your machine. Check
+the audit's *served by* for the turn, then deny it: `"ignoreProviders": ["thatslug"]`. See
+[Choosing which host serves you](#choosing-which-host-serves-you). Its `out/call` figure in
+`airp cost --providers` gives it away — a couple of hundred tokens a call where the working
+hosts write six or eight.
+
+**`airp fact` is empty after a long story** — nothing has been compressed yet, and facts are
+only extracted from turns on their way out of the prompt. `airp audit` shows whether the
+transcript has reached the budget. If it plainly has and there are still no summaries, that is
+a bug worth reporting.
+
+**The facts read oddly, or the summaries cover one or two messages each** — they were made by
+an older version. `airp rebuild <chat>` shows what it would replace and
+[Making the memory again](#making-the-memory-again) explains what survives.
+
+**Nothing changed after editing `airp.json`** — `airp config` prints what was actually read.
+A settings block under the wrong parent, or a provider slug that matches no host, both present
+as nothing having happened.
 
 **The model writes your actions** — it is the most common failure of any character sheet. Put
 it as a procedure, not a prohibition: *"if a moment requires assuming what the user wants,
