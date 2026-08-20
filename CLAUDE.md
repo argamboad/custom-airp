@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       674 tests
+tests/Airp.Tests/       676 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -192,11 +192,21 @@ compressing, and a transcript permanently over budget beats no summary only in t
 **The ceiling itself was measured too low at 700 and is now 1200** — three of four summaries of
 a real 40-message batch ended mid-word against it.
 
-**A 200 with no message content now says why.** It is the most common failure the background
+**A 200 with no message content now says why**, and the first thing it said solved a bug. It is the most common failure the background
 readers hit, and the message could not tell a host that generated nothing from one that refused:
 `finish_reason` separates `content_filter` from `length` from `stop`, and a `reasoning` field
 with null content is a third thing again. Five extractions in a row died on this during one
 rebuild, and none of them said which.
+
+The answer was `finish_reason: length, served by GMICloud, reasoning only` — **the model spent
+its whole output budget thinking and had none left to answer with.** Summarising is generative
+and prose starts on the first token; extraction is analytical, and a reasoning model deliberates
+before it writes any JSON. So extraction has its own `ModelTask.Facts` now, with a ceiling far
+above what the answer needs, because the answer is not what fills it. Reasoning tokens are
+billed as output — but an extraction that never lands costs the same and buys nothing.
+**OpenRouter's `reasoning` request field (`effort`, `max_tokens`, `exclude`, `enabled`) is the
+sharper lever and is not used yet**; it is provider-specific like `provider`, and worth reaching
+for only if the ceiling turns out not to be enough.
 
 **The reader is named by their persona, never "User".** Both background readers used to label
 the reader's turns `User`, and the extractor — told that a subject is a character's name —
@@ -385,7 +395,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 674 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 676 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
