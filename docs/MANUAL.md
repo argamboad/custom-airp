@@ -291,9 +291,42 @@ first, name it: `airp send --chat vardhal --text "…"`.
 | `>` | Let it carry on, with nothing from you |
 | `G` | Regenerate the last reply |
 | `S` | The dials |
+| `B` | Branch the story from this message |
 | `Del` | Delete this message and everything after it |
 | `C` | Copy the message |
 | `X` | Export the transcript |
+
+### Taking the story two ways
+
+Put the cursor on a turn, press `B`, and give the copy a name. You now have two conversations:
+the one you were playing, untouched, and a new one that ends at that turn and can go somewhere
+else entirely.
+
+It is a real copy, not a bookmark. The new story carries the character and persona it names,
+all three dials, the inner-thoughts setting, the transcript up to that turn, and the memory
+built out of those turns — summaries, the facts that were true at that point, and the
+embeddings, so retrieval works from the first turn instead of being bought again.
+
+What it does not carry is anything belonging to turns it does not have:
+
+- **A summary that straddles the branch point is left behind.** It describes a scene that has
+  not happened in this version, and the model would be told about it as something established.
+- **A fact retired later is still true here.** It was retired by turns this copy does not have,
+  so nothing has contradicted it yet.
+- **Replies you rerolled away do not come back.** They belong to the original's audit, where
+  "why did it say that" gets asked.
+- **The bill does not follow.** `Spend` is a record of money actually charged; copying it would
+  invent a second bill for calls that happened once. The original keeps its cost, the branch
+  starts at zero.
+
+**One thing cannot be rewound: trackers.** A meter stores a number and the turn it last moved,
+not the number it held at every turn — so a branch taken from far back carries the meter forward
+from a scene the copy has not played. It is visible in `/trackers` and `airp tracker` can set
+it back to whatever it should be.
+
+The name is asked for because you are about to have two stories with the same character, the
+same persona and the same first hundred turns, and the name is the only thing that will tell
+them apart in the list. A numbered suggestion is offered, so Enter is a valid answer.
 
 ### How a reply is drawn
 

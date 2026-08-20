@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       639 tests
+tests/Airp.Tests/       653 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -329,11 +329,25 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 639 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 653 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
-four-shelf library manager, `S` dials + inner-thoughts toggle, snippets in the composer.
+four-shelf library manager, `S` dials + inner-thoughts toggle, `B` branch from the cursor,
+snippets in the composer.
+
+**`B` branches a story at the cursor** into a named copy, so one scene can go two ways. The
+copy carries the character, the persona, the dials, the visible transcript up to that turn and
+the memory built from it — summaries wholly inside the branch, facts that were true at that
+point (a later retirement is undone, since it was done by turns the copy does not have), and
+the embeddings, which are the same vectors for the same text. **Three things are deliberately
+left behind:** `Spend`, because a ledger of money actually charged must not be duplicated;
+`RequestHash`, which is computed over the conversation's own id and so can never match in a
+copy; and tombstoned replies, which belong to the original's audit. **Trackers are the one
+thing that cannot be rewound** — a meter stores a value and the turn it last moved, not a
+history — so a far-back branch carries the number forward and the reader has to correct it.
+Verified against the real 237-message BJU story: 78 visible messages copied of 100 sequences,
+zero hashes, zero ledger rows, dials and character intact.
 
 **Twelve slash commands live in the composer**, because the alternative — typing
 `(OOC: skip to the evening)` into a message — is permanent, billed, retrieved, summarised and

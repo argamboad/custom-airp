@@ -1260,6 +1260,245 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
     }
 
     /// <summary>
+    /// Copies a conversation as far as one message, so the story can go a different way from
+    /// there without losing the way it already went.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Everything that makes the original read the way it does comes along: the character and
+    /// persona it names, the dials, the transcript up to the chosen turn, and the memory built
+    /// from those turns — summaries, the facts that were true at that point, and the embeddings
+    /// already paid for. What comes after the branch point does not exist in the copy, which is
+    /// the whole point of making one.
+    /// </para>
+    /// <para>
+    /// Two things are deliberately left behind. <c>Spend</c> is a ledger of money actually
+    /// charged, one row per billed call; copying it would invent a second bill for calls that
+    /// happened once. And <c>RequestHash</c> is computed over the conversation's own id, so a
+    /// copied hash can never match anything the copy computes — carrying it would be a column
+    /// full of values that look meaningful and are not.
+    /// </para>
+    /// <para>
+    /// Hidden messages are not copied either. A reply that was rerolled away belongs to the
+    /// original's audit, where the question "why did it say that" gets asked; the branch starts
+    /// from the story as its reader can see it.
+    /// </para>
+    /// </remarks>
+    /// <param name="conversationId">The conversation to branch from.</param>
+    /// <param name="throughMessageId">
+    /// The last message the copy keeps. It is included: branching on a reply means "carry on
+    /// from here", not "undo this".
+    /// </param>
+    /// <param name="name">What to call the copy.</param>
+    /// <param name="cancellationToken">Token used to abort the write.</param>
+    /// <returns>The new conversation.</returns>
+    public async Task<Chat> BranchAsync(
+        string conversationId,
+        string throughMessageId,
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var source = await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+
+        var through = await store.Messages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                m => m.Id == throughMessageId && m.ConversationId == conversationId,
+                cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new ContractException(
+                "That message is not in this conversation.",
+                what: throughMessageId,
+                recoveryHint: "Pick the turn to branch from in the transcript and try again.");
+
+        var point = through.Sequence;
+
+        var branch = new ConversationRecord
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = name.Trim(),
+            Speaker = source.Speaker,
+            CharacterDefinition = source.CharacterDefinition,
+            CharacterName = source.CharacterName,
+            Persona = source.Persona,
+            PersonaName = source.PersonaName,
+            Model = source.Model,
+            Creativity = source.Creativity,
+            Lust = source.Lust,
+            ResponseLength = source.ResponseLength,
+            InnerThoughts = source.InnerThoughts,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        };
+
+        store.Conversations.Add(branch);
+
+        var messages = await store.Messages
+            .AsNoTracking()
+            .Where(m => m.ConversationId == conversationId
+                        && m.DeletedAtUtc == null
+                        && m.Sequence <= point)
+            .OrderBy(m => m.Sequence)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var message in messages)
+        {
+            store.Messages.Add(new MessageRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ConversationId = branch.Id,
+                Sequence = message.Sequence,
+                Role = message.Role,
+                Text = message.Text,
+                SentAtUtc = message.SentAtUtc,
+                Model = message.Model,
+                Provider = message.Provider,
+                PromptTokens = message.PromptTokens,
+                CompletionTokens = message.CompletionTokens,
+                EstimatedPromptTokens = message.EstimatedPromptTokens,
+                ContextAudit = message.ContextAudit,
+
+                // Carried rather than recomputed. The text is identical, so the vector is too,
+                // and retrieval in the branch works from turn one instead of paying to embed
+                // the same lines again.
+                Embedding = message.Embedding,
+            });
+        }
+
+        // Only summaries wholly inside the branch. One that straddles the point describes turns
+        // the copy does not have, and would tell the model about a scene that has not happened
+        // in this version of the story.
+        var summaries = await store.Summaries
+            .AsNoTracking()
+            .Where(s => s.ConversationId == conversationId && s.ToSequence <= point)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var summary in summaries)
+        {
+            store.Summaries.Add(new SummaryRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ConversationId = branch.Id,
+                FromSequence = summary.FromSequence,
+                ToSequence = summary.ToSequence,
+                Text = summary.Text,
+                CreatedAtUtc = summary.CreatedAtUtc,
+                Model = summary.Model,
+                MessageCount = summary.MessageCount,
+            });
+        }
+
+        // What was true *then*, which the validity range answers exactly. A fact retired after
+        // the branch point was retired by turns this copy does not have, so in the branch it
+        // never stopped being true — and the fact that superseded it does not exist here to
+        // point at.
+        var facts = await store.Facts
+            .AsNoTracking()
+            .Where(f => f.ConversationId == conversationId && f.ValidFromSequence <= point)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var fact in facts)
+        {
+            var retiredLater = fact.ValidToSequence is { } until && until > point;
+
+            store.Facts.Add(new FactRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ConversationId = branch.Id,
+                Subject = fact.Subject,
+                Text = fact.Text,
+                ValidFromSequence = fact.ValidFromSequence,
+                ValidToSequence = retiredLater ? null : fact.ValidToSequence,
+                SupersededById = retiredLater ? null : fact.SupersededById,
+                CreatedAtUtc = fact.CreatedAtUtc,
+                Model = fact.Model,
+                Pinned = fact.Pinned,
+            });
+        }
+
+        // Meters come over at the value they hold now, which is the one thing here that cannot
+        // be rewound: a tracker stores a number and the turn it last moved, not the number it
+        // held at every turn. Branching far back therefore carries a meter forward from a scene
+        // the copy has not played. It is visible in the pane and editable, which is the honest
+        // answer available without keeping a history nobody asked for.
+        var meters = await store.Trackers
+            .AsNoTracking()
+            .Where(t => t.ConversationId == conversationId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var meter in meters)
+        {
+            store.Trackers.Add(new TrackerRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ConversationId = branch.Id,
+                Name = meter.Name,
+                Value = meter.Value,
+                Max = meter.Max,
+                Delta = meter.Delta,
+                Note = meter.Note,
+                Means = meter.Means,
+                Anchors = meter.Anchors,
+                Rule = meter.Rule,
+                UpdatedAtSequence = Math.Min(meter.UpdatedAtSequence, point),
+                CreatedAtUtc = meter.CreatedAtUtc,
+            });
+        }
+
+        var asides = await store.Asides
+            .AsNoTracking()
+            .Where(a => a.ConversationId == conversationId && a.Sequence <= point)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var aside in asides)
+        {
+            store.Asides.Add(new AsideRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ConversationId = branch.Id,
+                Sequence = aside.Sequence,
+                Question = aside.Question,
+                Answer = aside.Answer,
+                AskedAtUtc = aside.AskedAtUtc,
+                Model = aside.Model,
+                Provider = aside.Provider,
+                PromptTokens = aside.PromptTokens,
+                CompletionTokens = aside.CompletionTokens,
+                EstimatedPromptTokens = aside.EstimatedPromptTokens,
+                ContextAudit = aside.ContextAudit,
+            });
+        }
+
+        await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Branched {Source} at sequence {Point} into {Branch}: {Messages} message(s), "
+            + "{Summaries} summary(ies), {Facts} fact(s).",
+            conversationId,
+            point,
+            branch.Id,
+            messages.Count,
+            summaries.Count,
+            facts.Count);
+
+        return new Chat
+        {
+            Id = branch.Id,
+            Name = branch.Name,
+            Speaker = branch.Speaker,
+            LatestMessage = messages.Count > 0 ? messages[^1].Text : null,
+            LastMessageAtUtc = messages.Count > 0 ? messages[^1].SentAtUtc : branch.CreatedAtUtc,
+        };
+    }
+
+    /// <summary>
     /// Brings exported transcripts into the local store.
     /// </summary>
     /// <remarks>
