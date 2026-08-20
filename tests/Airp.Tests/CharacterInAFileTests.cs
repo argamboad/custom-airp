@@ -206,3 +206,78 @@ public sealed class CharacterInAFileTests : IDisposable
         _model.Calls.Count.ShouldBe(1);
     }
 }
+
+/// <summary>
+/// Who the transcript says is speaking, when it is handed to a model to be read rather than
+/// continued.
+/// </summary>
+/// <remarks>
+/// Both background readers had their own copy of the same labelling expression, and both said
+/// <c>User</c>. Observed on a real story: two extracted facts, both filed under the subject
+/// "User", sitting under a summary that called the same person by name. The world layer told
+/// the character that "User" had named a squirrel, while everything else in the prompt was
+/// about Allan.
+/// </remarks>
+public class TranscriptLabelTests
+{
+    private static ConversationRecord Conversation(string? persona, string? speaker = "Elena")
+        => new()
+        {
+            Id = "c",
+            Name = "Vardhal",
+            Speaker = speaker,
+            PersonaName = persona,
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+        };
+
+    private static MessageRecord Message(ChatRole role, string text)
+        => new()
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ConversationId = "c",
+            Sequence = 1,
+            Role = role,
+            Text = text,
+            SentAtUtc = DateTimeOffset.UnixEpoch,
+        };
+
+    [Fact]
+    public void The_reader_is_named_by_their_persona_rather_than_called_User()
+    {
+        Transcript.Reader(Conversation("allan-sanlucar-el-kettani"))
+            .ShouldBe("Allan Sanlucar El Kettani");
+    }
+
+    [Fact]
+    public void Without_a_persona_there_is_no_name_to_use()
+    {
+        // Inventing one would be worse than the generic label.
+        Transcript.Reader(Conversation(null)).ShouldBe("User");
+        Transcript.Reader(Conversation("   ")).ShouldBe("User");
+    }
+
+    [Fact]
+    public void Both_sides_of_a_stretch_are_named()
+    {
+        var rendered = Transcript.Render(
+            Conversation("allan-sanlucar-el-kettani"),
+            [
+                Message(ChatRole.User, "Where is the lighthouse?"),
+                Message(ChatRole.Assistant, "Past the pier."),
+            ]);
+
+        rendered.ShouldContain("Allan Sanlucar El Kettani: Where is the lighthouse?");
+        rendered.ShouldContain("Elena: Past the pier.");
+        rendered.ShouldNotContain("User:");
+    }
+
+    [Fact]
+    public void A_conversation_with_no_speaker_still_reads_as_two_people()
+    {
+        var rendered = Transcript.Render(
+            Conversation("traveller", speaker: null),
+            [Message(ChatRole.Assistant, "Past the pier.")]);
+
+        rendered.ShouldStartWith("Character: ");
+    }
+}

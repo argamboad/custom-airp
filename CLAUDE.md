@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       654 tests
+tests/Airp.Tests/       658 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -329,7 +329,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 654 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 658 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
