@@ -68,4 +68,30 @@ public class ModelRouterTests
         ModelRouter.For(ModelTask.Summary, Settings("   ")).Model
             .ShouldBe("deepseek/deepseek-v4-flash");
     }
+
+    [Fact]
+    public void Extraction_is_given_room_to_think_before_it_answers()
+    {
+        // It shared the summariser's ceiling until that turned out to be the bug. Summarising
+        // is generative and prose starts on the first token; extraction is analytical, and a
+        // reasoning model spends its output budget deliberating before it writes any JSON.
+        // Five extractions in a row on a real rebuild came back finish_reason: length with a
+        // reasoning field and no content, while summaries of the same stretches succeeded.
+        var facts = ModelRouter.For(ModelTask.Facts, Settings());
+        var summary = ModelRouter.For(ModelTask.Summary, Settings());
+
+        facts.MaxTokens.ShouldBeGreaterThan(
+            summary.MaxTokens,
+            "the answer is small and what fills the budget is the thinking before it");
+    }
+
+    [Fact]
+    public void Extraction_runs_colder_than_anything_else()
+    {
+        // A summary that embellishes is read as an account of what happened. A fact that
+        // embellishes is asserted to the character as true on every subsequent turn.
+        var facts = ModelRouter.For(ModelTask.Facts, Settings());
+
+        facts.Temperature.ShouldBeLessThanOrEqualTo(ModelRouter.For(ModelTask.Summary, Settings()).Temperature);
+    }
 }

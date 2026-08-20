@@ -13,6 +13,19 @@ public enum ModelTask
 
     /// <summary>Answer a question about the story, out of character. Read once, stored nowhere.</summary>
     Aside,
+
+    /// <summary>
+    /// Read a compressed stretch for what it left true, and answer in JSON.
+    /// </summary>
+    /// <remarks>
+    /// Shared the summariser's settings until it turned out not to want them. Summarising is a
+    /// generative task and prose starts on the first token; extraction is an analytical one, and
+    /// a reasoning model deliberates before it writes anything. Observed on a real rebuild: five
+    /// extractions running came back <c>finish_reason: length</c> with a reasoning field and no
+    /// content at all — the whole output budget spent thinking, nothing left to answer with,
+    /// while summaries of the same stretches succeeded minutes apart.
+    /// </remarks>
+    Facts,
 }
 
 /// <summary>How a task is dispatched: which model, and how it should sample.</summary>
@@ -69,6 +82,20 @@ public static class ModelRouter
                 // one loses is its tail: the most recent events in the stretch, which are
                 // exactly the ones the next turn needs.
                 MaxTokens: 1200),
+
+            ModelTask.Facts => new ModelChoice(
+                string.IsNullOrWhiteSpace(settings.BackgroundModel) ? settings.Name : settings.BackgroundModel,
+
+                // Cold for the same reason the summariser is, and more so: an invented fact is
+                // asserted to the character as true on every subsequent turn.
+                Temperature: 0.2,
+
+                // Far above what the answer needs, because on a reasoning model the answer is
+                // not what fills this. The JSON for a busy stretch runs a few hundred tokens;
+                // the deliberation before it ran past 1200 and left nothing over. Reasoning
+                // tokens are billed as output, so this is not free — but an extraction that
+                // never lands costs the same and buys nothing.
+                MaxTokens: 4000),
 
             // The main model, not the background one: the question is about an adult scene and
             // whatever answers it has to be as willing to read that as the model writing it.

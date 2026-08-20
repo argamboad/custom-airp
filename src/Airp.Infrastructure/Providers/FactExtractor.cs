@@ -132,7 +132,7 @@ internal sealed class FactExtractor
 
         var transcript = Transcript.Render(conversation, messages);
 
-        var choice = ModelRouter.For(ModelTask.Summary, settings);
+        var choice = ModelRouter.For(ModelTask.Facts, settings);
         JsonNode? parsed;
 
         try
