@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using Airp.Application.Options;
+using Airp.Application.Context;
 using Airp.Application.Text;
 using Airp.Infrastructure;
 using Airp.Infrastructure.Providers;
@@ -45,6 +46,28 @@ internal sealed class NewChatView : ViewBase
     private readonly TextDocument _opening = TextDocument.FromText(null);
 
     private readonly string _openingsFolder;
+    private readonly string _charactersFolder;
+
+    /// <summary>How much of the picked character's world is shown while choosing.</summary>
+    /// <remarks>
+    /// Enough to recognise a place, not enough to read it. Three of the cards in a real
+    /// library are resort scenarios whose names differ by one word, and the name alone does
+    /// not tell you which one you are about to play.
+    /// </remarks>
+    private const int PreviewLines = 6;
+
+    private IReadOnlyList<string> _preview = [];
+
+    /// <summary>
+    /// What the picked character costs, every turn, for the life of the conversation.
+    /// </summary>
+    /// <remarks>
+    /// The one number that decides whether a story compresses at turn twenty or turn two
+    /// hundred, and it was previously invisible until the reader was already playing. The
+    /// character layer is never summarised and never dropped: it is re-sent whole on every
+    /// turn, so it is the only part of the prompt whose size is a permanent decision.
+    /// </remarks>
+    private int _characterTokens;
 
     private string _name = string.Empty;
     private string _speaker = string.Empty;
@@ -84,6 +107,44 @@ internal sealed class NewChatView : ViewBase
         _personas = [null, .. TextLibrary.Names(library.Personas)];
         _defaultPersona = options.CurrentValue.DefaultPersona;
         _openingsFolder = library.Openings;
+        _charactersFolder = library.Characters;
+    }
+
+    /// <summary>Reads the picked character's world and what it will cost.</summary>
+    /// <remarks>
+    /// Deliberately not a new section in the card and not a fifth shelf. <c>=== THE WORLD ===</c>
+    /// is already written to be read by a person arriving somewhere — that is what the skeleton
+    /// asks for — and it is already sent to the model, so displaying it adds nothing to any
+    /// prompt and cannot drift from what the card actually says. A preview kept anywhere else
+    /// would be a second copy of the same paragraph going quietly stale.
+    /// </remarks>
+    private void DescribeCharacter()
+    {
+        _preview = [];
+        _characterTokens = 0;
+
+        if (_characters[_character] is not { } name)
+        {
+            return;
+        }
+
+        if (TextLibrary.Find(_charactersFolder, name) is not { } path)
+        {
+            return;
+        }
+
+        _preview = TextLibrary.Preview(path, PreviewLines);
+
+        try
+        {
+            _characterTokens = TokenEstimator.ForText(File.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A card that cannot be read is a problem for the moment it is used, not for the
+            // moment it is being looked at. Show the name and no number.
+            _characterTokens = 0;
+        }
     }
 
     /// <inheritdoc />
@@ -136,7 +197,20 @@ internal sealed class NewChatView : ViewBase
             + Draw.Literal(
                 _characters[_character] ?? "(none — the opening carries the scene)",
                 _characters[_character] is null ? theme.Muted : theme.Text)
-            + Draw.Literal(_focus == CharacterField ? "  ←→" : string.Empty, theme.Muted)));
+            + Draw.Literal(_focus == CharacterField ? "  ←→" : string.Empty, theme.Muted)
+            + (_characterTokens > 0
+                ? Draw.Literal(
+                    $"  {_characterTokens:N0} tokens every turn",
+                    _characterTokens >= 20000 ? theme.Warning : theme.Muted)
+                : string.Empty)));
+
+        // The world, as the card itself states it. Shown under the picker rather than after
+        // the decision, because three of these names differ by a single word and the card is
+        // the thing being chosen.
+        foreach (var line in _preview.SelectMany(l => Draw.Wrap(l, width - 13)).Take(PreviewLines))
+        {
+            rows.Add(new Markup(Draw.Literal("           " + line, theme.Muted)));
+        }
 
         rows.Add(new Markup(
             Label(PersonaField, "Persona")
@@ -235,11 +309,13 @@ internal sealed class NewChatView : ViewBase
             case AppCommand.MoveLeft when _focus == CharacterField:
                 _character = (_character + _characters.Count - 1) % _characters.Count;
                 await OfferOpeningAsync(cancellationToken).ConfigureAwait(false);
+                DescribeCharacter();
                 return ViewAction.None;
 
             case AppCommand.MoveRight when _focus == CharacterField:
                 _character = (_character + 1) % _characters.Count;
                 await OfferOpeningAsync(cancellationToken).ConfigureAwait(false);
+                DescribeCharacter();
                 return ViewAction.None;
 
             case AppCommand.MoveLeft when _focus == PersonaField:

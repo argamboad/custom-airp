@@ -193,6 +193,25 @@ If you always play as the same person, name them once:
 
 From inside the terminal, press `N` in the chat list: name, speaker, a character and a
 persona picked from the library with `<-` `->`, and the opening written in a composer.
+
+As you cycle characters, the screen shows the opening lines of that card's world and what the
+card will cost:
+
+```
+Character   free-use-college            ←→   3,741 tokens every turn
+
+            Freedom Memorial Campus, University of Miskatonic — FMCUM — a
+            dark-academia university upstate, hidden in the woods above its
+            college town of Southampton…
+```
+
+That number is the character layer, which is never compressed and never dropped — it is
+re-sent whole on every turn for the life of the conversation. It turns yellow above 20,000,
+because a card that size takes a third of a 60,000-token budget before your first message and
+is the difference between compressing at turn twenty and at turn two hundred.
+
+The preview is the card's own `=== THE WORLD ===` section, so it is never out of date. A card
+without that header previews from the top of the file instead.
 `Ctrl+Enter` creates it and drops you straight into the conversation. (`Ctrl+S` does the
 same where the terminal passes it through — on Windows the console keeps that chord for
 flow control and the application never sees it, which is why the footer names `Ctrl+Enter`.)

@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       676 tests
+tests/Airp.Tests/       679 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -395,8 +395,18 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 676 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 679 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
+
+**The new-chat picker previews the card from `=== THE WORLD ===` and prints what it costs.**
+Not a `PREVIEW` section in the card — that would be dead weight in the character layer on every
+turn forever — and not a fifth shelf, which would be a second copy of the same paragraph going
+stale. The skeleton already asks for that section to be *"a place a reader can arrive at, not a
+synopsis"*, so it is preview copy already, it is already sent, and it cannot drift.
+`TextLibrary.Preview` stops at the next `=== ` header and falls back to the top of the file for
+cards that do not follow the skeleton. The token count beside the name turns warning-coloured
+above 20k: it is the number that decides whether a story compresses at turn twenty or turn two
+hundred, and it used to be invisible until the reader was already playing.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
 four-shelf library manager, `S` dials + inner-thoughts toggle, `B` branch from the cursor,
