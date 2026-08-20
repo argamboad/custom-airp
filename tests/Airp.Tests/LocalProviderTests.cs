@@ -74,6 +74,27 @@ internal sealed class ScriptedModel : ILanguageModelClient
             ' ',
             Enumerable.Repeat("They spoke at length and something was settled between them.", 4)));
 
+    /// <summary>Answers with a few words and reports that it was cut off.</summary>
+    /// <remarks>
+    /// What a host does when it stops early for its own reasons: <c>finish_reason: length</c>
+    /// far below the ceiling that was asked for. The text reads like the start of an answer,
+    /// which is what made it survivable — it looked like prose and was stored.
+    /// </remarks>
+    public ScriptedModel Truncated(string text)
+    {
+        _answers.Enqueue(() => new ModelReply
+        {
+            Text = text,
+            Model = "test-model",
+            Provider = "test-host",
+            FinishReason = "length",
+            PromptTokens = 4000,
+            CompletionTokens = 20,
+        });
+
+        return this;
+    }
+
     /// <summary>Fails the way a host does when it answers 200 and sends nothing.</summary>
     public ScriptedModel Empty()
     {

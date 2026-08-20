@@ -287,9 +287,14 @@ internal sealed class ConversationSummariser
     /// </summary>
     /// <remarks>
     /// Scaled to what it is standing in for rather than a flat floor: ten short messages
-    /// genuinely do compress to a couple of sentences, while a hundred cannot. The ratio is
-    /// deliberately far looser than anything observed working — the real summaries ran between
-    /// 3× and 37× — so this only ever catches an answer that is not an account of anything.
+    /// genuinely do compress to a couple of sentences, while a hundred cannot.
+    /// <para>
+    /// The ratio is a ceiling on compression, and it is set from measurement. Summaries that
+    /// worked ran between 3× and 19×; the ones that had to be caught were 84× — twenty-seven
+    /// messages ending mid-word — and roughly 30,000× for the reply that was <c>##</c>. Sixty
+    /// sits far enough above every working figure to catch only an answer that stopped rather
+    /// than finished.
+    /// </para>
     /// </remarks>
     /// <param name="messages">The stretch being compressed.</param>
     /// <returns>The smallest believable summary, in tokens.</returns>
@@ -297,7 +302,7 @@ internal sealed class ConversationSummariser
     {
         var source = messages.Sum(m => TokenEstimator.ForText(m.Text));
 
-        return Math.Max(20, source / 200);
+        return Math.Max(20, source / 60);
     }
 
     /// <summary>Room to leave for the turns retrieval will bring back.</summary>
@@ -373,7 +378,14 @@ internal sealed class ConversationSummariser
             // cents, against a character that has forgotten, which costs the story.
             var produced = TokenEstimator.ForText(reply.Text);
 
-            if (produced < Credible(messages))
+            // Cut off, and not because it was asked for less than it had to say. A summary
+            // that runs to the ceiling is as much of an account as was paid for and is kept;
+            // one that stopped at a tenth of it stopped for the host's reasons, and what it
+            // lost is its tail — which in a chronological account is the newest events, the
+            // ones the next turn actually needs.
+            var stopped = reply.WasTruncated && produced < choice.MaxTokens / 2;
+
+            if (produced < Credible(messages) || stopped)
             {
                 _logger.LogWarning(
                     "Summarising {Count} message(s) of {Conversation} produced {Tokens} token(s), "
