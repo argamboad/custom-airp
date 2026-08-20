@@ -559,6 +559,118 @@ internal sealed partial class ConversationView
             return ViewAction.Status($"{name} is now {value:0.##}.", StatusKind.Success);
         });
     }
+
+    // ── Branching ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Starts asking what to call the copy.</summary>
+    /// <remarks>
+    /// A name is asked for rather than generated because the reader is about to have two
+    /// conversations with the same character, the same persona and the same first hundred
+    /// turns, and the only thing that will tell them apart in the list is what they are called.
+    /// A default is offered so that Enter is a valid answer.
+    /// </remarks>
+    /// <returns>The resulting action.</returns>
+    private ViewAction BeginBranch()
+    {
+        if (_provider is null)
+        {
+            return ViewAction.Status(
+                "Branching needs the local store.",
+                StatusKind.Warning);
+        }
+
+        if (Selected is null)
+        {
+            return ViewAction.Status("Select the turn to branch from first.", StatusKind.Warning);
+        }
+
+        _branching = true;
+        _branchName.Value = Suggest(_conversation.Name);
+
+
+        return ViewAction.None;
+    }
+
+    /// <summary>A name that will not collide with the one already in the list.</summary>
+    /// <remarks>
+    /// Numbered rather than suffixed with the turn, because a reader branching twice from the
+    /// same message would otherwise get the same name twice — and the turn number means nothing
+    /// once the copy has grown its own turns.
+    /// </remarks>
+    /// <param name="name">The name of the conversation being branched.</param>
+    /// <returns>The suggestion.</returns>
+    private static string Suggest(string name)
+    {
+        var trimmed = name.Trim();
+        var open = trimmed.LastIndexOf(" (", StringComparison.Ordinal);
+
+        if (open > 0
+            && trimmed.EndsWith(')')
+            && int.TryParse(
+                trimmed.AsSpan(open + 2, trimmed.Length - open - 3),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var number))
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"{trimmed[..open]} ({number + 1})");
+        }
+
+        return string.Create(CultureInfo.InvariantCulture, $"{trimmed} (2)");
+    }
+
+    /// <summary>Handles a key while the name is being typed.</summary>
+    /// <param name="stroke">The key.</param>
+    /// <returns>The resulting action.</returns>
+    private ViewAction HandleBranchKey(KeyStroke stroke)
+    {
+        switch (stroke.Command)
+        {
+            case AppCommand.Back:
+                _branching = false;
+                _branchName.Clear();
+                return ViewAction.Status("Branch cancelled.");
+
+            case AppCommand.Accept or AppCommand.NewLine:
+            {
+                var name = _branchName.Value.Trim();
+                var from = Selected;
+
+                _branching = false;
+                _branchName.Clear();
+
+                if (from is null)
+                {
+                    return ViewAction.None;
+                }
+
+                if (name.Length == 0)
+                {
+                    return ViewAction.Status("A story needs a name. Nothing was copied.", StatusKind.Warning);
+                }
+
+                return ViewAction.Run("Branching", async ct =>
+                {
+                    var branch = await _provider!
+                        .BranchAsync(_conversation.Id, from.Id, name, ct)
+                        .ConfigureAwait(false);
+
+                    // The list is cached, and a branch that does not appear until the next
+                    // refresh reads as one that was not made.
+                    if (_chats is not null)
+                    {
+                        await _chats.RefreshAsync(ct).ConfigureAwait(false);
+                    }
+
+                    return ViewAction.Status(
+                        $"Branched into \"{branch.Name}\". The original is untouched.",
+                        StatusKind.Success);
+                });
+            }
+        }
+
+        _branchName.Handle(stroke);
+        return ViewAction.None;
+    }
 }
 
 /// <summary>

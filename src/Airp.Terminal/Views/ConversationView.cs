@@ -29,6 +29,7 @@ internal sealed partial class ConversationView : ViewBase
     private readonly IClipboardService _clipboard;
     private readonly IExportService _export;
     private readonly TextInput _search = new() { Placeholder = "search this conversation…" };
+    private readonly TextInput _branchName = new() { Placeholder = "name for the new story…" };
 
     private readonly Application.Text.TextDocument _composer = Application.Text.TextDocument.FromText(string.Empty);
 
@@ -48,6 +49,7 @@ internal sealed partial class ConversationView : ViewBase
     private bool _searching;
     private bool _showData;
     private bool _composing;
+    private bool _branching;
     private string _activeQuery = string.Empty;
     private readonly PendingStatus _pending = new();
 
@@ -97,7 +99,8 @@ internal sealed partial class ConversationView : ViewBase
         IExportService export,
         Airp.Infrastructure.TextLibrary? library = null,
         Airp.Infrastructure.Providers.LocalConversationProvider? provider = null,
-        Microsoft.Extensions.Options.IOptionsMonitor<Application.Options.AirpOptions>? options = null)
+        Microsoft.Extensions.Options.IOptionsMonitor<Application.Options.AirpOptions>? options = null,
+        IChatService? chats = null)
     {
         _library = library ?? new Airp.Infrastructure.TextLibrary();
         _conversation = conversation;
@@ -106,6 +109,7 @@ internal sealed partial class ConversationView : ViewBase
         _export = export;
         _provider = provider;
         _options = options;
+        _chats = chats;
     }
 
     /// <inheritdoc />
@@ -113,7 +117,7 @@ internal sealed partial class ConversationView : ViewBase
 
     /// <inheritdoc />
     public override KeyContext KeyContext =>
-        _searching || _composing ? KeyContext.Text : KeyContext.Navigation;
+        _searching || _composing || _branching ? KeyContext.Text : KeyContext.Navigation;
 
     /// <inheritdoc />
     public override bool Reserves(AppCommand command) => command == AppCommand.GlobalSearch;
@@ -123,6 +127,12 @@ internal sealed partial class ConversationView : ViewBase
         ?
         [
             new("Enter", "Find"),
+            new("Esc", "Cancel"),
+        ]
+        : _branching
+        ?
+        [
+            new("Enter", "Create the branch"),
             new("Esc", "Cancel"),
         ]
         : _composing
@@ -143,6 +153,7 @@ internal sealed partial class ConversationView : ViewBase
                 new(">", "Carry on"),
                 new("G", "Regenerate reply"),
                 new("S", "Settings"),
+                new("B", "Branch from here"),
                 new("Del", "Delete from here"),
                 new("C", "Copy"),
                 new("X", "Export"),
@@ -443,6 +454,11 @@ internal sealed partial class ConversationView : ViewBase
             return ValueTask.FromResult(HandleComposerKey(stroke, context));
         }
 
+        if (_branching)
+        {
+            return ValueTask.FromResult(HandleBranchKey(stroke));
+        }
+
         var visible = Visible;
 
         switch (stroke.Command)
@@ -542,6 +558,12 @@ internal sealed partial class ConversationView : ViewBase
             // shift makes it hard to hit by accident — this spends credits.
             case AppCommand.Character when stroke.Character is '>':
                 return ValueTask.FromResult(Continue());
+
+            // Branching keeps everything and destroys nothing, which is why it is a plain
+            // letter next to Del rather than behind a confirmation: the worst outcome of a
+            // mistaken press is one extra conversation in the list.
+            case AppCommand.Character when stroke.Character is 'b' or 'B':
+                return ValueTask.FromResult(BeginBranch());
 
             case AppCommand.Delete when Selected is { } doomed:
                 return ValueTask.FromResult(ConfirmDeleteFrom(doomed));
@@ -926,6 +948,15 @@ internal sealed partial class ConversationView : ViewBase
     private readonly Airp.Infrastructure.Providers.LocalConversationProvider? _provider;
     private readonly Microsoft.Extensions.Options.IOptionsMonitor<Application.Options.AirpOptions>? _options;
 
+    /// <summary>
+    /// The cached chat list, so a conversation created from in here appears in it.
+    /// </summary>
+    /// <remarks>
+    /// Optional like the rest: the list is a cache in front of a provider, and branching is the
+    /// only thing this view does that adds to it.
+    /// </remarks>
+    private readonly IChatService? _chats;
+
     private string SnippetsFolder => _library.Snippets;
 
     /// <summary>
@@ -1288,6 +1319,17 @@ internal sealed partial class ConversationView : ViewBase
         if (_searching)
         {
             return Draw.Literal("Search: ", theme.Accent) + _search.ToMarkup(theme);
+        }
+
+        if (_branching)
+        {
+            // The turn number is in the prompt because the branch point is the cursor's
+            // position, and the cursor is not where the reader is looking while they type a
+            // name. Getting it wrong is not destructive, but it is a wasted conversation.
+            var at = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
+
+            return Draw.Literal($"Branch at message {at} — name: ", theme.Accent)
+                   + _branchName.ToMarkup(theme);
         }
 
         if (_pending.Describe() is { Length: > 0 } pending)
