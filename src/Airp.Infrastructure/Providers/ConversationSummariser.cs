@@ -308,14 +308,15 @@ internal sealed class ConversationSummariser
 
         try
         {
-            var reply = await _model.CompleteAsync(
+            var reply = await Background.CompleteAsync(
+                _model,
                 [
                     new ModelMessage(ModelRole.System, Instruction),
                     new ModelMessage(ModelRole.User, transcript),
                 ],
-                choice.Model,
-                choice.Temperature,
-                choice.MaxTokens,
+                choice,
+                _logger,
+                "The summary",
                 cancellationToken).ConfigureAwait(false);
 
             // Recorded before the reply is judged. Compressing fires without the reader asking

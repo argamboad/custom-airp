@@ -58,6 +58,23 @@ internal sealed class ScriptedModel : ILanguageModelClient
         return this;
     }
 
+    /// <summary>Fails the way a host does when it answers 200 and sends nothing.</summary>
+    public ScriptedModel Empty()
+    {
+        _answers.Enqueue(() => throw new ModelUnavailableException(
+            "The API returned a response with no message content.",
+            200));
+
+        return this;
+    }
+
+    /// <summary>Fails in a way no second attempt could fix.</summary>
+    public ScriptedModel Rejected()
+    {
+        _answers.Enqueue(() => throw new ModelUnavailableException("the key was rejected", 401));
+        return this;
+    }
+
     public Task<ModelReply> CompleteAsync(
         IReadOnlyList<ModelMessage> messages,
         string? model = null,
