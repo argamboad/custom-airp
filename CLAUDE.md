@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       662 tests
+tests/Airp.Tests/       667 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -174,6 +174,13 @@ the reader's turns `User`, and the extractor — told that a subject is a charac
 filed everything about them under `User`, directly beneath a summary calling the same person by
 name. `Transcript` is the one place that renders a stretch for a model to read; there is no
 second copy to drift.
+
+**`airp rebuild <chat> --yes` spends invariant 6 deliberately.** It deletes the summaries and
+the extracted facts and produces them again by replaying `ComposeAsync` until nothing more
+compresses — the ordinary send path, not a second implementation of the rules, so a rebuild
+cannot produce a memory the application never would. **Pinned facts are kept**: they are the one
+thing here derived from nothing. The ledger is added to, never reset. Without `--yes` it prints
+what it would replace and touches nothing.
 
 **Background calls are retried once**, and only for failures a second attempt could answer
 (no status, 200-with-no-content, 408, 429, 5xx). A rejected key fails identically twice and
@@ -349,7 +356,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 662 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 667 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the

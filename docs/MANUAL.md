@@ -649,6 +649,32 @@ fail, and can ask for again — a summary failing is a line in the log. One real
 extraction over its first sixty-two messages that way, and nothing will look at those turns
 again.
 
+### Making the memory again
+
+The memory is **derived**. Summaries, facts and embeddings all come out of the transcript, and
+the transcript is never deleted — so if a version of airp produced them badly, they can be
+produced again.
+
+```bash
+airp rebuild "BJU"          # what it would replace. Touches nothing
+airp rebuild "BJU" --yes    # do it
+```
+
+It throws away the summaries and the extracted facts, then works through the transcript exactly
+as playing the conversation would have, in the same batches, with the same rules.
+
+**Your own facts are kept.** Anything pinned — `airp fact add`, `/fact`, `F` in the `/ask` pane —
+was stated by a person, possibly about something the transcript never mentions. It is not
+derived from anything, so a rebuild that took it would be destroying the only copy.
+
+Two things it cannot do. It cannot give back what the first attempt cost: `Spend` records money
+actually charged, so the old calls stay in the ledger and the rebuild's own calls are added
+beside them. And it costs a call per stretch of its own, which for a long story is a few cents.
+
+Worth doing after an upgrade that changed how the memory works, or when `airp audit` shows
+summaries that cover one or two messages each — a sign they were made by a version that
+compressed the overflow rather than a batch.
+
 ### The facts are yours to edit
 
 ```bash
