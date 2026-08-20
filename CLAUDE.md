@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       679 tests
+tests/Airp.Tests/       682 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -395,7 +395,7 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 679 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 682 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
 **The new-chat picker previews the card from `=== THE WORLD ===` and prints what it costs.**
@@ -407,6 +407,14 @@ synopsis"*, so it is preview copy already, it is already sent, and it cannot dri
 cards that do not follow the skeleton. The token count beside the name turns warning-coloured
 above 20k: it is the number that decides whether a story compresses at turn twenty or turn two
 hundred, and it used to be invisible until the reader was already playing.
+
+**The world is shown whole, in the panel, and scrolls** — six lines wedged into the header was
+the first attempt and it was wrong twice over: it pushed the form apart, and six lines of a
+forty-line section is barely more than the name. The panel already belonged to the opening, so
+it is shared: whichever of the two has focus gets the room, and the one that does not keeps a
+line saying what is in it. `PgUp`/`PgDn` are the only keys free for scrolling — the arrows walk
+the form — and the bottom of the scroll is clamped by the renderer, the only place that knows
+what the text wrapped to at this width.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
 four-shelf library manager, `S` dials + inner-thoughts toggle, `B` branch from the cursor,
