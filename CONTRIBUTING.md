@@ -21,6 +21,21 @@ stores lives under `%LOCALAPPDATA%\Airp` on Windows and `~/.local/share/Airp` el
 AIRP_HOME=/tmp/airp-dev dotnet run --project src/Airp.Terminal -- library --samples
 ```
 
+From an IDE there are two launch profiles and **the sandbox is the first one**, so F5 runs
+against `.airp-dev` beside the project rather than against your own conversations. The other is
+named `Airp (real data)` in capitals, because the difference between them is invisible until it
+is not: messages are append-only and a send is billed, so a debug session against the real
+database is a permanent, paid write to a story someone is playing. A sandbox home has no key in
+it and so cannot send at all until `airp secret set` puts one there.
+
+Both profiles set `DOTNET_ENVIRONMENT=Development`, which is what makes
+`src/Airp.Terminal/appsettings.Development.json` apply — that is where to put settings you only
+want while debugging. Configuration is read in the ordinary order: `appsettings.json`, then
+`appsettings.{Environment}.json`, then the user's own `airp.json`, then `AIRP_*` variables, then
+the command line. Anything the user's file sets therefore wins over the development one, which
+is why the sandbox — whose file starts empty — is where a development override actually takes
+effect.
+
 ## What is most wanted
 
 - **Another provider.** Only OpenRouter has ever been exercised. The request this client sends

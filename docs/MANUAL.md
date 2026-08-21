@@ -194,38 +194,40 @@ If you always play as the same person, name them once:
 From inside the terminal, press `N` in the chat list: name, speaker, a character and a
 persona picked from the library with `<-` `->`, and the opening written in a composer.
 
-As you cycle characters, the panel fills with that card's world and the line above it says what
-the card will cost:
+As you cycle characters, the panel below fills with that card's world and the persona facing it,
+side by side:
 
 ```
-Character   free-use-college            ←→   3,741 tokens every turn
-Persona     (default: allan)
-──────────────────────────────────────────────────────────────────────────
-Opening     18 lines from the shelf — Tab here to read or rewrite it
-  free-use-college — the world it belongs to    1–17 of 46   PgUp/PgDn
-
-  Freedom Memorial Campus, University of Miskatonic — FMCUM — a dark-academia
-  university upstate, hidden in the woods above its college town of
-  Southampton. Founded 1698, and it has never once been ordinary.
-  …
+Name        how it appears in your list
+Speaker     who replies
+Character   free-use-college   ←→
+Persona     allan
+────────────────────────────────────────────────────────────────────────────────────────
+  Character preview   1–17 of 46   PgUp/PgDn      │  Persona
+──────────────────────────────────────────────────┼──────────────────────────────────────
+  Freedom Memorial Campus, University of          │  Allan Ramos de Ávila, 31, tall and
+  Miskatonic — FMCUM — a dark-academia            │  unhurried, the sort of housemate who
+  university upstate, hidden in the woods above   │  notices the kettle is empty before
+  its college town of Southampton. Founded 1698,  │  anyone asks.
+  and it has never once been ordinary.            │
 ```
 
-`PgUp` and `PgDn` read the rest of it. The world of a real card runs to forty lines, and the
-paragraph that tells two similarly-named cards apart is rarely the first one.
+The two are read against each other on purpose: whether this is the right person to walk into
+that place is a question about both at once, and stacking them would have made it a scroll.
+Each column keeps its own position, and `PgUp` `PgDn` move whichever field has focus — only that
+column's heading carries the hint, so you can see which one the keys will move. The world of a
+real card runs to forty lines and the paragraph that tells two similarly-named cards apart is
+rarely the first one.
 
-That number is the character layer, which is never compressed and never dropped — it is
-re-sent whole on every turn for the life of the conversation. It turns yellow above 20,000,
-because a card that size takes a third of a 60,000-token budget before your first message and
-is the difference between compressing at turn twenty and at turn two hundred.
+The character text is the card's own `=== THE WORLD ===` section, so it is never out of date; a
+card without that header shows the top of the file instead. The persona is whichever one the
+picker names, and with the picker on `(default: …)` it is the file `defaultPersona` points at —
+that is what will really be sent, so that is what it shows.
 
-The text is the card's own `=== THE WORLD ===` section, so it is never out of date. A card
-without that header shows the top of the file instead.
-
-The panel belongs to two things and gives itself to whichever one you are looking at: `Tab`
-into the opening and it becomes the opening again, with the world one `Tab` away.
-`Ctrl+Enter` creates it and drops you straight into the conversation. (`Ctrl+S` does the
-same where the terminal passes it through — on Windows the console keeps that chord for
-flow control and the application never sees it, which is why the footer names `Ctrl+Enter`.)
+`Tab` into the opening and the panel becomes the opening's composer instead, with both previews
+one `Tab` away. `Ctrl+Enter` creates the chat and drops you straight into it. (`Ctrl+S` does the
+same where the terminal passes it through — on Windows the console keeps that chord for flow
+control and the application never sees it, which is why the footer names `Ctrl+Enter`.)
 
 The same thing from the command line:
 
@@ -279,7 +281,9 @@ first, name it: `airp send --chat vardhal --text "…"`.
 
 ## The keys
 
-`?` or `F1` inside gives you the full help.
+`?` or `F1` inside gives you the full help. The footer along the bottom shows as many of the
+current screen's keys as fit on one line, in the order they are worth knowing; when there are
+more than that, the last thing on the line is `? All keys` rather than a legend that wraps.
 
 ### Everywhere
 
@@ -291,6 +295,23 @@ first, name it: `airp send --chat vardhal --text "…"`.
 | `F1` or `?` | Help |
 | `Esc` | Back one screen |
 | `Ctrl+C` or `Q` | Quit |
+
+### If you would rather use `hjkl`
+
+`"keyboard": "Vim"` layers a few bindings on top of the standard ones, **only where you are
+navigating**. Inside any text field every printable key types itself, so there is no mode to be
+in and none to leave. Arrow keys keep working, and every `Ctrl` chord is the same in both.
+
+| Key | Standard | Vim |
+|---|---|---|
+| `h` `j` `k` `l` | `L` toggles line numbers | left / down / up / right |
+| `G` | Regenerate | jump to the end |
+| `n` / `N` | both find the next match | next / **previous** match |
+| `u` | — | undo |
+
+That is the whole of it. There is no `gg`, no `dd` and no modal editing; `g` is typed as a
+character, `d` opens the diff in both dialects, and redo is `Ctrl+Shift+Z` or `Ctrl+Y`
+either way. `L` still toggles line numbers in Vim mode, since `l` is spoken for.
 
 ### Moving around
 
@@ -311,6 +332,17 @@ first, name it: `airp send --chat vardhal --text "…"`.
 | `F2` | Rename it |
 | `Del` | Delete it |
 | `/` | Filter as you type |
+
+### Reading it
+
+A conversation is set in a centred column rather than across the whole window —
+`transcriptWidthPercent`, sixty by default, `100` for the full width. A maximised terminal
+otherwise gives lines of a hundred and eighty characters, and past about ninety the eye loses
+the start of the next line on the way back; it is why a newspaper sets narrow columns on a wide
+page. A scrollbar sits against the right of the column when there is more than fits.
+
+Each turn opens with the speaker's name on a tinted chip and the time at the far end of the
+column, and a hairline separates one turn from the next.
 
 ### In the conversation
 
@@ -382,6 +414,11 @@ changing the stored wording would break the prefix cache and rewrite what the mo
 said, which the append-only store exists to prevent.
 
 If your console does not draw italics, the dimming still separates action from speech.
+
+The chat list's preview of a conversation's latest message is drawn the same way, through the
+same code. Recognising a reply at a glance is the whole point of drawing it, and half of that
+would be lost if the list showed the raw markers. The preview stops where its pane does and
+marks the cut with `…` — it is there to recognise a chat by, not to read.
 
 While you are writing, a line that starts with `/` is a command to the client rather than
 something you said — see [Commands in the composer](#commands-in-the-composer).

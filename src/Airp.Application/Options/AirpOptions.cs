@@ -24,7 +24,15 @@ public enum KeyboardMode
     /// <summary>Arrow keys, Home/End, Page Up/Down, Ctrl chords.</summary>
     Standard = 0,
 
-    /// <summary>Standard bindings plus <c>hjkl</c>, <c>gg</c>/<c>G</c>, <c>/</c>, <c>dd</c>, and modal editing.</summary>
+    /// <summary>
+    /// Standard bindings plus <c>hjkl</c>, <c>G</c>, <c>n</c>/<c>N</c> and <c>u</c>, where you
+    /// are navigating rather than typing.
+    /// </summary>
+    /// <remarks>
+    /// A shortcut layer, not a modal editor. This said <c>gg</c>, <c>dd</c> and "modal editing"
+    /// for a long time and none of the three has ever existed: <c>g</c> has no binding here,
+    /// <c>d</c> is Diff in both dialects, and a text field takes every printable key as itself.
+    /// </remarks>
     Vim,
 }
 

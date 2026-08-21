@@ -85,8 +85,14 @@ internal enum KeyContext
 /// Two dialects share one command vocabulary. In <see cref="KeyboardMode.Standard"/> the
 /// arrow keys and single-letter shortcuts drive everything. In
 /// <see cref="KeyboardMode.Vim"/> the standard bindings still work — nobody wants an arrow
-/// key to stop functioning — and <c>hjkl</c>, <c>gg</c>/<c>G</c>, <c>n</c>/<c>N</c> and
-/// <c>u</c>/<c>Ctrl+R</c> are layered on top.
+/// key to stop functioning — and <c>hjkl</c>, <c>G</c>, <c>n</c>/<c>N</c> and <c>u</c> are
+/// layered on top. Only where the reader is navigating: <see cref="KeyContext.Text"/> takes
+/// every printable key as itself, so there is no mode to be in and none to leave.
+/// </para>
+/// <para>
+/// This used to claim <c>gg</c> and <c>Ctrl+R</c>. There is no <c>gg</c> — <c>g</c> has no
+/// binding in either dialect and is typed — and <c>Ctrl+R</c> is Refresh; redo is
+/// <c>Ctrl+Shift+Z</c> or <c>Ctrl+Y</c>, the same in both.
 /// </para>
 /// <para>
 /// Control chords are identical in both dialects and are resolved before anything else, so
