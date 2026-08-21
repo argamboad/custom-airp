@@ -655,44 +655,6 @@ internal sealed class Shell
     private const int HeaderHeight = 3;
     private const int FooterHeight = 4;
 
-    /// <summary>What the terminal's own title bar or tab was last told to say.</summary>
-    private string _windowTitle = string.Empty;
-
-    /// <summary>Puts the view you are in on the terminal's tab.</summary>
-    /// <remarks>
-    /// <para>
-    /// Only when it changes. On Unix the setter writes an escape sequence to the same stream
-    /// the live display is drawing on, and doing that on every frame is asking for the two to
-    /// interleave; the title changes when you move between views, which is a handful of times
-    /// a session.
-    /// </para>
-    /// <para>
-    /// A terminal that will not take a title is not a problem worth reporting — the whole
-    /// feature is a convenience for someone with several tabs open, and the application has
-    /// nothing to do differently if it fails.
-    /// </para>
-    /// </remarks>
-    private void NameTheWindow()
-    {
-        var wanted = _stack.Count > 0 ? $"airp — {Current.Title}" : "airp";
-
-        if (wanted == _windowTitle)
-        {
-            return;
-        }
-
-        _windowTitle = wanted;
-
-        try
-        {
-            Console.Title = wanted;
-        }
-        catch (Exception ex) when (ex is IOException or PlatformNotSupportedException)
-        {
-            // Nothing to do: the title is a convenience, not a feature anything depends on.
-        }
-    }
-
     private RenderContext BuildContext()
     {
         var width = Math.Max(40, SafeWidth());
@@ -733,8 +695,6 @@ internal sealed class Shell
 
         _lastDrawTicks = Environment.TickCount64 * TimeSpan.TicksPerMillisecond;
         var context = BuildContext();
-
-        NameTheWindow();
 
         IRenderable body;
         try
