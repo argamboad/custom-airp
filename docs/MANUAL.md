@@ -874,14 +874,27 @@ your store.
 
 ## Configuration
 
-`%LOCALAPPDATA%\Airp\airp.json`. To see what is in effect: `airp config`.
+`%LOCALAPPDATA%\Airp\airp.json` — in the application data directory, not beside the
+binary, so reinstalling the tool never touches it. To see what is in effect: `airp config`.
+
+**`airp config --rewrite` brings an old file up to date.** It is the only thing that looks inside
+a file that already exists: the file is created once with defaults and then left alone, so a
+settings file written by an earlier version keeps its shape through any number of reinstalls and
+never gains the keys added since. The rewrite is purely additive — anything already set keeps its
+value exactly, missing keys arrive with their defaults, and the `// one of:` comments are put
+back. Those comments are regenerated on every write rather than preserved, since the file is
+parsed to a tree and written back from it; a comment you add by hand elsewhere is lost the next
+time the file is written.
 
 ```json
 {
   "Airp": {
     "defaultPersona": "allan",
+    // one of: Dark, Light, HighContrast, Monochrome
     "theme": "Dark",
+    // one of: Standard, Vim
     "keyboard": "Standard",
+    "transcriptWidthPercent": 60,
     "model": {
       "name": "deepseek/deepseek-v4-flash",
       "contextBudget": 32000,
@@ -898,6 +911,7 @@ your store.
 |---|---|
 | `theme` | Dark, Light, HighContrast, Monochrome |
 | `keyboard` | Standard or Vim |
+| `transcriptWidthPercent` | how much of the window a conversation occupies, centred. 100 fills it. 30–100 |
 | `contextBudget` | the prompt ceiling in tokens. Higher = more verbatim history, more expensive |
 | `maxTokens` | maximum length of a reply, when the dial is not in charge |
 | `recallCount` | how many old moments retrieval may bring back |

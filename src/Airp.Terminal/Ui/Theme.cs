@@ -54,6 +54,35 @@ internal sealed record Theme
     /// </remarks>
     public Style Action => Muted.Combine(new Style(decoration: Decoration.Italic));
 
+    /// <summary>
+    /// The background a panel, a side list or a key cap sits on.
+    /// </summary>
+    /// <remarks>
+    /// A background and nothing else: it is combined with a foreground style rather than used
+    /// alone, so one tone per palette serves everything that needs to read as a raised surface
+    /// rather than as text floating on the terminal's own ground.
+    /// </remarks>
+    public required Style Surface { get; init; }
+
+    /// <summary>
+    /// A state chip — the one-word badge in the header.
+    /// </summary>
+    /// <remarks>
+    /// Loud on purpose, and there is exactly one on screen. Rendered with a space either side
+    /// of the word so the background reads as a chip rather than as a highlighted word.
+    /// </remarks>
+    public required Style Badge { get; init; }
+
+    /// <summary>
+    /// A key cap in the footer legend.
+    /// </summary>
+    /// <remarks>
+    /// The accent on the surface tone rather than a second inverted chip: a conversation's
+    /// footer carries thirteen of these, and thirteen blocks of reverse video read as a
+    /// barcode. Derived so the palettes cannot drift apart on it.
+    /// </remarks>
+    public Style Key => Accent.Combine(Surface);
+
     /// <summary>Added lines in a diff.</summary>
     public required Style DiffAdded { get; init; }
 
@@ -84,6 +113,8 @@ internal sealed record Theme
         Error = new Style(Color.Red1),
         Border = new Style(Color.Grey35),
         Highlight = new Style(Color.Black, Color.Yellow),
+        Surface = new Style(background: Color.Grey19),
+        Badge = new Style(Color.Black, Color.SpringGreen2, Decoration.Bold),
         DiffAdded = new Style(Color.SpringGreen3),
         DiffRemoved = new Style(Color.IndianRed),
     };
@@ -101,6 +132,8 @@ internal sealed record Theme
         Error = new Style(Color.Red),
         Border = new Style(Color.Grey62),
         Highlight = new Style(Color.Black, Color.Yellow1),
+        Surface = new Style(background: Color.Grey93),
+        Badge = new Style(Color.White, Color.Green, Decoration.Bold),
         DiffAdded = new Style(Color.Green),
         DiffRemoved = new Style(Color.Red),
     };
@@ -118,6 +151,8 @@ internal sealed record Theme
         Error = new Style(Color.Red1, decoration: Decoration.Bold),
         Border = new Style(Color.White),
         Highlight = new Style(Color.Black, Color.Yellow1, Decoration.Bold),
+        Surface = new Style(background: Color.Grey19),
+        Badge = new Style(Color.Black, Color.Green1, Decoration.Bold),
         DiffAdded = new Style(Color.Green1, decoration: Decoration.Bold),
         DiffRemoved = new Style(Color.Red1, decoration: Decoration.Bold),
     };
@@ -135,6 +170,8 @@ internal sealed record Theme
         Error = new Style(decoration: Decoration.Bold),
         Border = Style.Plain,
         Highlight = new Style(decoration: Decoration.Underline),
+        Surface = Style.Plain,
+        Badge = new Style(decoration: Decoration.Invert),
         DiffAdded = new Style(decoration: Decoration.Bold),
         DiffRemoved = new Style(decoration: Decoration.Dim),
     };

@@ -41,6 +41,28 @@ public sealed class AirpOptions
     public ThemeName Theme { get; set; } = ThemeName.Dark;
 
     /// <summary>
+    /// How much of the window a conversation occupies, as a percentage. 100 fills it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A terminal is as wide as its window; a reply is continuous prose. Those are two
+    /// different requirements, and a maximised window gave lines of a hundred and eighty
+    /// characters — past about ninety the eye loses the start of the next line on the return
+    /// sweep, which is why a newspaper sets narrow columns on a wide page. The column is
+    /// centred, so what is left over is a margin either side rather than a hole down one.
+    /// </para>
+    /// <para>
+    /// Sixty by default and a percentage rather than a column count, because the right answer
+    /// depends on the window and the reader's eyes rather than on anything this application
+    /// knows. <strong>100 means full width</strong> and no margin at all, which is where this
+    /// started. Values outside 30 to 100 are clamped: below thirty a maximised window gives a
+    /// column too narrow to read, and the two ends of that range are the only ones worth
+    /// defending against a typo.
+    /// </para>
+    /// </remarks>
+    public int TranscriptWidthPercent { get; set; } = 60;
+
+    /// <summary>
     /// How often the background synchroniser re-reads the store. Zero or a negative value
     /// disables automatic refresh.
     /// </summary>

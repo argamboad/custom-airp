@@ -655,6 +655,44 @@ internal sealed class Shell
     private const int HeaderHeight = 3;
     private const int FooterHeight = 4;
 
+    /// <summary>What the terminal's own title bar or tab was last told to say.</summary>
+    private string _windowTitle = string.Empty;
+
+    /// <summary>Puts the view you are in on the terminal's tab.</summary>
+    /// <remarks>
+    /// <para>
+    /// Only when it changes. On Unix the setter writes an escape sequence to the same stream
+    /// the live display is drawing on, and doing that on every frame is asking for the two to
+    /// interleave; the title changes when you move between views, which is a handful of times
+    /// a session.
+    /// </para>
+    /// <para>
+    /// A terminal that will not take a title is not a problem worth reporting — the whole
+    /// feature is a convenience for someone with several tabs open, and the application has
+    /// nothing to do differently if it fails.
+    /// </para>
+    /// </remarks>
+    private void NameTheWindow()
+    {
+        var wanted = _stack.Count > 0 ? $"airp — {Current.Title}" : "airp";
+
+        if (wanted == _windowTitle)
+        {
+            return;
+        }
+
+        _windowTitle = wanted;
+
+        try
+        {
+            Console.Title = wanted;
+        }
+        catch (Exception ex) when (ex is IOException or PlatformNotSupportedException)
+        {
+            // Nothing to do: the title is a convenience, not a feature anything depends on.
+        }
+    }
+
     private RenderContext BuildContext()
     {
         var width = Math.Max(40, SafeWidth());
@@ -696,6 +734,8 @@ internal sealed class Shell
         _lastDrawTicks = Environment.TickCount64 * TimeSpan.TicksPerMillisecond;
         var context = BuildContext();
 
+        NameTheWindow();
+
         IRenderable body;
         try
         {
@@ -722,9 +762,15 @@ internal sealed class Shell
         var theme = context.Theme;
         var options = _options.CurrentValue;
 
+        // Everything but the last one is where the reader has been; the last one is where they
+        // are. Drawn identically, the trail read as four equally live places.
         var breadcrumbLine = string.Join(
             $"[{theme.Muted.ToMarkup()}] › [/]",
-            _stack.Select(v => $"[{theme.Text.ToMarkup()}]{Markup.Escape(v.Title)}[/]"));
+            _stack.Select((v, i) =>
+            {
+                var style = i == _stack.Count - 1 ? theme.Text : theme.Muted;
+                return $"[{style.ToMarkup()}]{Markup.Escape(v.Title)}[/]";
+            }));
 
         // A sign-in state, a browser and a sync clock are things a remote site has. This
         // adapter owns its conversations: there is no session to hold and nothing to be out
@@ -732,20 +778,31 @@ internal sealed class Shell
         // conversations live, and which model is writing.
         return BuildHeaderRows(
             theme,
-            $"[{theme.Success.ToMarkup()}]Local[/]",
+            $"[{theme.Badge.ToMarkup()}] Local [/]",
             Markup.Escape(options.Model.Name),
             breadcrumbLine);
     }
 
     /// <summary>Lays out the header: name and state on the left, adapter detail on the right.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>Expand</c> is what makes "on the right" mean the right of the screen. A grid sizes
+    /// its columns to their contents and stops there, so a right-aligned column that is not
+    /// asked to expand aligns inside its own width — which is the width of the model's name.
+    /// The header therefore drew the model a couple of spaces after the longer of the identity
+    /// and the breadcrumb, moving from view to view as the breadcrumb grew, and reading as a
+    /// gap that meant something rather than as a column.
+    /// </para>
+    /// <para>Internal so the alignment can be asserted; nothing else calls it.</para>
+    /// </remarks>
     /// <param name="theme">The palette in force.</param>
     /// <param name="identity">Markup describing the adapter's state, already coloured.</param>
     /// <param name="detail">Escaped plain text shown muted on the right.</param>
     /// <param name="breadcrumb">Markup for the view stack.</param>
     /// <returns>The header.</returns>
-    private static IRenderable BuildHeaderRows(Theme theme, string identity, string detail, string breadcrumb)
+    internal static IRenderable BuildHeaderRows(Theme theme, string identity, string detail, string breadcrumb)
     {
-        var grid = new Grid();
+        var grid = new Grid { Expand = true };
         grid.AddColumn(new GridColumn().NoWrap());
         grid.AddColumn(new GridColumn().RightAligned().NoWrap());
 
@@ -758,19 +815,78 @@ internal sealed class Shell
         return new Rows(grid, new Rule { Style = theme.Border });
     }
 
+    /// <summary>Columns a string occupies, named around this class's own <c>Draw</c> method.</summary>
+    private static int Cells(string text) => Airp.Terminal.Ui.Draw.Width(text);
+
+    /// <summary>What one hint costs in columns: the cap's own two spaces, and the gap after it.</summary>
+    /// <remarks>
+    /// Two spaces between hints rather than three, because the cap carries a coloured space of
+    /// its own on each side. The legend therefore comes out the width it was before the caps
+    /// rather than a column per hint wider.
+    /// </remarks>
+    private const int HintPadding = 4;
+
+    /// <summary>
+    /// Builds the footer legend, ending it at a hint boundary rather than mid-word.
+    /// </summary>
+    /// <remarks>
+    /// A conversation offers thirteen strokes and they do not fit on one line of most windows.
+    /// Left to the renderer the line wrapped, so the footer's height changed with the view and
+    /// the last hint arrived split across two rows. What does not fit is dropped whole and
+    /// pointed at instead: <c>?</c> opens the help, which lists every stroke there is.
+    /// </remarks>
+    /// <param name="hints">The view's hints, most useful first.</param>
+    /// <param name="width">Columns the footer has.</param>
+    /// <param name="theme">The palette in force.</param>
+    /// <returns>Markup for one line.</returns>
+    internal static string Legend(IReadOnlyList<KeyHint> hints, int width, Theme theme)
+    {
+        var more = new KeyHint("?", "All keys");
+        var reserve = Cells(more.Key) + Cells(more.Label) + HintPadding;
+
+        var kept = new List<KeyHint>();
+        var used = 0;
+
+        foreach (var hint in hints)
+        {
+            var cost = Cells(hint.Key) + Cells(hint.Label) + HintPadding;
+
+            // The last one only has to fit the line; every earlier one has to leave room for
+            // the pointer at the end, or dropping something would go unannounced.
+            var room = kept.Count == hints.Count - 1 ? width : width - reserve;
+
+            if (used + cost > room)
+            {
+                break;
+            }
+
+            kept.Add(hint);
+            used += cost;
+        }
+
+        if (kept.Count < hints.Count)
+        {
+            kept.Add(more);
+        }
+
+        return string.Join(
+            "  ",
+            kept.Select(h =>
+                $"[{theme.Key.ToMarkup()}] {Markup.Escape(h.Key)} [/]"
+                + $"[{theme.Muted.ToMarkup()}]{Markup.Escape(h.Label)}[/]"));
+    }
+
     private IRenderable BuildFooter(RenderContext context)
     {
         var theme = context.Theme;
         var rows = new List<IRenderable> { new Rule { Style = theme.Border } };
 
+        // The key on a surface tone and the label off it, so the eye finds the strokes without
+        // reading the sentences. Not a second inverted chip like the header's badge: a
+        // conversation's footer carries thirteen of these, and thirteen would be a barcode.
         var hints = Current.KeyHints.Count > 0 ? Current.KeyHints : DefaultHints;
-        var legend = string.Join(
-            "   ",
-            hints.Select(h =>
-                $"[{theme.Accent.ToMarkup()}]{Markup.Escape(h.Key)}[/] "
-                + $"[{theme.Muted.ToMarkup()}]{Markup.Escape(h.Label)}[/]"));
 
-        rows.Add(new Markup(legend) { Overflow = Overflow.Ellipsis });
+        rows.Add(new Markup(Legend(hints, SafeWidth(), theme)) { Overflow = Overflow.Ellipsis });
 
         if (_banner is not null)
         {

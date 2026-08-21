@@ -96,8 +96,8 @@ internal sealed class RegenerateView : ViewBase
             rows.Add(new Markup(Draw.Literal("  " + line, theme.Muted)));
         }
 
-        rows.Add(new Markup(string.Empty));
-        rows.Add(new Markup(Draw.Literal("  What was wrong with it?", theme.Text)));
+        rows.Add(Draw.Blank);
+        rows.Add(Draw.Heading("What was wrong with it?", theme, "the reason is sent with the request"));
 
         for (var i = 0; i < RegenerateReasons.All.Count; i++)
         {
@@ -111,7 +111,7 @@ internal sealed class RegenerateView : ViewBase
                 + Draw.Literal(RegenerateReasons.Describe(reason), theme.Muted)));
         }
 
-        rows.Add(new Markup(string.Empty));
+        rows.Add(Draw.Blank);
         rows.Add(new Rule { Style = theme.Border });
 
         var limit = context.Options.InstructionCharacterLimit;

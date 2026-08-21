@@ -48,7 +48,7 @@ src/
   Airp.Infrastructure/  the local store, model clients, secrets
   Airp.Terminal/        the TUI — Spectre.Console, views, shell
   Airp.Proxy/           OpenAI-compatible endpoint, for playing from Janitor
-tests/Airp.Tests/       682 tests
+tests/Airp.Tests/       711 tests
 tools/ollama/           the Rocinante Modelfile the community mirror did not ship
 docs/                   MANUAL.md — the only document that ships
 src/Airp.Infrastructure/Samples/   the worked example, embedded; `airp library --samples`
@@ -395,26 +395,53 @@ messages. The owner writes in Spanish in conversation and plays in English.
 ## Current state
 
 **Built, published, and one step from lived-in.** The repository is public at
-`argamboad/custom-airp` (MIT). 682 tests. Zero warnings, enforced by
+`argamboad/custom-airp` (MIT). 711 tests. Zero warnings, enforced by
 `TreatWarningsAsErrors`.
 
-**The new-chat picker previews the card from `=== THE WORLD ===` and prints what it costs.**
-Not a `PREVIEW` section in the card — that would be dead weight in the character layer on every
-turn forever — and not a fifth shelf, which would be a second copy of the same paragraph going
-stale. The skeleton already asks for that section to be *"a place a reader can arrive at, not a
-synopsis"*, so it is preview copy already, it is already sent, and it cannot drift.
-`TextLibrary.Preview` stops at the next `=== ` header and falls back to the top of the file for
-cards that do not follow the skeleton. The token count beside the name turns warning-coloured
-above 20k: it is the number that decides whether a story compresses at turn twenty or turn two
-hundred, and it used to be invisible until the reader was already playing.
+**The new-chat picker previews the card from `=== THE WORLD ===`.** Not a `PREVIEW` section in
+the card — that would be dead weight in the character layer on every turn forever — and not a
+fifth shelf, which would be a second copy of the same paragraph going stale. The skeleton already
+asks for that section to be *"a place a reader can arrive at, not a synopsis"*, so it is preview
+copy already, it is already sent, and it cannot drift. `TextLibrary.Preview` stops at the next
+`=== ` header and falls back to the top of the file for cards that do not follow the skeleton.
+
+**What the card costs every turn used to sit beside its name in the picker, and no longer does.**
+It was a real number — the character layer is never summarised and never dropped, so its size is
+the one permanent decision in the prompt, and it decides whether a story compresses at turn twenty
+or turn two hundred. It was removed on 2026-08-20 by the owner's call, for a picker that reads as
+prose rather than as a budget. `airp audit` still has it, after the fact; the picker does not, in
+advance. Do not add it back without being asked.
 
 **The world is shown whole, in the panel, and scrolls** — six lines wedged into the header was
 the first attempt and it was wrong twice over: it pushed the form apart, and six lines of a
 forty-line section is barely more than the name. The panel already belonged to the opening, so
-it is shared: whichever of the two has focus gets the room, and the one that does not keeps a
-line saying what is in it. `PgUp`/`PgDn` are the only keys free for scrolling — the arrows walk
-the form — and the bottom of the scroll is clamped by the renderer, the only place that knows
-what the text wrapped to at this width.
+it is shared: focus on the opening and it takes the panel whole, and otherwise the two previews
+have it. `PgUp`/`PgDn` are the only keys free for scrolling — the arrows walk the form — and the
+bottom of the scroll is clamped by the renderer, the only place that knows what the text wrapped
+to at this width.
+
+**The persona stands beside the world, in the other column.** A short world left two thirds of
+the panel blank while the persona — a page written months ago, sent whole on every turn — was
+offered as a file name and nothing else. Beside rather than under, because the two are read
+against each other: whether this is the right person to walk into that place is a question about
+both at once, and stacking them would make it a scroll. Each column gets the full height of the
+panel and its own scroll; the page keys move whichever the focus is on, and only that column's
+caption carries the `PgUp/PgDn` hint, since the same hint on both would answer the wrong
+question. Neither text costs a token — both are already going into the prompt. The null persona
+slot is not "no persona": it is `Airp:DefaultPersona`, so the panel has something to show before
+anything is picked, and with only one of the two to show it takes the width rather than sitting
+in half of it with a rule down the middle of nothing. **The captions name the field each column
+previews, not the file in it** — `Character preview`, `Persona` — because the character and the
+persona are both spelled out in the form three rows up, and a caption repeating one of them said
+nothing while leaving two columns unlabelled, and each stands over a rule the column divider crosses at a `┼` — a caption
+sitting straight on the paragraph it labels reads as that paragraph's first line, and a vertical
+bar passing between two horizontals that stop short of it reads as three broken lines rather than
+one join.
+
+**The opening has no row of its own while the panel is showing the previews.** It had one, saying
+how many lines were in it and where they came from; it was two readings of noise against four
+words of information, and it is reachable with Tab, which is where its own text and its own
+label are.
 
 The TUI covers the full loop: `N` new chat (pickers + opening pre-fill), `M` the
 four-shelf library manager, `S` dials + inner-thoughts toggle, `B` branch from the cursor,
@@ -443,7 +470,122 @@ never sent**; `//` escapes a message that genuinely starts with a slash.
 **Replies are drawn, not shown raw.** `*action*` renders italic and dimmed, `"speech"` renders
 as plain text, and both lose their markers — display only, since the stored wording is what the
 next prompt sends and what the prefix cache is keyed on. Single asterisks outnumber double ones
-about ten to one in real replies; both are read.
+about ten to one in real replies; both are read. **Two places draw them** — the transcript and
+the chat list's preview of the latest message — through one `Draw.Prose`, because recognising a
+reply at a glance is the whole point and a second copy of that loop is a second place for the
+conventions to be read differently. The transcript passes its own painter so an active search
+still shows through the styling; the preview does not need one.
+
+**The chat list gives three tenths to the list and the rest to the preview.** Names and an age
+are short, a reply is prose: six tenths spent the room on the column with nothing in it. The
+preview stops where the pane does and marks the cut with an ellipsis — it is for recognising a
+chat, not reading it, and a reply cut at the edge with nothing to say so reads as one that ended
+there. **`Draw.SplitWidths` reserves three columns for the rule**, not one: the bar and the space
+either side. Reserving only the bar left both panes two columns wider than the grid could fit, so
+the renderer re-wrapped the last column and every long line in the preview broke a word short of
+its margin and dropped the remainder onto a line of its own — visible for as long as the pane has
+existed, and invisible until the preview held something wide enough to reach the edge. A pane
+width the pane does not get is a number the caller wraps to and does not have.
+
+**The chrome was flattened out on 2026-08-20, in four passes.** Everything went through
+`Theme`, so a palette is still a data change and the monochrome one still reduces to
+decorations:
+
+- **The header's right column never reached the right edge.** A `Grid` sizes its columns to
+  their contents and stops, so a right-aligned column that is not asked to `Expand` aligns
+  inside its own width — the model's name sat a couple of spaces after whichever was longer,
+  the identity or the breadcrumb, and moved from view to view as the breadcrumb grew.
+  `BuildHeaderRows` is internal so the alignment is asserted rather than eyeballed. `Local` is a
+  `Badge` chip, and the breadcrumb dims everything but the view you are actually in.
+- **`new Markup(string.Empty)` renders as nothing at all inside `Rows`** — no row, no height.
+  Seven of them were spacing an author asked for and the screen never had: the dials ran
+  together with no gap, and the regenerate view's question sat straight on the reply it asks
+  about. `Draw.Blank` is a `Text` holding one space, which does occupy a row.
+- **`Draw.Tabs` and `Draw.Heading`** are the one shape each control has. The library's shelves
+  were coloured text while the export's formats were chips; the library's cursor marked the name
+  while the chat list's filled the column. `Draw.Heading` takes the muted hint that used to be
+  concatenated at every call site.
+- **Both two-pane views divide a screen through `Draw.SplitWidths` at three tenths.** The
+  library had its own arithmetic — a quarter, capped at forty columns — so every terminal past
+  a hundred and sixty got the cap rather than the ratio, and the longest name on a real shelf is
+  thirty-nine characters: it fitted exactly, which is another way of saying it had run out of
+  room without saying so. Its gutter is three, because three is what `SplitWidths` holds back.
+- **`Theme.Surface` is a background and nothing else**, combined with a foreground rather than
+  used alone. `Draw.Pane` fills a side list to the height it was given with it — a column of
+  rows stops at its last row, so four chats in a pane of forty were four tinted lines rather
+  than a pane with four things in it. `Theme.Key` is `Accent.Combine(Surface)`: the footer key
+  caps are the accent on that tone rather than inverted chips, because a conversation's footer
+  carries thirteen of them and thirteen inverted chips read as a barcode. A rule drawn *inside*
+  a pane takes the tone too, or it cuts a bare stripe across the column.
+
+**And a second pass the same day, on how the transcript reads:**
+
+- **The conversation is a centred column, `Airp:TranscriptWidthPercent` wide.** Sixty by
+  default, **100 for the whole window**, clamped to 30–100; a percentage rather than a column
+  count because the right answer depends on the window and the reader's eyes. A maximised
+  terminal was giving lines of a hundred and eighty characters, and past about ninety the eye
+  loses the start of the next line on the return sweep. Everything the view owns sits in that
+  column — the counts, the transcript, the composer and its suggestions — because **the first
+  attempt capped the measure and left the column pinned left**, which put all the leftover space
+  on one side, and space all on one side reads as a pane that failed to draw rather than as a
+  margin. `--transcript-width` sets it; `airp model` prints it.
+- **`Draw.Scrollbar` is the only thing that says where you are in a long story.** The transcript
+  had `message 19/19` and nothing else; the library preview and the new-chat panel already
+  report a range in words. The thumb's length is the share on screen and never rounds below one
+  cell, and nothing to scroll draws blanks rather than a full-length thumb. **It has no track**:
+  a continuous line down the side of a column of prose reads as the edge of a pane, which is half
+  of what made the first capped measure look broken. It sits against the column rather than at
+  the window's edge, because a bar out in the margin belongs to nothing the reader is looking
+  at. **The new-chat panel deliberately has none:** two scrollable
+  columns either side of a rule would put two bars next to it, and its captions already say
+  `1–30 of 43`.
+- **A turn is a chip, a stamp at the end of the measure, and a hairline before the next one.**
+  The blank row that used to separate messages was `string.Empty`, so it never drew — the same
+  collapse as `new Markup(string.Empty)`, in the one place it mattered most.
+- **The footer legend ends at a hint rather than wrapping.** A conversation offers thirteen
+  strokes and they do not fit one line; the footer's height changed with the view and the last
+  hint arrived split across two rows. `Shell.Legend` drops whole hints and points at `?` instead.
+- **The terminal's tab says `airp — FUF`.** Set only when it changes: on Unix the setter writes
+  an escape to the same stream the live display draws on.
+
+**Configuration layers the ordinary way.** `Host.CreateApplicationBuilder` already adds
+`appsettings.json` and `appsettings.{Environment}.json` from the content root, so `Program`
+only adds what comes after: the user's `airp.json`, the `AIRP_*` variables, then the command
+line. It used to add `appsettings.json` a second time itself, which was both a duplicate and
+backwards — it landed *after* the environment file. `appsettings*.json` is copied to output by a
+wildcard so a new environment file does not need a csproj edit.
+
+**Two launch profiles, and the sandbox is first.** F5 used to open the real database — a send is
+permanent and billed, so a debug session was a paid write to a story being played. `Airp
+(sandbox)` sets `AIRP_HOME=.airp-dev`; `Airp (real data)` does not. Both set
+`DOTNET_ENVIRONMENT=Development`, which is what makes `appsettings.Development.json` apply.
+A sandbox home has **no key** — secrets live at `AppPaths.Root/secrets` — so it cannot spend
+money until `airp secret set` puts one there. And the real profile still reads the real
+`airp.json`, which wins over the development file, because a user's own settings should.
+
+**`src/Airp.Terminal/appsettings.json` carried an `OurDream` section until 2026-08-20** — a
+browser profile directory, `Headless`, and a `Site` block pointing at `https://ourdream.ai` —
+shipped with the tool, in a public repository, binding to nothing, since this application reads
+the `Airp` section. Only its `Logging` block was ever live, and that is all it holds now.
+
+**`airp config --rewrite` is the only thing that looks inside an existing settings file.**
+`EnsureExistsAsync` writes defaults once and then returns without reading it, so a file from an
+older version keeps its shape through any number of reinstalls — it lives in the application data
+directory, not beside the binary. The rewrite is **additive**: what is set keeps its value, what
+is missing arrives with its default. Deliberately not a save of what is currently in effect —
+those options have been post-configured, so `./exports` comes back absolute and would bake this
+machine's directory into a portable file. Not named `--refresh` either: that flag is already
+mapped onto `Airp:AutoRefreshSeconds`.
+
+**`airp.json` documents its own enums, and the writer had to be taught to read them back.**
+`theme` and `keyboard` get a `// one of: …` line above them on every save, listing
+`Enum.GetNames` so the list cannot go stale. A `JsonNode` cannot carry a comment — the file is
+parsed to a tree and written back from it — so the annotations are regenerated rather than
+preserved, and a comment added by hand elsewhere is lost on the next save. **Reading now
+tolerates comments and trailing commas**, matching what the configuration provider itself
+accepts: without that, the annotation this class writes would have made the file parse as
+corrupt, and the catch that "replaces" an unparseable file would have wiped the user's settings
+the first time they saved.
 
 **Owner-specific state — the cast, the raw material, the machines — lives in
 `CLAUDE.local.md`**, git-ignored beside this file. When it is present, read it too.

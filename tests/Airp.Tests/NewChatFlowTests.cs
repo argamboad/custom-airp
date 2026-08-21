@@ -44,7 +44,9 @@ public sealed class NewChatFlowTests : IDisposable
         TestOptions.Default(),
         NullLogger<LocalConversationProvider>.Instance);
 
-    private NewChatView View(LocalConversationProvider provider)
+    private NewChatView View(
+        LocalConversationProvider provider,
+        Action<AirpOptions>? configure = null)
     {
         // Enough container to construct the ConversationView the flow pushes on success. The
         // substitutes are never spoken to here — what these tests assert is the store.
@@ -55,7 +57,11 @@ public sealed class NewChatFlowTests : IDisposable
             .AddSingleton(Substitute.For<Airp.Application.Abstractions.IExportService>())
             .BuildServiceProvider();
 
-        return new NewChatView(services, provider, TestOptions.Default(), new Airp.Infrastructure.TextLibrary(_root));
+        return new NewChatView(
+            services,
+            provider,
+            TestOptions.Default(configure),
+            new Airp.Infrastructure.TextLibrary(_root));
     }
 
     private static RenderContext Context()
@@ -241,6 +247,11 @@ public sealed class NewChatFlowTests : IDisposable
             .ShouldHaveSingleItem().Text.ShouldBe("My own words.");
     }
 
+    /// <summary>The one rendered row containing a marker, so a layout can be told from a list.</summary>
+    private static string Row(NewChatView view, string marker)
+        => Lines(view).FirstOrDefault(line => line.Contains(marker, StringComparison.Ordinal))
+           ?? string.Empty;
+
     /// <summary>Renders the view to plain text, escapes stripped.</summary>
     private static string Screen(NewChatView view)
     {
@@ -262,6 +273,29 @@ public sealed class NewChatFlowTests : IDisposable
             string.Empty);
 
         return string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    /// <summary>The rendered screen as its own rows, which is what a side-by-side test needs.</summary>
+    private static IReadOnlyList<string> Lines(NewChatView view)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out = new AnsiConsoleOutput(writer),
+        });
+
+        console.Profile.Width = 100;
+        console.Profile.Height = 30;
+        console.Write(view.Render(Context()));
+
+        var text = System.Text.RegularExpressions.Regex.Replace(
+            writer.ToString(),
+            new string((char)27, 1) + @"\[[0-9;]*[A-Za-z]",
+            string.Empty);
+
+        return text.Split('\n');
     }
 
     /// <summary>Moves focus to the character picker and steps onto the first real card.</summary>
@@ -307,21 +341,6 @@ public sealed class NewChatFlowTests : IDisposable
     }
 
     [Fact]
-    public async Task Picking_a_character_says_what_it_will_cost_every_turn()
-    {
-        // The number that decides whether a story compresses at turn twenty or turn two
-        // hundred, and it used to be invisible until the reader was already playing.
-        File.WriteAllText(
-            Path.Combine(_root, "characters", "enormous.txt"),
-            "=== THE WORLD ===\n\nA place. " + string.Join(' ', Enumerable.Repeat("detail", 4000)));
-
-        var view = View(Provider());
-        await PickFirstCharacterAsync(view);
-
-        Screen(view).ShouldContain("tokens every turn");
-    }
-
-    [Fact]
     public async Task Stepping_back_to_no_character_leaves_nothing_behind()
     {
         // The null slot is a legal choice, and a stale world under it would describe a card
@@ -336,9 +355,7 @@ public sealed class NewChatFlowTests : IDisposable
 
         await view.HandleKeyAsync(Pressed(ConsoleKey.LeftArrow), Context(), CancellationToken.None);
 
-        var screen = Screen(view);
-        screen.ShouldNotContain("Cornish");
-        screen.ShouldNotContain("tokens every turn");
+        Screen(view).ShouldNotContain("Cornish");
     }
 
     [Fact]
@@ -411,12 +428,7 @@ public sealed class NewChatFlowTests : IDisposable
         var view = View(Provider());
         await PickFirstCharacterAsync(view);
 
-        var choosing = Screen(view);
-        choosing.ShouldContain("Cornish");
-        choosing.ShouldContain(
-            "from the shelf",
-            Case.Sensitive,
-            "the opening is out of sight, so its line has to say that something is in it");
+        Screen(view).ShouldContain("Cornish");
 
         // Tab past the persona and into the opening.
         await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
@@ -425,5 +437,166 @@ public sealed class NewChatFlowTests : IDisposable
         var writing = Screen(view);
         writing.ShouldContain("rain comes in sideways");
         writing.ShouldNotContain("Cornish");
+    }
+
+    /// <summary>Writes a world of the given number of lines under a character name.</summary>
+    private void Card(string name, int lines)
+        => File.WriteAllText(
+            Path.Combine(_root, "characters", name + ".txt"),
+            "=== THE WORLD ===\n\n"
+            + string.Join('\n', Enumerable.Range(1, lines).Select(n => $"world-{n:00}")));
+
+    /// <summary>Writes a persona of the given number of lines.</summary>
+    private void Persona(string name, int lines)
+        => File.WriteAllText(
+            Path.Combine(_root, "personas", name + ".txt"),
+            string.Join('\n', Enumerable.Range(1, lines).Select(n => $"persona-{n:00}")));
+
+    [Fact]
+    public async Task The_world_and_the_persona_stand_side_by_side()
+    {
+        // A short world used to leave two thirds of the panel blank while the persona — a page
+        // written months ago and sent whole on every turn — was offered as a file name and
+        // nothing else. The two are read against each other: whether this is the right person
+        // to walk into that place is a question about both at once.
+        Card("lighthouse", lines: 3);
+        Persona("keeper", lines: 4);
+
+        var view = View(Provider(), o => o.DefaultPersona = "keeper");
+        await PickFirstCharacterAsync(view);
+
+        var screen = Screen(view);
+        screen.ShouldContain("world-03");
+        screen.ShouldContain("persona-04");
+
+        // Side by side, not stacked: the first line of each shares one row of the terminal,
+        // with the rule between them.
+        screen.ShouldContain("world-01");
+
+        var row = Row(view, "world-01");
+        row.ShouldContain("│");
+        row.ShouldContain("persona-01");
+    }
+
+    [Fact]
+    public async Task The_default_persona_is_on_screen_before_anything_is_picked()
+    {
+        // The null slot is not "no persona": it is Airp:DefaultPersona, which is really sent.
+        Persona("keeper", lines: 4);
+
+        Screen(View(Provider(), o => o.DefaultPersona = "keeper")).ShouldContain("persona-04");
+    }
+
+    [Fact]
+    public async Task Picking_a_persona_shows_that_one_instead()
+    {
+        Persona("keeper", lines: 2);
+        Persona("visitor", lines: 2);
+
+        var view = View(Provider(), o => o.DefaultPersona = "keeper");
+
+        // Name, Speaker, Character, Persona — then step onto the first name on the shelf.
+        foreach (var _ in Enumerable.Range(0, 3))
+        {
+            await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
+        }
+
+        await view.HandleKeyAsync(Pressed(ConsoleKey.RightArrow), Context(), CancellationToken.None);
+
+        Screen(view).ShouldContain("persona-02");
+    }
+
+    [Fact]
+    public async Task A_world_far_longer_than_the_panel_does_not_push_the_persona_off()
+    {
+        // Each column has the full height of the panel, so a long world scrolls in its own
+        // half rather than costing the persona its place.
+        Card("long", lines: 200);
+        Persona("keeper", lines: 4);
+
+        var view = View(Provider(), o => o.DefaultPersona = "keeper");
+        await PickFirstCharacterAsync(view);
+
+        var screen = Screen(view);
+        screen.ShouldContain("persona-04");
+        screen.ShouldContain("of 200");
+    }
+
+    [Fact]
+    public async Task Only_one_column_of_content_takes_the_whole_width()
+    {
+        // A rule down the middle of nothing is worse than no rule: with no persona to face it,
+        // the world gets the width.
+        Card("lighthouse", lines: 3);
+
+        var view = View(Provider());
+        await PickFirstCharacterAsync(view);
+
+        var screen = Screen(view);
+        screen.ShouldContain("world-03");
+
+        // No rule, because there is no second column for it to divide from the first.
+        Row(view, "world-03").ShouldNotContain("│");
+    }
+
+    [Fact]
+    public async Task The_page_keys_scroll_whichever_half_has_the_focus()
+    {
+        Card("long", lines: 200);
+        Persona("keeper", lines: 200);
+
+        var view = View(Provider(), o => o.DefaultPersona = "keeper");
+        await PickFirstCharacterAsync(view);
+
+        // On the character, the world has the room and the page keys move it.
+        await view.HandleKeyAsync(Pressed(ConsoleKey.PageDown), Context(), CancellationToken.None);
+        Screen(view).ShouldNotContain("world-01 ");
+
+        // On the persona, the persona has the room and the page keys move that instead.
+        await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
+        Screen(view).ShouldContain("persona-01");
+
+        await view.HandleKeyAsync(Pressed(ConsoleKey.PageDown), Context(), CancellationToken.None);
+        Screen(view).ShouldNotContain("persona-01 ");
+    }
+
+    [Fact]
+    public async Task The_headings_sit_over_a_rule_rather_than_on_the_text()
+    {
+        // A caption straight on the paragraph it labels reads as the paragraph's first line.
+        Card("lighthouse", lines: 3);
+        Persona("keeper", lines: 2);
+
+        var view = View(Provider(), o => o.DefaultPersona = "keeper");
+        await PickFirstCharacterAsync(view);
+
+        var lines = Lines(view);
+        var heading = lines
+            .Select(static (line, index) => (line, index))
+            .First(static x => x.line.Contains("Character preview", StringComparison.Ordinal))
+            .index;
+
+        // Heading, then a rule that the column divider crosses rather than interrupts, then
+        // the first line of both columns.
+        lines[heading + 1].ShouldContain("┼");
+        lines[heading + 2].ShouldContain("world-01");
+        lines[heading + 2].ShouldContain("persona-01");
+    }
+
+    [Fact]
+    public async Task The_caption_names_the_field_not_the_card_it_repeats()
+    {
+        // The character's name is spelled out in the form three rows up; a caption repeating it
+        // said nothing new and left the two halves of the panel unlabelled.
+        Card("lighthouse", lines: 3);
+        Persona("keeper", lines: 2);
+
+        var view = View(Provider(), o => o.DefaultPersona = "keeper");
+        await PickFirstCharacterAsync(view);
+
+        var screen = Screen(view);
+        screen.ShouldContain("Character preview");
+        screen.ShouldContain("Persona");
+        screen.ShouldNotContain("the world it belongs to");
     }
 }

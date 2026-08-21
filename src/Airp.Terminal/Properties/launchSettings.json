@@ -1,0 +1,17 @@
+{
+  "profiles": {
+    "Airp (sandbox)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "AIRP_HOME": ".airp-dev"
+      }
+    },
+    "Airp (real data)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

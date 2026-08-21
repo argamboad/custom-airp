@@ -266,6 +266,29 @@ public interface IConfigurationService
     /// <param name="cancellationToken">Token used to abort the write.</param>
     /// <returns><see langword="true"/> when a new file was created.</returns>
     Task<bool> EnsureExistsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Brings an existing configuration file up to the shape this version writes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Purely additive: keys the file already has keep their values exactly, keys it lacks are
+    /// added with their defaults, and the comments saying what the enums accept are put back.
+    /// Nothing else touches a file that is already there — <see cref="EnsureExistsAsync"/>
+    /// writes defaults once and then never looks inside — so a file written by an older version
+    /// keeps whatever shape it had, through any number of reinstalls. It lives in the
+    /// application data directory rather than beside the binary, which is the point of it.
+    /// </para>
+    /// <para>
+    /// Additive rather than a save of what is currently in effect, and the difference is not
+    /// academic: the effective options have been post-configured, so <c>./exports</c> comes
+    /// back as an absolute path. Writing that would bake this machine's directory into a file
+    /// meant to be portable.
+    /// </para>
+    /// </remarks>
+    /// <param name="cancellationToken">Token used to abort the write.</param>
+    /// <returns>The keys that were added, in the order written.</returns>
+    Task<IReadOnlyList<string>> RewriteAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Reasons the synchroniser raised an update.</summary>

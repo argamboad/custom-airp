@@ -53,6 +53,10 @@ public class ViewRenderingTests
         }
     }
 
+    /// <summary>How many rows a render actually produced.</summary>
+    private static int Rows(string rendered)
+        => rendered.Split('\n').Count(static line => line.Length > 0);
+
     private static RenderContext Context(int width = 100, int height = 24)
         => new(width, height, Theme.For(ThemeName.Dark), new AirpOptions());
 
@@ -102,10 +106,29 @@ public class ViewRenderingTests
     [Fact]
     public void SplitWidths_HonoursTheRatioWhenThereIsRoom()
     {
+        // Three columns go to the rule and the space either side of it, so the panes divide
+        // 98 of the 101 — and the two of them plus the gutter come to exactly the total.
         var (left, right) = Draw.SplitWidths(101, 0.6, 20, 20);
 
-        left.ShouldBe(60);
-        right.ShouldBe(40);
+        left.ShouldBe(59);
+        right.ShouldBe(39);
+        (left + 3 + right).ShouldBe(101);
+    }
+
+    [Fact]
+    public void SplitWidths_LeavesRoomForTheRuleItPromises()
+    {
+        // Reserving only the bar left both panes two columns wider than the grid could fit,
+        // and the renderer took them back by re-wrapping the last column — every long line in
+        // the chat list's preview broke short of its margin and dropped the remainder onto a
+        // line of its own. A pane width the pane does not get is a number the caller wraps to
+        // and does not have.
+        foreach (var total in new[] { 60, 80, 101, 120, 200 })
+        {
+            var (left, right) = Draw.SplitWidths(total, 0.3, minLeft: 28, minRight: 24);
+
+            (left + 3 + right).ShouldBeLessThanOrEqualTo(total);
+        }
     }
 
     [Fact]
@@ -174,6 +197,187 @@ public class ViewRenderingTests
     }
 
     [Fact]
+    public void Centred_PutsTheSameSpaceOnBothSides()
+    {
+        // Symmetric space reads as a margin; the same amount all on one side reads as a hole
+        // where something failed to draw.
+        var centred = RenderToText(
+            Draw.Centred(new Markup("x"), width: 20, total: 100),
+            width: 100);
+
+        var line = centred.Split('\n')[0].TrimEnd('\r');
+
+        line.IndexOf('x').ShouldBe(40);
+    }
+
+    [Fact]
+    public void Scrollbar_HasNoTrackToBeMistakenForAPaneEdge()
+    {
+        // A continuous track down a column of prose draws a hard vertical line beside it, and a
+        // line beside a column reads as the edge of a pane.
+        Draw.Scrollbar(total: 200, first: 0, visible: 10, Theme.For(ThemeName.Dark))
+            .ShouldAllBe(static cell => cell.Contains('█') || cell.Contains(' '));
+
+        Draw.Scrollbar(total: 200, first: 0, visible: 10, Theme.For(ThemeName.Dark))
+            .ShouldAllBe(static cell => !cell.Contains('│'));
+    }
+
+    [Fact]
+    public void Scrollbar_IsBlankWhenThereIsNothingToScroll()
+    {
+        // A bar that is always there is a bar nobody reads.
+        Draw.Scrollbar(total: 10, first: 0, visible: 20, Theme.For(ThemeName.Dark))
+            .ShouldAllBe(static cell => !cell.Contains('█'));
+    }
+
+    [Fact]
+    public void Scrollbar_PutsTheThumbWhereTheViewIs()
+    {
+        var theme = Theme.For(ThemeName.Dark);
+
+        var top = Draw.Scrollbar(total: 200, first: 0, visible: 20, theme);
+        var bottom = Draw.Scrollbar(total: 200, first: 180, visible: 20, theme);
+
+        top[0].ShouldContain('█');
+        top[^1].ShouldNotContain('█');
+        bottom[0].ShouldNotContain('█');
+        bottom[^1].ShouldContain('█');
+    }
+
+    [Fact]
+    public void Scrollbar_KeepsAThumbEvenForAVeryLongTranscript()
+    {
+        // Two hundred messages in a forty-row pane rounds to nothing, and a track with no
+        // thumb in it says less than no scrollbar at all.
+        Draw.Scrollbar(total: 20000, first: 5000, visible: 40, Theme.For(ThemeName.Dark))
+            .Count(static cell => cell.Contains('█'))
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public void The_legend_ends_at_a_hint_rather_than_wrapping()
+    {
+        // Thirteen strokes do not fit one line of most windows. Left to the renderer the line
+        // wrapped, the footer's height changed with the view, and the last hint arrived split
+        // across two rows.
+        KeyHint[] hints =
+        [
+            new("I / Enter", "Write a message"), new("↑↓", "Previous / next"),
+            new("PgUp/PgDn", "Scroll"), new("/", "Search"), new(">", "Carry on"),
+            new("G", "Regenerate reply"), new("S", "Settings"), new("B", "Branch from here"),
+            new("Del", "Delete from here"), new("C", "Copy"), new("X", "Export"),
+            new("R", "Refresh"), new("Esc", "Back"),
+        ];
+
+        var theme = Theme.For(ThemeName.Dark);
+        var legend = Shell.Legend(hints, width: 80, theme);
+
+        Draw.Width(RenderToText(new Markup(legend), width: 200).Split('\n')[0].TrimEnd())
+            .ShouldBeLessThanOrEqualTo(80);
+
+        legend.ShouldContain("All keys");
+        legend.ShouldNotContain("Refresh");
+    }
+
+    [Fact]
+    public void The_legend_says_nothing_about_help_when_it_all_fits()
+    {
+        var legend = Shell.Legend(
+            [new("Esc", "Back"), new("R", "Refresh")],
+            width: 80,
+            Theme.For(ThemeName.Dark));
+
+        legend.ShouldContain("Refresh");
+        legend.ShouldNotContain("All keys");
+    }
+
+    [Fact]
+    public void The_library_and_the_chat_list_divide_a_screen_the_same_way()
+    {
+        // The library had its own arithmetic — a quarter, capped at forty columns — so every
+        // terminal past a hundred and sixty got the cap rather than the ratio, and the longest
+        // name on a real shelf is thirty-nine characters: it fitted exactly, which is another
+        // way of saying it had run out of room without saying so.
+        var library = Draw.SplitWidths(160, 0.3, minLeft: 16, minRight: 20);
+        var chats = Draw.SplitWidths(160, 0.3, minLeft: 28, minRight: 24);
+
+        library.Left.ShouldBe(chats.Left);
+        library.Left.ShouldBe(47);
+        (library.Left + 3 + library.Right).ShouldBe(160);
+    }
+
+    [Fact]
+    public void Blank_ActuallyOccupiesARow()
+    {
+        // A Markup with no text renders as nothing at all inside Rows — no row, no height.
+        // Every blank line written that way was spacing the author asked for and the screen
+        // never had: the settings ran together with no gap between the dials, and the
+        // regenerate view's question sat straight on the reply it is asking about.
+        var collapsed = RenderToText(
+            new Rows(new Markup("a"), new Markup(string.Empty), new Markup("b")), width: 20);
+
+        var spaced = RenderToText(
+            new Rows(new Markup("a"), Draw.Blank, new Markup("b")), width: 20);
+
+        Rows(spaced).ShouldBe(Rows(collapsed) + 1);
+    }
+
+    [Fact]
+    public void Pane_FillsTheColumnToTheHeightItWasGiven()
+    {
+        // A column of rows stops at its last row, so a list of four in a pane of forty was
+        // four tinted lines rather than a pane with four things in it.
+        var pane = Draw.Pane(
+            [new Markup("one"), new Markup("two")],
+            width: 12,
+            height: 6,
+            Theme.For(ThemeName.Dark));
+
+        Rows(RenderToText(pane, width: 12)).ShouldBe(6);
+    }
+
+    [Fact]
+    public void Tabs_DrawTheActiveOneAsAChip()
+    {
+        // The library's shelves were coloured text and the export's formats were chips, so the
+        // same control looked like two things depending on where you reached it from.
+        var theme = Theme.For(ThemeName.Dark);
+        var strip = Draw.Tabs(["Characters", "Personas"], active: 0, theme);
+
+        strip.ShouldContain(theme.Selection.ToMarkup());
+        strip.ShouldContain(" Characters ");
+    }
+
+    [Fact]
+    public void The_key_cap_keeps_the_accent_and_gains_the_surface()
+    {
+        // Derived rather than declared beside the palettes, so the four cannot drift on it.
+        var theme = Theme.For(ThemeName.Dark);
+
+        theme.Key.Foreground.ShouldBe(theme.Accent.Foreground);
+        theme.Key.Background.ShouldBe(theme.Surface.Background);
+    }
+
+    [Fact]
+    public void Header_PinsTheModelToTheRightEdge()
+    {
+        // A grid sizes its columns to their contents and stops, so a right-aligned column that
+        // is not asked to expand aligns inside its own width. The model's name sat a couple of
+        // spaces after the longer of the identity and the breadcrumb — a gap that moved from
+        // view to view as the breadcrumb grew, and read as if it meant something.
+        var header = Shell.BuildHeaderRows(
+            Theme.For(ThemeName.Dark),
+            "Local",
+            "deepseek/deepseek-v4-flash",
+            "Chats");
+
+        var first = RenderToText(header, width: 100).Split('\n')[0].TrimEnd('\r');
+
+        first.TrimEnd().ShouldEndWith("deepseek/deepseek-v4-flash");
+        Draw.Width(first.TrimEnd()).ShouldBe(100);
+    }
+
+    [Fact]
     public void ChatListView_RendersRowsAndPreview()
     {
         using var services = BuildServices(Chat(), Chat("Captain", "2"));
@@ -199,6 +403,64 @@ public class ViewRenderingTests
         var text = RenderToText(view.Render(Context()));
         text.ShouldContain("1 chat");
         text.ShouldNotContain("character");
+    }
+
+    /// <summary>A chat whose latest message is written the way a real reply is.</summary>
+    private static Chat Reply(string text, string id = "r") => new()
+    {
+        Id = id,
+        Name = "FUF",
+        Speaker = "Lauren",
+        LatestMessage = text,
+        LastMessageAtUtc = DateTimeOffset.UtcNow.AddHours(-2),
+    };
+
+    [Fact]
+    public void ChatListView_DrawsThePreviewTheWayTheTranscriptDrawsIt()
+    {
+        // The same conventions, in both places. A reader picking a chat out of the list is
+        // recognising a reply, and raw asterisks are not what the reply looks like anywhere
+        // else in the application.
+        using var services = BuildServices(
+            Reply("*She closes the lid.* \"You are late.\""));
+
+        var view = ActivatorUtilities.CreateInstance<ChatListView>(services);
+        var text = RenderToText(view.Render(Context()));
+
+        text.ShouldContain("She closes the lid.");
+        text.ShouldContain("You are late.");
+        text.ShouldNotContain("*");
+        text.ShouldNotContain("\"You are late");
+    }
+
+    [Fact]
+    public void ChatListView_MarksAPreviewItHadToCutShort()
+    {
+        // The pane holds what it holds; a reply that stops at its edge with nothing to say so
+        // reads as a reply that ended there.
+        using var services = BuildServices(
+            Reply(string.Join(
+                '\n',
+                Enumerable.Range(1, 200).Select(n => $"line-{n:000} of the reply"))));
+
+        var view = ActivatorUtilities.CreateInstance<ChatListView>(services);
+        var text = RenderToText(view.Render(Context()));
+
+        text.ShouldContain("line-001");
+        text.ShouldNotContain("line-200");
+        text.ShouldContain("…");
+    }
+
+    [Fact]
+    public void ChatListView_GivesThePreviewMoreRoomThanTheList()
+    {
+        // Names and an age are short; a reply is prose. Six tenths to the list spent the room
+        // on the column with nothing in it.
+        var (left, right) = Draw.SplitWidths(120, 0.3, minLeft: 28, minRight: 24);
+
+        left.ShouldBeLessThan(right);
+        left.ShouldBe(35);
+        right.ShouldBe(82);
     }
 
     [Fact]

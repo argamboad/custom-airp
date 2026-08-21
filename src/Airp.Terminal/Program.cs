@@ -111,7 +111,8 @@ internal static partial class Program
                     .ConfigureAwait(false),
                 "tracker" or "trackers" => await TrackerAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
-                "config" => PrintConfiguration(host.Services),
+                "config" => await ConfigurationAsync(host.Services, args, lifetime.ApplicationStopping)
+                    .ConfigureAwait(false),
                 "run" => await RunTerminalAsync(host.Services, lifetime.ApplicationStopping).ConfigureAwait(false),
                 _ => Unknown(command),
             };
@@ -152,8 +153,10 @@ internal static partial class Program
             ContentRootPath = AppContext.BaseDirectory,
         });
 
+        // The host has already added appsettings.json and appsettings.{Environment}.json from
+        // the content root, which is the binary's directory. Only the user's own file, the
+        // environment and the command line are left to add, in that order.
         builder.Configuration
-            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true, reloadOnChange: false)
             .AddJsonFile(AppPaths.ConfigurationFile, optional: true, reloadOnChange: true)
             .AddInMemoryCollection(ReadEnvironmentOverrides())
             .AddCommandLine(args, CommandLineMappings);
@@ -190,6 +193,7 @@ internal static partial class Program
     {
         ["--provider"] = "Airp:Provider",
         ["--theme"] = "Airp:Theme",
+        ["--transcript-width"] = "Airp:TranscriptWidthPercent",
         ["--keyboard"] = "Airp:Keyboard",
         ["--refresh"] = "Airp:AutoRefreshSeconds",
     };

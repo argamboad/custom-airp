@@ -221,10 +221,26 @@ internal sealed partial class ConversationView : ViewBase
             KeepSelectionVisible(display, available);
             _scroll = Math.Clamp(_scroll, 0, Math.Max(0, display.Count - available));
 
-            foreach (var row in display.Skip(_scroll).Take(available))
+            var shown = display.Skip(_scroll).Take(available).ToList();
+            var bar = Draw.Scrollbar(display.Count, _scroll, available, theme);
+
+            // The bar sits against the measure rather than out at the window's edge. Capping
+            // the measure leaves most of a wide terminal empty, and a scrollbar floating over
+            // there belongs to nothing the reader is looking at.
+            var scrolled = new Grid();
+            scrolled.AddColumn(new GridColumn
             {
-                rows.Add(new Markup(row.Markup));
-            }
+                Width = Measure(context) + 2,
+                NoWrap = true,
+                Padding = new Padding(0, 0, 1, 0),
+            });
+            scrolled.AddColumn(new GridColumn { Width = 1, NoWrap = true, Padding = new Padding(0, 0, 0, 0) });
+
+            scrolled.AddRow(
+                new Rows([.. shown.Select(row => new Markup(row.Markup))]),
+                new Rows([.. bar.Take(shown.Count).Select(cell => new Markup(cell))]));
+
+            rows.Add(scrolled);
         }
 
         if (_composing)
@@ -238,7 +254,7 @@ internal sealed partial class ConversationView : ViewBase
             }
         }
 
-        return new Rows(rows);
+        return Draw.Centred(new Rows(rows), Column(context), context.Width);
     }
 
     /// <summary>
@@ -261,7 +277,7 @@ internal sealed partial class ConversationView : ViewBase
         // Entries are measured in columns as they are added and dropped once the row is full.
         // The hint keeps its space throughout: the list is discoverable only if the keys that
         // drive it stay on screen, so it is the suggestions that give way, not the legend.
-        var budget = Math.Max(0, context.Width - 2 - Draw.Width(Hint));
+        var budget = Math.Max(0, Column(context) - 2 - Draw.Width(Hint));
         var used = 0;
 
         for (var i = 0; i < _suggestions.Count; i++)
@@ -287,7 +303,7 @@ internal sealed partial class ConversationView : ViewBase
     /// <summary>Columns available to the composer's text, leaving room for the caret.</summary>
     /// <param name="context">Layout context.</param>
     /// <returns>The wrapping width.</returns>
-    private static int ComposerWidth(RenderContext context) => Math.Max(20, context.Width - 4);
+    private static int ComposerWidth(RenderContext context) => Math.Max(20, Column(context) - 4);
 
     /// <summary>
     /// Length of the draft as the site will receive it, counted without building the string.
@@ -398,7 +414,7 @@ internal sealed partial class ConversationView : ViewBase
 
             if (index >= composer.Count)
             {
-                yield return new Markup(string.Empty);
+                yield return Draw.Blank;
                 continue;
             }
 
@@ -1379,7 +1395,7 @@ internal sealed partial class ConversationView : ViewBase
     {
         var theme = context.Theme;
         var rows = new List<(int Message, string Markup)>();
-        var width = Math.Max(20, context.Width - 3);
+        var width = Measure(context);
 
         for (var i = 0; i < visible.Count; i++)
         {
@@ -1400,12 +1416,22 @@ internal sealed partial class ConversationView : ViewBase
                 ? at.LocalDateTime.ToString("ddd HH:mm")
                 : string.Empty;
 
+            // The speaker as a chip on the surface tone, the way the footer draws a key, and
+            // the time at the far end of the measure. Not black-on-colour like the header's
+            // one badge: a screenful of transcript carries a dozen of these.
+            var chip = $" {label} ";
+            var flag = message.FlaggedReason is null
+                ? string.Empty
+                : $"  ⚑ {message.FlaggedReason}";
+
+            var gap = Math.Max(
+                1,
+                width + 1 - Draw.Width(marker) - Draw.Width(chip) - Draw.Width(flag) - Draw.Width(stamp));
+
             rows.Add((i, Draw.Literal(marker, selected ? theme.Accent : theme.Border)
-                        + Draw.Literal($" {label}", style)
-                        + Draw.Literal($"  {stamp}", theme.Muted)
-                        + (message.FlaggedReason is null
-                            ? string.Empty
-                            : Draw.Literal($"  ⚑ {message.FlaggedReason}", theme.Error))));
+                        + Draw.Literal(chip, style.Combine(theme.Surface))
+                        + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
+                        + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
 
             foreach (var line in message.Text.Split('\n'))
             {
@@ -1422,20 +1448,72 @@ internal sealed partial class ConversationView : ViewBase
                 }
             }
 
-            rows.Add((i, string.Empty));
+            // A blank and then a hairline, so a long transcript scans as a sequence of turns
+            // rather than as one wall of prose. The blank was there before and never drew: an
+            // empty string becomes an empty Markup, which occupies no row at all.
+            rows.Add((i, " "));
+
+            if (i < visible.Count - 1)
+            {
+                rows.Add((i, Draw.Literal("  " + new string('─', width), theme.Border)));
+            }
         }
 
         return rows;
+    }
+
+    /// <summary>The column count prose is wrapped to, whatever the terminal is.</summary>
+    /// <remarks>
+    /// A terminal is as wide as its window; a reply is continuous prose. Those are two
+    /// different requirements, and the transcript used to serve the first — a maximised window
+    /// gave lines of a hundred and sixty characters. Past about ninety columns the eye loses
+    /// the start of the next line on the return sweep, which is why a newspaper sets narrow
+    /// columns on a wide page. Narrower than the window is the point; the space to the right
+    /// is where the scrollbar goes and the rest of it stays empty on purpose.
+    /// </remarks>
+    /// <param name="context">Layout context.</param>
+    /// <returns>Columns available to one line of the reply.</returns>
+    private static int Measure(RenderContext context) => Math.Max(20, Column(context) - 4);
+
+    /// <summary>The width of the whole conversation, centred in the window.</summary>
+    /// <remarks>
+    /// <para>
+    /// Three fifths, so the measure grows with the window without ever becoming the window.
+    /// A maximised terminal was giving lines of a hundred and eighty characters; past about
+    /// ninety the eye loses the start of the next line on the return sweep, which is why a
+    /// newspaper sets narrow columns on a wide page.
+    /// </para>
+    /// <para>
+    /// Centred, not pinned left. The first attempt capped the measure and left the column
+    /// where it was, which put all of the leftover space on one side — and space all on one
+    /// side reads as a pane that failed to draw rather than as a margin. Everything the view
+    /// owns sits in this column: the counts, the transcript, the composer and its suggestions.
+    /// </para>
+    /// <para>
+    /// The share is <c>Airp:TranscriptWidthPercent</c>, sixty by default. At 100 the column is
+    /// the window, there is no margin, and the view is what it was before any of this.
+    /// </para>
+    /// <para>Four of these columns are the marker, its space, the gap and the scrollbar.</para>
+    /// </remarks>
+    /// <param name="context">Layout context.</param>
+    /// <returns>Columns the conversation occupies.</returns>
+    private static int Column(RenderContext context)
+    {
+        var share = Math.Clamp(context.Options.TranscriptWidthPercent, 30, 100);
+        var wanted = (int)((long)context.Width * share / 100);
+
+        // Never wider than the window, and never so narrow on a small terminal that the
+        // percentage leaves nothing to read. A window under the floor gets all of itself.
+        return Math.Clamp(wanted, Math.Min(40, context.Width), context.Width);
     }
 
     /// <summary>
     /// Paints one wrapped segment, giving each run of it the style its markers asked for.
     /// </summary>
     /// <remarks>
-    /// The runs are offsets into the whole formatted line and a segment is a window onto it, so
-    /// each run is clipped to the window before it is drawn. An action that wraps across three
-    /// rows is one run and stays one colour, which is the reason the styling is computed on the
-    /// line and not on the piece.
+    /// The clipping lives in <see cref="Draw.Prose"/>, which the chat list's preview of the
+    /// latest message draws through as well. What is particular to the transcript is the
+    /// painter: an active search has to show through whatever styling a run asked for.
     /// </remarks>
     /// <param name="formatted">The whole line, stripped of markers, with its runs.</param>
     /// <param name="start">Where this segment begins within that line.</param>
@@ -1443,43 +1521,13 @@ internal sealed partial class ConversationView : ViewBase
     /// <param name="theme">The palette.</param>
     /// <returns>Markup for the segment.</returns>
     private string Body(Application.Text.FormattedProse formatted, int start, string segment, Theme theme)
-    {
-        var end = start + segment.Length;
-        var markup = new System.Text.StringBuilder();
-        var cursor = start;
-
-        foreach (var run in formatted.Runs)
-        {
-            var from = Math.Max(run.Start, start);
-            var to = Math.Min(run.Start + run.Length, end);
-
-            if (to <= from)
-            {
-                continue;
-            }
-
-            // Whatever the runs did not claim is ordinary narration. Drawn rather than skipped:
-            // a gap would silently drop the reader's words off the screen.
-            if (from > cursor)
-            {
-                markup.Append(Paint(formatted.Text[cursor..from], theme.Text, theme));
-            }
-
-            markup.Append(Paint(
-                formatted.Text[from..to],
-                run.Kind == Application.Text.ProseKind.Action ? theme.Action : theme.Text,
-                theme));
-
-            cursor = to;
-        }
-
-        if (cursor < end)
-        {
-            markup.Append(Paint(formatted.Text[cursor..end], theme.Text, theme));
-        }
-
-        return markup.ToString();
-    }
+        => Draw.Prose(
+            formatted,
+            start,
+            segment,
+            theme.Text,
+            theme.Action,
+            (text, style) => Paint(text, style, theme));
 
     /// <summary>Draws a stretch of text, letting an active search still show through it.</summary>
     /// <param name="text">The stretch.</param>
