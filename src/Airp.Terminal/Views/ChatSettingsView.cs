@@ -82,10 +82,7 @@ internal sealed class ChatSettingsView : ViewBase
 
         var rows = new List<IRenderable>
         {
-            new Markup(
-                Draw.Literal(_title, theme.Heading)
-                + Draw.Literal("   these apply to every reply from now on", theme.Muted)),
-            new Rule { Style = theme.Border },
+            Draw.Heading(_title, theme, "these apply to every reply from now on"),
         };
 
         if (!_loaded)
@@ -120,7 +117,7 @@ internal sealed class ChatSettingsView : ViewBase
                     + Draw.Literal("  " + line, theme.Muted)));
             }
 
-            rows.Add(new Markup(string.Empty));
+            rows.Add(Draw.Blank);
         }
 
         {
@@ -138,7 +135,7 @@ internal sealed class ChatSettingsView : ViewBase
                 + Draw.Literal(on ? "● On " : "○ Off", changed ? theme.Warning : (on ? theme.Success : theme.Muted))
                 + Draw.Literal(changed ? "  (was " + ((_applied.InnerThoughts ?? false) ? "On" : "Off") + ")" : string.Empty, theme.Muted)));
 
-            rows.Add(new Markup(string.Empty));
+            rows.Add(Draw.Blank);
         }
 
         rows.Add(new Rule { Style = theme.Border });

@@ -28,7 +28,12 @@ internal sealed class LibraryView : ViewBase
     private static readonly string[] ShelfNames = ["Characters", "Personas", "Snippets", "Openings"];
 
     /// <summary>Columns between the list and the description.</summary>
-    private const int Gutter = 2;
+    /// <remarks>
+    /// Three, because that is what <see cref="Draw.SplitWidths"/> holds back for the space
+    /// between two panes. The widths it returns are the widths the panes get only if the gap
+    /// between them is the gap it reserved.
+    /// </remarks>
+    private const int Gutter = 3;
 
     /// <summary>
     /// A source line at least this long was wrapped by the writer, so it flows into the next
@@ -133,11 +138,7 @@ internal sealed class LibraryView : ViewBase
         var theme = context.Theme;
         var rows = new List<IRenderable>();
 
-        rows.Add(new Markup(string.Join(
-            Draw.Literal("   ", theme.Muted),
-            ShelfNames.Select((s, i) => i == _shelf
-                ? $"[{theme.Accent.ToMarkup()}]{s}[/]"
-                : Draw.Literal(s, theme.Muted)))));
+        rows.Add(new Markup(Draw.Tabs(ShelfNames, _shelf, theme)));
 
         rows.Add(new Rule { Style = theme.Border });
 
@@ -154,19 +155,29 @@ internal sealed class LibraryView : ViewBase
             rows.Add(new Markup(Draw.Literal($"No {Kind}s yet — N starts one.", theme.Muted)));
         }
 
-        // Names on the left, what they are on the right: a quarter of the width is enough
-        // for any file name, and the description is the part worth reading.
-        var listWidth = Math.Clamp(context.Width / 4, 16, 40);
-        var textWidth = Math.Max(20, context.Width - listWidth - Gutter);
+        // Names on the left, what they are on the right. Three tenths, the same share the chat
+        // list gives its own list, and through the same helper: a quarter with a hard cap of
+        // forty columns meant every terminal past a hundred and sixty got the cap rather than
+        // the ratio, and the longest name on a real shelf is thirty-nine characters — it fitted
+        // exactly, which is another way of saying it had run out of room without saying so.
+        var (listWidth, textWidth) = Draw.SplitWidths(
+            context.Width,
+            leftRatio: 0.3,
+            minLeft: 16,
+            minRight: 20);
+
+        // A column at the far right of the description belongs to the scrollbar, so the text
+        // is wrapped to what is left rather than to what the pane is.
+        var proseWidth = Math.Max(10, textWidth - 2);
         var height = Math.Max(3, context.Height - 7);
 
         if (!_naming && Selected is { } current)
         {
-            if (_previewKey != (_shelf, current, textWidth))
+            if (_previewKey != (_shelf, current, proseWidth))
             {
-                _previewKey = (_shelf, current, textWidth);
+                _previewKey = (_shelf, current, proseWidth);
                 _preview = TextLibrary.Find(Folder, current) is { } path
-                    ? Describe(TextLibrary.Preview(path, MaxPreviewLines), textWidth)
+                    ? Describe(TextLibrary.Preview(path, MaxPreviewLines), proseWidth)
                     : [];
             }
         }
@@ -200,15 +211,27 @@ internal sealed class LibraryView : ViewBase
 
         foreach (var (name, index) in _names.Select(static (n, i) => (n, i)).Skip(top).Take(height))
         {
-            list.Add(new Markup(index == _selected && !_naming
-                ? $"[{theme.Selection.ToMarkup()}]{Markup.Escape(" " + name + " ")}[/]"
-                : Draw.Literal(" " + name, theme.Text)));
+            // The full width of the column, the way the chat list draws its cursor. Highlighting
+            // the name alone made the same idea look like two: a bar in one list and a marked
+            // word in the other.
+            list.Add(new Markup(Draw.Literal(
+                Draw.Pad(" " + name, listWidth),
+                index == _selected && !_naming
+                    ? theme.Selection
+                    : theme.Text.Combine(theme.Surface))));
         }
+
+        var bar = Draw.Scrollbar(_preview.Count, _scroll, shown.Count, theme);
 
         var grid = new Grid();
         grid.AddColumn(new GridColumn { Width = listWidth, NoWrap = true, Padding = new Padding(0, 0, Gutter, 0) });
-        grid.AddColumn(new GridColumn { Width = textWidth, Padding = new Padding(0, 0, 0, 0) });
-        grid.AddRow(new Rows(list), new Rows(description));
+        grid.AddColumn(new GridColumn { Width = proseWidth, Padding = new Padding(0, 0, 1, 0) });
+        grid.AddColumn(new GridColumn { Width = 1, NoWrap = true, Padding = new Padding(0, 0, 0, 0) });
+
+        grid.AddRow(
+            Draw.Pane(list, listWidth, height, theme),
+            new Rows(description),
+            new Rows([.. bar.Select(cell => new Markup(cell))]));
 
         rows.Add(grid);
 

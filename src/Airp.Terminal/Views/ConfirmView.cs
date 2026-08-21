@@ -75,7 +75,7 @@ internal sealed class ConfirmView : ViewBase
             }
         }
 
-        rows.Add(new Markup(string.Empty));
+        rows.Add(Draw.Blank);
         rows.Add(new Markup(
             Draw.Literal("Enter", theme.Error)
             + Draw.Literal($" to {_confirmLabel.ToLowerInvariant()}   ", theme.Muted)

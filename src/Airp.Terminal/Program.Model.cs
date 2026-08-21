@@ -179,6 +179,53 @@ internal static partial class Program
     /// model and its budgets alongside the paths. The API key appears by name only — the value
     /// never passes through configuration, precisely so a command like this cannot print it.
     /// </remarks>
+    /// <summary>Prints the settings, or writes the file back out.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>--refresh</c> exists because nothing else ever touches a file that is already there.
+    /// <c>EnsureExistsAsync</c> writes defaults once and then returns without looking inside,
+    /// so a settings file created by an older version keeps whatever shape it had — no new
+    /// keys, and none of the comments saying what the enums accept. Reinstalling the tool does
+    /// not change that: the file lives in the application data directory, not beside the
+    /// binary, which is the whole point of it.
+    /// </para>
+    /// <para>
+    /// Purely additive. Keys the file already has keep their values exactly — writing back what
+    /// is currently <em>in effect</em> would be wrong, because the effective options have been
+    /// post-configured and <c>./exports</c> comes back as an absolute path, baking this
+    /// machine's directory into a file meant to be portable.
+    /// </para>
+    /// </remarks>
+    /// <param name="services">Container.</param>
+    /// <param name="args">Command line.</param>
+    /// <param name="cancellationToken">Token used to abort the write.</param>
+    /// <returns>Process exit code.</returns>
+    private static async Task<int> ConfigurationAsync(
+        IServiceProvider services,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        // Not --refresh: that is already mapped onto Airp:AutoRefreshSeconds, and a flag that
+        // means one thing to the command and another to the configuration binder is a flag
+        // that will eventually be typed by someone expecting the other one.
+        if (!args.Contains("--rewrite", StringComparer.OrdinalIgnoreCase))
+        {
+            return PrintConfiguration(services);
+        }
+
+        var configuration = services.GetRequiredService<IConfigurationService>();
+
+        var added = await configuration.RewriteAsync(cancellationToken).ConfigureAwait(false);
+
+        AnsiConsole.MarkupLine($"[green]Rewrote[/] {Markup.Escape(configuration.ConfigurationFilePath)}");
+        AnsiConsole.MarkupLine(added.Count == 0
+            ? "[grey]Nothing was missing; the comments saying what the enums accept are back.[/]"
+            : $"[grey]Added: {Markup.Escape(string.Join(", ", added))}. "
+              + "Everything already set was left exactly as it was.[/]");
+
+        return 0;
+    }
+
     private static int PrintConfiguration(IServiceProvider services)
     {
         var configuration = services.GetRequiredService<IConfigurationService>();
@@ -215,6 +262,11 @@ internal static partial class Program
 
         table.AddRow("Default persona", options.DefaultPersona ?? "(none)");
         table.AddRow("Theme", options.Theme.ToString());
+        table.AddRow(
+            "Transcript width",
+            options.TranscriptWidthPercent >= 100
+                ? "the whole window"
+                : $"{Math.Clamp(options.TranscriptWidthPercent, 30, 100)}% of the window, centred");
         table.AddRow("Keyboard", options.Keyboard.ToString());
         table.AddRow("Auto refresh", $"{options.AutoRefreshSeconds}s");
 

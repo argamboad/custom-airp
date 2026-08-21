@@ -56,11 +56,7 @@ internal sealed class ExportView : ViewBase
     {
         var theme = context.Theme;
 
-        var tabs = string.Join(
-            "  ",
-            Formats.Select((f, i) => Draw.Literal(
-                $" {Describe(f)} ",
-                i == _format ? theme.Selection : theme.Muted)));
+        var tabs = Draw.Tabs([.. Formats.Select(Describe)], _format, theme);
 
         var rows = new List<IRenderable>
         {

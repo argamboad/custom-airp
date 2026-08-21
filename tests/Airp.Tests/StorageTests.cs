@@ -57,6 +57,90 @@ public class JsonConfigurationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_SaysWhatTheEnumKeysWillAccept()
+    {
+        // A palette or a keyboard dialect is a closed set nobody can guess from the file, and
+        // the list comes from the enums so adding one adds it to the file's own documentation.
+        await _service.EnsureExistsAsync();
+
+        var json = await File.ReadAllTextAsync(_path);
+
+        json.ShouldContain("// one of: Dark, Light, HighContrast, Monochrome");
+        json.ShouldContain("// one of: Standard, Vim");
+
+        var themeAt = json.IndexOf("\"theme\":", StringComparison.Ordinal);
+        var commentAt = json.IndexOf("Dark, Light, HighContrast", StringComparison.Ordinal);
+
+        commentAt.ShouldBeLessThan(themeAt, "the comment goes above the key it is about");
+    }
+
+    [Fact]
+    public async Task SaveAsync_DoesNotChokeOnAFileThatHasCommentsInIt()
+    {
+        // Without this the annotations written above would come back as an unparseable file on
+        // the next save, and the whole of the user's settings would be replaced by defaults.
+        await File.WriteAllTextAsync(
+            _path,
+            """
+            {
+              "Airp": {
+                // one of: Dark, Light, HighContrast, Monochrome
+                "theme": "Light",
+                "somethingThisVersionHasNeverHeardOf": 7,
+              }
+            }
+            """);
+
+        await _service.SaveAsync(new AirpOptions { AutoRefreshSeconds = 15 });
+
+        var json = await File.ReadAllTextAsync(_path);
+
+        json.ShouldContain("somethingThisVersionHasNeverHeardOf");
+        json.ShouldContain("\"autoRefreshSeconds\": 15");
+    }
+
+    [Fact]
+    public async Task RewriteAsync_AddsWhatIsMissingAndTouchesNothingElse()
+    {
+        // Nothing else ever looks inside a file that is already there, so a settings file
+        // written by an older version keeps its shape through any number of reinstalls — it
+        // lives in the application data directory, not beside the binary.
+        await File.WriteAllTextAsync(
+            _path,
+            """
+            {
+              "Airp": {
+                "theme": "Light",
+                "exportDirectory": "./exports",
+                "model": { "contextBudget": 60000 }
+              }
+            }
+            """);
+
+        var added = await _service.RewriteAsync();
+
+        added.ShouldContain("transcriptWidthPercent");
+
+        var json = await File.ReadAllTextAsync(_path);
+
+        json.ShouldContain("\"theme\": \"Light\"");
+        json.ShouldContain("\"contextBudget\": 60000");
+        json.ShouldContain("// one of: Dark, Light, HighContrast, Monochrome");
+
+        // The effective options have been post-configured, so writing back what is *in effect*
+        // would bake this machine's absolute export directory into a portable file.
+        json.ShouldContain("\"exportDirectory\": \"./exports\"");
+    }
+
+    [Fact]
+    public async Task RewriteAsync_OnAFileThatIsAlreadyCurrentOnlyPutsTheCommentsBack()
+    {
+        await _service.EnsureExistsAsync();
+
+        (await _service.RewriteAsync()).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task SaveAsync_PreservesAHandWrittenSection()
     {
         await File.WriteAllTextAsync(

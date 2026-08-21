@@ -22,3 +22,6 @@ captures/
 
 # Owner's local context — the personal half of CLAUDE.md
 CLAUDE.local.md
+
+# The debugger sandbox: a throwaway AIRP_HOME so F5 never touches real conversations.
+.airp-dev/

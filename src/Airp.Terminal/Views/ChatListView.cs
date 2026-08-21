@@ -111,7 +111,10 @@ internal sealed class ChatListView : ViewBase, IMouseAware
     public override IRenderable Render(RenderContext context)
     {
         var theme = context.Theme;
-        var (leftWidth, rightWidth) = Draw.SplitWidths(context.Width, 0.6, minLeft: 28, minRight: 24);
+        // Three tenths to the list and the rest to the preview. The list holds names and an
+        // age, both short; the preview holds a reply, which is prose and needs the width to be
+        // read at all. The old six-tenths spent the room on the column with nothing in it.
+        var (leftWidth, rightWidth) = Draw.SplitWidths(context.Width, 0.3, minLeft: 28, minRight: 24);
 
         var rows = new List<IRenderable>
         {
@@ -120,11 +123,16 @@ internal sealed class ChatListView : ViewBase, IMouseAware
                 : _filtering
                 ? Draw.Literal("Filter: ", theme.Accent) + _filter.ToMarkup(theme)
                 : Draw.Literal(
-                    _filter.IsEmpty
-                        ? Count(_visible.Count)
-                        : $"{_visible.Count} of {_chats.Cached.Count} matching \"{_filter.Value}\"",
-                    theme.Muted)),
-            new Rule { Style = theme.Border },
+                    Draw.Pad(
+                        _filter.IsEmpty
+                            ? Count(_visible.Count)
+                            : $"{_visible.Count} of {_chats.Cached.Count} matching \"{_filter.Value}\"",
+                        leftWidth),
+                    theme.Muted.Combine(theme.Surface))),
+
+            // The rule is inside the pane, so it is tinted too. Left on the terminal's own
+            // ground it cut a bare stripe across the column three rows from the top.
+            new Rule { Style = theme.Border.Combine(theme.Surface) },
         };
 
         if (_visible.Count == 0)
@@ -146,7 +154,14 @@ internal sealed class ChatListView : ViewBase, IMouseAware
             }
         }
 
-        return Draw.Split(new Rows(rows), RenderPreview(context, rightWidth), leftWidth, rightWidth, theme.Border);
+        // The list is a pane and the preview is the page beside it, so the list carries the
+        // surface tone down its whole height and the preview does not.
+        return Draw.Split(
+            Draw.Pane(rows, leftWidth, context.Height, theme),
+            RenderPreview(context, rightWidth),
+            leftWidth,
+            rightWidth,
+            theme.Border);
     }
 
     /// <inheritdoc />
@@ -423,7 +438,9 @@ internal sealed class ChatListView : ViewBase, IMouseAware
             return Draw.Literal(line, theme.Selection);
         }
 
-        var style = chat.IsUnread ? theme.Accent : theme.Text;
+        // The row is already padded to the column, so tinting its style tints the whole width
+        // of it — which is what makes the rows and the blank space under them one surface.
+        var style = (chat.IsUnread ? theme.Accent : theme.Text).Combine(theme.Surface);
 
         return _filter.IsEmpty
             ? Draw.Literal(line, style)
@@ -463,15 +480,46 @@ internal sealed class ChatListView : ViewBase, IMouseAware
         }
         else
         {
+            // Drawn the way the transcript draws it — actions dimmed, quotation marks gone —
+            // because a reader recognising a reply at a glance is the whole point of drawing
+            // them, and half of that is lost if the preview shows the raw markers instead.
             var available = Math.Max(1, context.Height - rows.Count - 2);
-            var wrapped = preview
-                .Split('\n')
-                .SelectMany(line => Draw.Wrap(line, Math.Max(10, width)))
-                .Take(available);
+            var drawn = new List<string>();
 
-            foreach (var line in wrapped)
+            foreach (var line in preview.Split('\n'))
             {
-                rows.Add(new Markup(Draw.Literal(line, theme.Text)));
+                var formatted = Application.Text.ProseFormat.Format(line);
+
+                foreach (var (start, segment) in Draw.WrapSegments(formatted.Text, Math.Max(10, width)))
+                {
+                    drawn.Add(Draw.Prose(formatted, start, segment, theme.Text, theme.Action));
+
+                    if (drawn.Count > available)
+                    {
+                        break;
+                    }
+                }
+
+                if (drawn.Count > available)
+                {
+                    break;
+                }
+            }
+
+            // The preview is for recognising a chat, not for reading it, so it stops where the
+            // pane does — but it says so. A reply cut at the pane's edge with nothing to mark
+            // it reads as a reply that ended there.
+            var cut = drawn.Count > available;
+            var shown = cut ? Math.Max(0, available - 1) : available;
+
+            foreach (var markup in drawn.Take(shown))
+            {
+                rows.Add(new Markup(markup));
+            }
+
+            if (cut)
+            {
+                rows.Add(new Markup(Draw.Literal("…", theme.Muted)));
             }
         }
 

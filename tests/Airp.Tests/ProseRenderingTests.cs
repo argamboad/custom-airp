@@ -51,8 +51,33 @@ public class ProseRenderingTests
         }
     }
 
-    private static RenderContext Context()
-        => new(100, 24, Theme.For(ThemeName.Dark), new AirpOptions());
+    private static RenderContext Context(int share = 60)
+        => new(100, 24, Theme.For(ThemeName.Dark), new AirpOptions { TranscriptWidthPercent = share });
+
+    [Fact]
+    public async Task The_transcript_is_a_column_of_the_window_and_a_hundred_means_all_of_it()
+    {
+        // A terminal is as wide as its window and a reply is continuous prose: two different
+        // requirements. The share is configurable because the right answer depends on the
+        // window and the reader's eyes, and a hundred is where this started — no margin.
+        var (view, _) = Build();
+        await RunAsync(await view.OnActivatedAsync(CancellationToken.None));
+
+        var sixty = Render(view.Render(Context(share: 60))).Split('\n');
+        var full = Render(view.Render(Context(share: 100))).Split('\n');
+
+        int Indent(string[] screen) => screen
+            .Where(static line => line.Trim().Length > 0)
+            .Min(line => line.Length - line.TrimStart().Length);
+
+        // Centred, so the margin is on both sides rather than all down one.
+        Indent(sixty).ShouldBeGreaterThan(0);
+        Indent(full).ShouldBe(0);
+
+        int Longest(string[] screen) => screen.Max(line => line.TrimEnd().Length);
+
+        Longest(sixty).ShouldBeLessThan(Longest(full));
+    }
 
     private static string Render(IRenderable renderable, bool colour = false)
     {
