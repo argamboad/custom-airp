@@ -236,6 +236,8 @@ public sealed class BranchKeyTests : IDisposable
         {
             Ansi = Spectre.Console.AnsiSupport.No,
             ColorSystem = Spectre.Console.ColorSystemSupport.NoColors,
+            // Spectre's CI enrichers turn ANSI back on under GITHUB_ACTIONS; opt out so No means no.
+            Enrichment = new Spectre.Console.ProfileEnrichment { UseDefaultEnrichers = false },
             Out = new Spectre.Console.AnsiConsoleOutput(writer),
         });
 

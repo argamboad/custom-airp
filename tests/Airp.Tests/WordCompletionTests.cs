@@ -300,6 +300,8 @@ public class WordCompletionTests
         {
             Ansi = AnsiSupport.No,
             ColorSystem = ColorSystemSupport.NoColors,
+            // Spectre's CI enrichers turn ANSI back on under GITHUB_ACTIONS; opt out so No means no.
+            Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
             Out = new AnsiConsoleOutput(writer),
         });
 
