@@ -545,8 +545,10 @@ decorations:
 - **The footer legend ends at a hint rather than wrapping.** A conversation offers thirteen
   strokes and they do not fit one line; the footer's height changed with the view and the last
   hint arrived split across two rows. `Shell.Legend` drops whole hints and points at `?` instead.
-- **The terminal's tab says `airp — FUF`.** Set only when it changes: on Unix the setter writes
-  an escape to the same stream the live display draws on.
+- **The terminal's tab is not touched.** For a day it said `airp — FUF`, the view you were in;
+  removed on 2026-08-21 because the taskbar then announced the application and the chat to
+  anyone glancing at the screen, and this is a private thing. `Console.Title` is never set. Do
+  not add it back.
 
 **Configuration layers the ordinary way.** `Host.CreateApplicationBuilder` already adds
 `appsettings.json` and `appsettings.{Environment}.json` from the content root, so `Program`
