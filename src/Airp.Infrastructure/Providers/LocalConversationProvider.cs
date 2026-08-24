@@ -984,10 +984,9 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
         return await retriever.RecallAsync(
             store,
-            conversation.Id,
+            conversation,
             query,
             compressedUpTo,
-            conversation.Speaker,
             _options.CurrentValue.Model,
             cancellationToken).ConfigureAwait(false);
     }
