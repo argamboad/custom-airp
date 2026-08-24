@@ -95,22 +95,31 @@ internal sealed class MemoryRetriever
     /// Finds the compressed turns that bear on what was just said.
     /// </summary>
     /// <param name="store">The open store.</param>
-    /// <param name="conversationId">The conversation.</param>
+    /// <param name="conversation">
+    /// The conversation, not just its id: the recalled lines are a stretch of transcript
+    /// rendered for the model to read, and both sides of it are named the way
+    /// <see cref="Transcript"/> names them. Labelling the reader's turns <c>User</c> here while
+    /// the summaries above call the same person by their persona name split one person into
+    /// two — the exact bug <see cref="Transcript.Reader"/> exists to prevent, alive in the one
+    /// background reader that had kept its own copy of the labels.
+    /// </param>
     /// <param name="query">What the reader just wrote.</param>
     /// <param name="upToSequence">The last turn that has been compressed away.</param>
-    /// <param name="speaker">Name to attribute assistant turns to, when rendering.</param>
     /// <param name="settings">Model settings, for the count and the threshold.</param>
     /// <param name="cancellationToken">Token used to abort.</param>
     /// <returns>Rendered lines, most relevant first, or empty when nothing is relevant.</returns>
     public async Task<IReadOnlyList<string>> RecallAsync(
         AirpDbContext store,
-        string conversationId,
+        ConversationRecord conversation,
         string query,
         long upToSequence,
-        string? speaker,
         ModelOptions settings,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(conversation);
+
+        var conversationId = conversation.Id;
+
         if (settings.RecallCount == 0 || string.IsNullOrWhiteSpace(query))
         {
             return [];
@@ -170,11 +179,14 @@ internal sealed class MemoryRetriever
             scored.Length,
             scored.Max(static s => s.Score));
 
+        var reader = Transcript.Reader(conversation);
+        var character = Transcript.Character(conversation);
+
         return
         [
             "Earlier in this conversation:",
             .. scored.Select(s =>
-                $"[{s.Sequence}] {(s.Role == ChatRole.Assistant ? speaker ?? "Character" : "User")}: {s.Text}"),
+                $"[{s.Sequence}] {(s.Role == ChatRole.Assistant ? character : reader)}: {s.Text}"),
         ];
     }
 }
