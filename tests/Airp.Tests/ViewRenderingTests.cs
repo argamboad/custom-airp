@@ -758,6 +758,42 @@ public class ViewRenderingTests
     }
 
     [Fact]
+    public async Task ChatSettingsView_ScrollsToTheDialTheCursorIsOn()
+    {
+        // Fifteen dials do not fit a terminal. The window follows the cursor: walking to the
+        // last dial brings it on screen and lets the first scroll away.
+        var view = new ChatSettingsView(Dials(), "chat-1", "North Dock");
+        var small = new RenderContext(100, 14, Theme.For(Application.Options.ThemeName.Dark), new Application.Options.AirpOptions());
+
+        await ActivateAsync(view);
+
+        RenderToText(view.Render(small), height: 14).ShouldContain("Lust");
+
+        MoveTo(view, "anti-loop");
+        var text = RenderToText(view.Render(small), height: 14);
+
+        text.ShouldContain("Anti-loop");
+        text.ShouldNotContain("Lust");
+    }
+
+    [Fact]
+    public async Task ChatSettingsView_ScrollsBackWhenTheCursorReturns()
+    {
+        var view = new ChatSettingsView(Dials(), "chat-1", "North Dock");
+        var small = new RenderContext(100, 14, Theme.For(Application.Options.ThemeName.Dark), new Application.Options.AirpOptions());
+
+        await ActivateAsync(view);
+        MoveTo(view, "anti-loop");
+        view.Render(small);
+
+        await view.HandleKeyAsync(Home(), small, CancellationToken.None);
+
+        var text = RenderToText(view.Render(small), height: 14);
+        text.ShouldContain("Lust");
+        text.ShouldNotContain("Anti-loop");
+    }
+
+    [Fact]
     public async Task ChatSettingsView_CannotBeMovedOutsideTheSitesRange()
     {
         var view = new ChatSettingsView(Dials(("creativity", "4")), "chat-1", "North Dock");
@@ -867,6 +903,12 @@ public class ViewRenderingTests
     private static KeyStroke Delete()
         => KeyMap.Resolve(
             new ConsoleKeyInfo('\0', ConsoleKey.Delete, false, false, false),
+            KeyboardMode.Standard,
+            KeyContext.Navigation);
+
+    private static KeyStroke Home()
+        => KeyMap.Resolve(
+            new ConsoleKeyInfo('\0', ConsoleKey.Home, false, false, false),
             KeyboardMode.Standard,
             KeyContext.Navigation);
 
