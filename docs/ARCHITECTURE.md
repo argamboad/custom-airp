@@ -446,9 +446,11 @@ classDiagram
 - `TextLibrary` is four folders of text files under the data directory. One resolution rule for
   characters and personas alike: *the conversation's own text → file by name → default file*
   ([TextLibrary.cs:206](../src/Airp.Infrastructure/TextLibrary.cs)).
-- Data lives in `%LOCALAPPDATA%\Airp`; `AIRP_HOME` overrides it. Secrets are DPAPI-protected
-  and never pass through `IConfiguration` — `EnvironmentOverrides` discards variables ending in
-  `_KEY` and `_TOKEN`.
+- Data lives in the platform's local-application-data directory (`%LOCALAPPDATA%\Airp` on
+  Windows, `~/.local/share/Airp` on Linux, `~/Library/Application Support/Airp` on macOS);
+  `AIRP_HOME` overrides it. Secrets are DPAPI-protected on Windows and fall back to an
+  environment variable of the same name elsewhere; they never pass through `IConfiguration` —
+  `EnvironmentOverrides` discards variables ending in `_KEY` and `_TOKEN`.
 
 ---
 

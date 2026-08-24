@@ -23,8 +23,10 @@ Later wins. `Host.CreateApplicationBuilder` adds the first two from the binary's
 set keys keep their values, missing keys arrive with defaults, and the `// one of: …`
 annotations above `theme` and `keyboard` are regenerated from `Enum.GetNames`. The reader
 tolerates comments and trailing commas; hand-written comments elsewhere are lost on the next
-save. Paths resolve against the data directory (`%LOCALAPPDATA%\Airp`, `AIRP_HOME` overrides),
-except `ExportDirectory`, made absolute against the app root at options-build time.
+save. Paths resolve against the data directory — `%LOCALAPPDATA%\Airp` on Windows,
+`~/.local/share/Airp` on Linux (`XDG_DATA_HOME` respected), `~/Library/Application
+Support/Airp` on macOS, `AIRP_HOME` overriding all three — except `ExportDirectory`, made
+absolute against the app root at options-build time.
 
 ## `Airp:` — the application
 
@@ -75,8 +77,12 @@ host answering token soup is spotted (128 tokens/call against 575–791 elsewher
 | `OPENROUTER_API_KEY` (or whatever `ApiKeyName` says) | model + embeddings calls |
 | `AIRP_PROXY_TOKEN` | the proxy's bearer; it refuses to start without one. A different string from the model key on purpose — this one gets typed into a third party's settings |
 
-Stored DPAPI-protected under `AppPaths.Root/secrets` via `airp secret set`. Never paste a key
-into chat or on a command line.
+**On Windows**, stored DPAPI-protected under `AppPaths.Root/secrets` via `airp secret set` —
+encrypted against the user's profile, useless copied off the machine. **On Linux and macOS**,
+`airp secret set` refuses (DPAPI does not exist there) and the store falls back to reading an
+environment variable of the same name — export `OPENROUTER_API_KEY` / `AIRP_PROXY_TOKEN` in
+the shell profile. A stored secret always wins over the variable where both exist. Never paste
+a key into chat or on a command line.
 
 ## Launch profiles
 

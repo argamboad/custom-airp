@@ -11,8 +11,10 @@ account.
 
 ## Decision
 
-Conversations are stored locally — SQLite under `%LOCALAPPDATA%\Airp` — and the model is a
-service we call, not a place the story lives. The only remote dependency is a chat-completions
+Conversations are stored locally — SQLite in the platform's application-data directory
+(`%LOCALAPPDATA%\Airp` on Windows, `~/.local/share/Airp` on Linux, `~/Library/Application
+Support/Airp` on macOS; `AIRP_HOME` overrides) — and the model is a service we call, not a
+place the story lives. The only remote dependency is a chat-completions
 API, selectable by configuration.
 
 ## Consequences

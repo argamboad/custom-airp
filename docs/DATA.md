@@ -3,9 +3,10 @@
 The SQLite store: every table, every column, and the invariants that own them. Schema source:
 [Entities.cs](../src/Airp.Infrastructure/Storage/Local/Entities.cs) and
 [AirpDbContext.cs](../src/Airp.Infrastructure/Storage/Local/AirpDbContext.cs). The database
-file lives at `Airp:DatabaseFile` (default `./airp.db`), resolved against the data directory
-(`%LOCALAPPDATA%\Airp`, or `AIRP_HOME`). **It holds the entire history in the clear** — never
-expose a direct port; tunnel with TLS.
+file lives at `Airp:DatabaseFile` (default `./airp.db`), resolved against the data directory:
+`%LOCALAPPDATA%\Airp` on Windows, `~/.local/share/Airp` on Linux (`XDG_DATA_HOME` respected),
+`~/Library/Application Support/Airp` on macOS — `AIRP_HOME` overrides all three. **It holds
+the entire history in the clear** — never expose a direct port; tunnel with TLS.
 
 ---
 
@@ -196,5 +197,6 @@ erDiagram
 The library — four shelves of plain text files under the data directory: `characters/`,
 `personas/`, `snippets/`, `openings/`. A conversation stores a **name**, not a copy; editing
 the file reaches every conversation using it. An opening's filename matching a character's name
-*is* the association. Secrets live DPAPI-protected under `secrets/`; logs under `logs/`;
+*is* the association. Secrets live under `secrets/` (DPAPI-encrypted on Windows; on Linux and
+macOS an environment variable of the same name serves instead); logs under `logs/`;
 configuration in `airp.json` ([CONFIGURATION.md](CONFIGURATION.md)).

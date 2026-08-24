@@ -10,9 +10,14 @@ database of private conversations.
 
 ## Decision
 
-Keys live in `ISecretStore` (DPAPI on Windows), addressed from configuration by **name** only
-(`Model:ApiKeyName`). `EnvironmentOverrides` discards environment variables ending `_KEY` or
-`_TOKEN`. Keys are never accepted pasted into chat or on a command line. The proxy requires
+Keys live in `ISecretStore`, addressed from configuration by **name** only
+(`Model:ApiKeyName`). On Windows the store encrypts each secret with DPAPI at user scope —
+useless to another account, useless copied off the machine. On Linux and macOS, where DPAPI
+does not exist, `airp secret set` refuses and the store falls back to an environment variable
+of the same name, read directly rather than through configuration; a stored secret wins where
+both exist. `EnvironmentOverrides` discards environment variables ending `_KEY` or `_TOKEN`,
+so the fallback never leaks into a configuration dump. Keys are never accepted pasted into
+chat or on a command line. The proxy requires
 its own bearer — a different secret from the model key, because it gets typed into a third
 party's settings — compared in constant time, and refuses to start without one.
 
