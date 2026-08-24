@@ -18,8 +18,10 @@ it was built from, so "why did it say that" has an answer.
 ![A conversation in progress: the transcript with actions in italic and dimmed, speech as plain text, and the running cost in the header](docs/images/transcript.png)
 
 *Actions render italic and dimmed, speech as plain text, and both lose their markers — display
-only, since the stored wording is what the next prompt sends. The header carries what this story
-has cost so far, and what of that went on replies that were regenerated away.*
+only, since the stored wording is what the next prompt sends. The header carries which card and
+persona are in play, what this story has cost so far — the month's and the day's share beside
+it — and what of
+that went on replies that were regenerated away.*
 
 ![The output of airp cost: a table of conversations with calls, tokens in and out, cached share, cost and discarded cost](docs/images/cost.png)
 
