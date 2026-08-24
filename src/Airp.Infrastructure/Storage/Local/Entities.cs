@@ -60,32 +60,23 @@ public sealed class ConversationRecord
     public string? Model { get; set; }
 
     /// <summary>
-    /// How forward the character is, on the terminal's five-step scale, or null when unset.
+    /// Dead: the Lust dial before dials moved to <see cref="DialValueRecord"/>.
     /// </summary>
     /// <remarks>
-    /// The three dials below came from ourdream's interface, but only the wire format was
-    /// theirs — "how explicit", "how long", "how varied" are the questions any roleplay client
-    /// asks. Kept because the terminal already has a screen for them, and because
-    /// <c>ChatSettingScale</c> already carries a written description of every level, which is
-    /// exactly what a system prompt needs.
+    /// The four columns below held the original dials. The <c>ConfigurableDials</c> migration
+    /// copied their values into dial rows and nothing reads or writes them since — they stay
+    /// only because dropping a column rebuilds the one table that holds everything, for no
+    /// gain a reader would ever see.
     /// </remarks>
     public int? Lust { get; set; }
 
-    /// <summary>How much the character writes per reply, or null when unset.</summary>
+    /// <summary>Dead: see <see cref="Lust"/>.</summary>
     public int? ResponseLength { get; set; }
 
-    /// <summary>How varied the replies are, or null when unset.</summary>
+    /// <summary>Dead: see <see cref="Lust"/>.</summary>
     public int? Creativity { get; set; }
 
-    /// <summary>
-    /// Whether each character shows what they are not saying, after they say it.
-    /// </summary>
-    /// <remarks>
-    /// Off by default and worth turning on. In a scene with a model, what a character withholds
-    /// is the one thing there is no other way to reach — you cannot ask what they are really
-    /// thinking without leaving the scene. It also gives the model somewhere to state a
-    /// motive, and a character who says what they want out loud contradicts itself far less.
-    /// </remarks>
+    /// <summary>Dead: see <see cref="Lust"/>.</summary>
     public bool InnerThoughts { get; set; }
 
     /// <summary>When the conversation was created, in UTC.</summary>
@@ -465,6 +456,44 @@ public sealed class AsideRecord
 
     /// <summary>The per-layer breakdown, as the audit prints it.</summary>
     public string? ContextAudit { get; set; }
+}
+
+/// <summary>
+/// One conversation's choice on one dial.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The stored form is one string per dial kind: a level index for a scale, <c>true</c>/
+/// <c>false</c> for a toggle, an option key for a choice, a JSON array for a list, the raw
+/// value for a text. The pack defines what a key means; this table only remembers what was
+/// chosen — a row whose key the pack no longer declares simply says nothing.
+/// </para>
+/// <para>
+/// A dial never set has no row, and clearing one removes its row: "unset" is the absence, so
+/// the pack's default applies without a second representation of "nothing chosen".
+/// </para>
+/// <para>
+/// The original four settings — Lust, ResponseLength, Creativity, InnerThoughts — lived as
+/// columns on <see cref="ConversationRecord"/> and were migrated into rows here. The columns
+/// remain in the schema, dead: nothing reads or writes them after the migration copied them.
+/// </para>
+/// </remarks>
+public sealed class DialValueRecord
+{
+    /// <summary>Identifier, assigned here.</summary>
+    public required string Id { get; set; }
+
+    /// <summary>Identifier of the conversation this belongs to.</summary>
+    public required string ConversationId { get; set; }
+
+    /// <summary>The dial's key in the pack.</summary>
+    public required string Key { get; set; }
+
+    /// <summary>The choice, in the dial kind's stored form.</summary>
+    public required string Value { get; set; }
+
+    /// <summary>When the choice was last changed, in UTC.</summary>
+    public DateTimeOffset UpdatedAtUtc { get; set; }
 }
 
 /// <summary>What kind of work a billed call was doing.</summary>

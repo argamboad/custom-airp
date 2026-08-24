@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Airp.Application.Abstractions;
 using Airp.Application.Context;
+using Airp.Application.Dials;
 using Airp.Application.Options;
 using Airp.Domain;
 using Airp.Domain.Conversations;
@@ -43,6 +44,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
     private readonly IOptionsMonitor<AirpOptions> _options;
     private readonly ILogger<LocalConversationProvider> _logger;
     private readonly TextLibrary _library;
+    private readonly IDialService _dials;
     private readonly SemaphoreSlim _migration = new(1, 1);
     private bool _migrated;
 
@@ -61,7 +63,8 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         IOptionsMonitor<AirpOptions> options,
         ILogger<LocalConversationProvider> logger,
         IEmbeddingClient? embeddings = null,
-        TextLibrary? library = null)
+        TextLibrary? library = null,
+        IDialService? dials = null)
     {
         _stores = stores;
         _model = model;
@@ -69,6 +72,10 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         _logger = logger;
         _embeddings = embeddings;
         _library = library ?? new TextLibrary();
+        _dials = dials ?? new DialService(
+            stores,
+            options,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<DialService>.Instance);
     }
 
     /// <inheritdoc />
@@ -477,10 +484,11 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
             reply = await _model.CompleteAsync(
                 composed.Context.Messages,
-                conversation.Model ?? choice.Model,
-                choice.Temperature,
-                choice.MaxTokens,
-                cancellationToken).ConfigureAwait(false);
+                model: conversation.Model ?? choice.Model,
+                temperature: choice.Temperature,
+                maxTokens: choice.MaxTokens,
+                frequencyPenalty: null,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -716,17 +724,19 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             var choice = ModelRouter.For(
                 ModelTask.Reply,
                 settings,
-                LocalPrompt.Temperature(conversation.Creativity, settings.Temperature),
-                LocalPrompt.MaxTokens(conversation.ResponseLength, settings.MaxTokens));
+                temperature: composed.Sampler.Temperature,
+                maxTokens: composed.Sampler.MaxTokens,
+                frequencyPenalty: composed.Sampler.FrequencyPenalty);
 
             reply = await _model.CompleteAsync(
                 context.Messages,
                 // A model set on the conversation still wins: the router decides what kind of
                 // work this is, not which character is played on what.
-                conversation.Model ?? choice.Model,
-                choice.Temperature,
-                choice.MaxTokens,
-                cancellationToken).ConfigureAwait(false);
+                model: conversation.Model ?? choice.Model,
+                temperature: choice.Temperature,
+                maxTokens: choice.MaxTokens,
+                frequencyPenalty: choice.FrequencyPenalty,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -787,10 +797,12 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
     /// <param name="Context">The assembled prompt and its accounting.</param>
     /// <param name="Settings">The model options it was built against.</param>
     /// <param name="Meters">The conversation's trackers, so a reply can read moved values back.</param>
+    /// <param name="Sampler">The sampler parameters the conversation's dials ask for.</param>
     private sealed record Composed(
         BuiltContext Context,
         ModelOptions Settings,
-        IReadOnlyList<TrackerRecord> Meters);
+        IReadOnlyList<TrackerRecord> Meters,
+        SamplerOverrides Sampler);
 
     /// <summary>
     /// Assembles the prompt for a call, compressing first when the transcript has outgrown
@@ -852,15 +864,16 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        var directives = SettingScales.Directives(
-                new ChatSettings
-                {
-                    Lust = conversation.Lust,
-                    ResponseLength = conversation.ResponseLength,
-                    Creativity = conversation.Creativity,
-                },
-                _options.CurrentValue)
-            + LocalPrompt.InnerThoughtsDirective(conversation);
+        // The dials, resolved through the pack: the conversation's stored choices where a
+        // dial is enabled, the pack's default where it is disabled or untouched. One engine
+        // renders the prompt half and resolves the sampler half, so the two cannot disagree
+        // about what a dial is set to.
+        var pack = await _dials.PackAsync(cancellationToken).ConfigureAwait(false);
+        var dialValues = await DialService.ValuesAsync(store, conversation.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        var directives = DialEngine.Directives(pack, dialValues);
+        var sampler = DialEngine.Sampler(pack, dialValues);
 
         // Resolved first, and then handed over, because the summariser has to reserve room for
         // the same layers this builds. Reading them off the conversation record instead
@@ -929,7 +942,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 conversation.Id);
         }
 
-        return new Composed(context, settings, meters);
+        return new Composed(context, settings, meters, sampler);
     }
 
     /// <summary>
@@ -1199,6 +1212,8 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             .Where(t => doomed.Contains(t.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
         var asides = await store.Asides
             .Where(a => doomed.Contains(a.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var dialChoices = await store.DialValues
+            .Where(v => doomed.Contains(v.ConversationId)).ToListAsync(cancellationToken).ConfigureAwait(false);
 
         // Counted, not removed. See LedgerKept: the money left the account whatever became of
         // the story, and these rows carry no text from it.
@@ -1216,6 +1231,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         store.Facts.RemoveRange(facts);
         store.Trackers.RemoveRange(trackers);
         store.Asides.RemoveRange(asides);
+        store.DialValues.RemoveRange(dialChoices);
         store.Conversations.RemoveRange(conversations);
 
         // The one place the append-only guard is lifted, and it says so out loud.
@@ -1270,15 +1286,10 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         CancellationToken cancellationToken = default)
     {
         await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var conversation = await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+        await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
 
-        return new ChatSettings
-        {
-            Lust = conversation.Lust,
-            ResponseLength = conversation.ResponseLength,
-            Creativity = conversation.Creativity,
-            InnerThoughts = conversation.InnerThoughts,
-        };
+        return LegacyDials.ToSettings(
+            await DialService.ValuesAsync(store, conversationId, cancellationToken).ConfigureAwait(false));
     }
 
     /// <inheritdoc />
@@ -1290,24 +1301,20 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         ArgumentNullException.ThrowIfNull(changes);
 
         await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var conversation = await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+        await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
 
         // Only what was asked for. Null means "leave it", not "clear it" — the same reading
         // the terminal's own settings screen relies on.
-        conversation.Lust = changes.Lust ?? conversation.Lust;
-        conversation.ResponseLength = changes.ResponseLength ?? conversation.ResponseLength;
-        conversation.Creativity = changes.Creativity ?? conversation.Creativity;
-        conversation.InnerThoughts = changes.InnerThoughts ?? conversation.InnerThoughts;
+        foreach (var (key, value) in LegacyDials.FromSettings(changes))
+        {
+            await DialService.SetAsync(store, conversationId, key, value, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        return new ChatSettings
-        {
-            Lust = conversation.Lust,
-            ResponseLength = conversation.ResponseLength,
-            Creativity = conversation.Creativity,
-            InnerThoughts = conversation.InnerThoughts,
-        };
+        return LegacyDials.ToSettings(
+            await DialService.ValuesAsync(store, conversationId, cancellationToken).ConfigureAwait(false));
     }
 
     // ── Creation ─────────────────────────────────────────────────────────────────────────
@@ -1442,10 +1449,6 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             Persona = source.Persona,
             PersonaName = source.PersonaName,
             Model = source.Model,
-            Creativity = source.Creativity,
-            Lust = source.Lust,
-            ResponseLength = source.ResponseLength,
-            InnerThoughts = source.InnerThoughts,
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
 
@@ -1564,6 +1567,26 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 Rule = meter.Rule,
                 UpdatedAtSequence = Math.Min(meter.UpdatedAtSequence, point),
                 CreatedAtUtc = meter.CreatedAtUtc,
+            });
+        }
+
+        // The dials come over as they stand, like the meters: a choice is configuration the
+        // reader made, not something the story did, so there is nothing to rewind.
+        var dialChoices = await store.DialValues
+            .AsNoTracking()
+            .Where(v => v.ConversationId == conversationId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var choice in dialChoices)
+        {
+            store.DialValues.Add(new DialValueRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ConversationId = branch.Id,
+                Key = choice.Key,
+                Value = choice.Value,
+                UpdatedAtUtc = choice.UpdatedAtUtc,
             });
         }
 
@@ -2022,9 +2045,16 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         CancellationToken cancellationToken = default)
     {
         await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var conversation = await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+        await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
 
-        conversation.InnerThoughts = on;
+        await DialService.SetAsync(
+                store,
+                conversationId,
+                LegacyDials.InnerThoughts,
+                on ? "true" : "false",
+                cancellationToken)
+            .ConfigureAwait(false);
+
         await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return on;

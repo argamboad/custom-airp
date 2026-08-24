@@ -3,6 +3,7 @@ using System;
 using Airp.Infrastructure.Storage.Local;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Airp.Infrastructure.Storage.Local.Migrations
 {
     [DbContext(typeof(AirpDbContext))]
-    partial class AirpDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260824155900_ConfigurableDials")]
+    partial class ConfigurableDials
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");

@@ -1,6 +1,6 @@
 # ADR 0015 — Three dials, each wired to the strongest lever available
 
-**Status**: accepted · 2026-08-15
+**Status**: accepted · 2026-08-15 · extended by [0016](0016-dials-are-data.md) — the same lever-per-dial wiring, generalised to a configurable pack
 
 ## Context
 

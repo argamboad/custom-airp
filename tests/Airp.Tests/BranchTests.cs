@@ -42,12 +42,24 @@ public sealed class BranchTests : IDisposable
             Speaker = "Elena",
             CharacterName = "elena",
             PersonaName = "allan",
-            Creativity = 4,
-            Lust = 5,
-            ResponseLength = 3,
-            InnerThoughts = true,
             CreatedAtUtc = DateTimeOffset.UnixEpoch,
         });
+
+        // The dials, stored the way the application stores them now: one row per choice.
+        foreach (var (key, value) in new[]
+                 {
+                     ("creativity", "4"), ("lust", "5"), ("response-length", "3"), ("inner-thoughts", "true"),
+                 })
+        {
+            store.DialValues.Add(new DialValueRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ConversationId = id,
+                Key = key,
+                Value = value,
+                UpdatedAtUtc = DateTimeOffset.UnixEpoch,
+            });
+        }
 
         var messages = new List<MessageRecord>();
 
@@ -187,10 +199,14 @@ public sealed class BranchTests : IDisposable
         copy.CharacterName.ShouldBe("elena");
         copy.PersonaName.ShouldBe("allan");
         copy.Speaker.ShouldBe("Elena");
-        copy.Creativity.ShouldBe(4);
-        copy.Lust.ShouldBe(5);
-        copy.ResponseLength.ShouldBe(3);
-        copy.InnerThoughts.ShouldBeTrue();
+
+        // The dials come over as rows, read back through the same contract that wrote them.
+        var settings = await Provider().GetSettingsAsync(branch.Id);
+
+        settings.Creativity.ShouldBe(4);
+        settings.Lust.ShouldBe(5);
+        settings.ResponseLength.ShouldBe(3);
+        settings.InnerThoughts.ShouldBe(true);
     }
 
     [Fact]

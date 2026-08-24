@@ -29,6 +29,9 @@ public sealed class AirpDbContext : DbContext
     /// <summary>Named meters the story keeps. Not derived: the reader defines these.</summary>
     public DbSet<TrackerRecord> Trackers => Set<TrackerRecord>();
 
+    /// <summary>Each conversation's dial choices. Not derived: the reader sets these.</summary>
+    public DbSet<DialValueRecord> DialValues => Set<DialValueRecord>();
+
     /// <summary>Questions asked out of character, and what they cost. Never read into a prompt.</summary>
     public DbSet<AsideRecord> Asides => Set<AsideRecord>();
 
@@ -116,6 +119,19 @@ public sealed class AirpDbContext : DbContext
             // One meter per name per conversation: two called the same thing would render
             // twice and the model would have no way to tell which one it just moved.
             entity.HasIndex(t => new { t.ConversationId, t.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<DialValueRecord>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+            entity.Property(v => v.Id).HasMaxLength(64);
+            entity.Property(v => v.ConversationId).HasMaxLength(64).IsRequired();
+            entity.Property(v => v.Key).HasMaxLength(120).IsRequired();
+            entity.Property(v => v.Value).IsRequired();
+
+            // One choice per dial per conversation: a second row for the same key would leave
+            // the prompt reading whichever the query happened to return first.
+            entity.HasIndex(v => new { v.ConversationId, v.Key }).IsUnique();
         });
 
         modelBuilder.Entity<AsideRecord>(entity =>
