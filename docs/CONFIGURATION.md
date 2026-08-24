@@ -51,7 +51,7 @@ absolute against the app root at options-build time.
 | Key | Default | What it does |
 |---|---|---|
 | `BaseUrl` | `https://openrouter.ai/api/v1` | any OpenAI-compatible endpoint |
-| `Name` | `deepseek/deepseek-v4-flash` | selection criterion #1 is **uncensored**; prose second, cost a distant third |
+| `Name` | `deepseek/deepseek-v4-flash` | criterion #1: the model must not refuse the story's content ([ADR 0008](adr/0008-uncensored-model-first.md)); prose second, cost a distant third |
 | `ApiKeyName` | `OPENROUTER_API_KEY` | the **name** of a secret in `ISecretStore` (`airp secret set`), never the key |
 | `BackgroundModel` | null → `Name` | summariser + extractor. Must be as permissive as the reply model — a summariser that refuses is a character that forgets |
 | `EmbeddingModel` | `openai/text-embedding-3-small` | 1536 dims, ~$0.02/M |

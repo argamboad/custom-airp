@@ -13,7 +13,7 @@ The diagrams and walkthroughs live in [ARCHITECTURE.md](../ARCHITECTURE.md),
 | [0005](0005-prompt-layer-order.md) | Prompt layers ordered by volatility — the prefix-cache contract |
 | [0006](0006-memory-three-mechanisms.md) | The memory is three mechanisms; derived state is rebuildable |
 | [0007](0007-compression-batching.md) | Compression in batches, with a floor, a cap and a credibility test |
-| [0008](0008-uncensored-model-first.md) | Model selection: uncensored first, prose second, cost third |
+| [0008](0008-uncensored-model-first.md) | Model selection: a model that will not refuse the story, prose second, cost third |
 | [0009](0009-openrouter-first-cost-from-response.md) | OpenRouter first; cost read from the response; hosts pinned |
 | [0010](0010-spend-ledger-and-audit.md) | Auditing is mandatory; Spend is a ledger, not a summary |
 | [0011](0011-asides-are-not-turns.md) | A question asked out of character is not a turn |

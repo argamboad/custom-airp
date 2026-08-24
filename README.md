@@ -3,6 +3,11 @@
 A distraction-free, keyboard-driven roleplay client that keeps its own memory, built on
 .NET 10 and Spectre.Console.
 
+> You do not need an infinite context window if you have a good retrieval layer.
+
+That sentence is the whole design: a bounded prompt, and a memory — summaries, facts with a
+validity range, embedding retrieval — that keeps what the window cannot.
+
 Your conversations live in SQLite on your disk, and replies come from whichever language
 model you point it at — no subscription, no truncated history, and nothing leaving the
 machine except the prompt. A conversation that outgrows the context window is summarised

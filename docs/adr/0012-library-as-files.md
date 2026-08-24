@@ -27,5 +27,5 @@ live in configuration; `Airp:DefaultPersona` names a file.
 - There is deliberately no "the only file in the folder" branch: it changes meaning the day a
   second file appears. And a name defined in both file and configuration once silently
   preferred the wrong one.
-- Character sheets and personas live outside the repository on purpose: they are personal, and
-  frequently explicit.
+- Character sheets and personas live outside the repository on purpose: they are personal
+  writing, not sample data.

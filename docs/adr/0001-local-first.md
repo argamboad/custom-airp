@@ -19,8 +19,8 @@ API, selectable by configuration.
 
 ## Consequences
 
-- The database holds the entire history in the clear, and it is NSFW: it must never be exposed
-  on a direct port, and backups are the owner's responsibility.
+- The database holds the entire history in the clear, and it is private fiction: it must never
+  be exposed on a direct port, and backups are the owner's responsibility.
 - Everything downstream (append-only storage, derived memory, the spend ledger) is possible
   *because* the store is ours.
 - A privacy-maximal variant exists at no design cost: point the client at a local Ollama

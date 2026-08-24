@@ -4,7 +4,7 @@
 
 ## Context
 
-The dials came from the replaced service's interface, but "how explicit / how long / how
+The dials came from the replaced service's interface, but "how forward / how long / how
 varied" are questions any roleplay client answers. Each can reach the model as sampler
 settings, as prompt text, or both — and the weakest wiring is asking a model in prose to "be
 more varied".
