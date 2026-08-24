@@ -64,10 +64,11 @@ internal static class Background
         {
             return await model.CompleteAsync(
                     messages,
-                    choice.Model,
-                    choice.Temperature,
-                    choice.MaxTokens,
-                    cancellationToken)
+                    model: choice.Model,
+                    temperature: choice.Temperature,
+                    maxTokens: choice.MaxTokens,
+                    frequencyPenalty: choice.FrequencyPenalty,
+                    cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (ModelUnavailableException failure) when (WorthAnotherGo(failure))
@@ -80,10 +81,11 @@ internal static class Background
 
         return await model.CompleteAsync(
                 messages,
-                choice.Model,
-                choice.Temperature,
-                choice.MaxTokens,
-                cancellationToken)
+                model: choice.Model,
+                temperature: choice.Temperature,
+                maxTokens: choice.MaxTokens,
+                frequencyPenalty: choice.FrequencyPenalty,
+                cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 }

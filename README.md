@@ -18,8 +18,10 @@ it was built from, so "why did it say that" has an answer.
 ![A conversation in progress: the transcript with actions in italic and dimmed, speech as plain text, and the running cost in the header](docs/images/transcript.png)
 
 *Actions render italic and dimmed, speech as plain text, and both lose their markers — display
-only, since the stored wording is what the next prompt sends. The header carries what this story
-has cost so far, and what of that went on replies that were regenerated away.*
+only, since the stored wording is what the next prompt sends. The header carries which card and
+persona are in play, what this story has cost so far — the month's and the day's share beside
+it — and what of
+that went on replies that were regenerated away.*
 
 ![The output of airp cost: a table of conversations with calls, tokens in and out, cached share, cost and discarded cost](docs/images/cost.png)
 
@@ -56,8 +58,11 @@ the directive is written to get.*
   sits in the conversation header.
 - **A library of characters and personas** as plain text files, referred to by name, so
   editing one reaches every conversation using it.
-- **Reply dials** per conversation — lust, response length, creativity — with configurable
-  wording, where the text you read and the text the model receives are the same text.
+- **Reply dials as data** — a configurable pack of sixteen controls (heat, pacing,
+  initiative, consequence, prose balance, register, point of view, veils, an anti-loop
+  penalty, more), each a five-step scale, a toggle, a choice or free text, each wired to the
+  prompt or straight to the sampler. `airp dials --write` hands you the pack to edit; the
+  text you read and the text the model receives are the same text.
 - **Optional per conversation**: inner thoughts, and named meters the story keeps.
 - **Slash commands in the composer** — `/do` to steer a turn, `/ask` to put a question to the
   story out of character and keep the answer out of the transcript, plus free lookups for the

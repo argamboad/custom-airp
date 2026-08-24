@@ -100,7 +100,8 @@ internal sealed partial class ConversationView : ViewBase
         Airp.Infrastructure.TextLibrary? library = null,
         Airp.Infrastructure.Providers.LocalConversationProvider? provider = null,
         Microsoft.Extensions.Options.IOptionsMonitor<Application.Options.AirpOptions>? options = null,
-        IChatService? chats = null)
+        IChatService? chats = null,
+        IDialService? dials = null)
     {
         _library = library ?? new Airp.Infrastructure.TextLibrary();
         _conversation = conversation;
@@ -110,6 +111,7 @@ internal sealed partial class ConversationView : ViewBase
         _provider = provider;
         _options = options;
         _chats = chats;
+        _dials = dials;
     }
 
     /// <inheritdoc />
@@ -185,7 +187,11 @@ internal sealed partial class ConversationView : ViewBase
         var theme = context.Theme;
         var visible = Visible;
 
-        var rows = new List<IRenderable> { new Markup(BuildHeader(context, visible)), new Rule { Style = theme.Border } };
+        var headerLines = BuildHeaderLines(context, visible);
+        var rows = new List<IRenderable>(headerLines.Select(static line => (IRenderable)new Markup(line)))
+        {
+            new Rule { Style = theme.Border },
+        };
 
         // The composer occupies the bottom of the pane while it is open, so the transcript
         // shrinks rather than being covered. It is laid out before the early exits below,
@@ -204,7 +210,7 @@ internal sealed partial class ConversationView : ViewBase
         // composer: it appears mid-sentence, and stealing a row from the text being written
         // would make the draft jump under the caret as the list opened and closed.
         var suggestionRows = _composing && _suggestions.Count > 0 ? 1 : 0;
-        var available = Math.Max(1, context.Height - 2 - composerRows - suggestionRows);
+        var available = Math.Max(1, context.Height - 1 - headerLines.Count - composerRows - suggestionRows);
 
         if (visible.Count == 0)
         {
@@ -537,9 +543,13 @@ internal sealed partial class ConversationView : ViewBase
             case AppCommand.Refresh:
                 return ValueTask.FromResult(Load(forceRefresh: true));
 
-            case AppCommand.Settings:
+            case AppCommand.Settings when _dials is not null:
                 return ValueTask.FromResult(ViewAction.Push(
-                    new ChatSettingsView(_conversations, _conversation.Id, _conversation.Name)));
+                    new ChatSettingsView(_dials, _conversation.Id, _conversation.Name)));
+
+            case AppCommand.Settings:
+                return ValueTask.FromResult(ViewAction.Status(
+                    "Settings are not available in this session.", StatusKind.Warning));
 
             // The site offers this on the newest reply only, so the cursor's position does
             // not choose the target — the view says which reply it will replace.
@@ -631,6 +641,7 @@ internal sealed partial class ConversationView : ViewBase
             _scroll = PinToSelection;
 
             await RefreshSpendAsync(ct).ConfigureAwait(false);
+            await RefreshIdentityAsync(ct).ConfigureAwait(false);
 
             var replies = _messages.Count(static m => m.Role == ChatRole.Assistant);
             var yours = _messages.Count(static m => m.Role == ChatRole.User);
@@ -662,6 +673,28 @@ internal sealed partial class ConversationView : ViewBase
                 .ConfigureAwait(false);
 
             _spent = report.Conversations.FirstOrDefault();
+
+            // The reader's own day and month, not UTC ones: "what has this cost today" is
+            // asked at the desk, and a story played across midnight UTC would split its
+            // evening in two. The month matches what the provider will invoice, which is the
+            // question the month figure exists to answer.
+            var today = await _provider
+                .SpendAsync(
+                    fromUtc: new DateTimeOffset(DateTime.Today),
+                    conversationId: _conversation.Id,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            _spentToday = today.Conversations.FirstOrDefault()?.Cost ?? 0;
+
+            var month = await _provider
+                .SpendAsync(
+                    fromUtc: new DateTimeOffset(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1)),
+                    conversationId: _conversation.Id,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            _spentThisMonth = month.Conversations.FirstOrDefault()?.Cost ?? 0;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -961,6 +994,18 @@ internal sealed partial class ConversationView : ViewBase
     private IReadOnlyList<string>? _snippetNames;
 
     private readonly Airp.Infrastructure.TextLibrary _library;
+
+    /// <summary>What this conversation has cost since the reader's local midnight.</summary>
+    private decimal _spentToday;
+
+    /// <summary>What this conversation has cost since the first of the reader's local month.</summary>
+    private decimal _spentThisMonth;
+
+    /// <summary>The header's account of who is being played, and as whom. Null until loaded.</summary>
+    private string? _cardLabel;
+    private string? _personaLabel;
+    private bool _cardMissing;
+    private bool _personaMissing;
     private readonly Airp.Infrastructure.Providers.LocalConversationProvider? _provider;
     private readonly Microsoft.Extensions.Options.IOptionsMonitor<Application.Options.AirpOptions>? _options;
 
@@ -972,6 +1017,7 @@ internal sealed partial class ConversationView : ViewBase
     /// only thing this view does that adds to it.
     /// </remarks>
     private readonly IChatService? _chats;
+    private readonly IDialService? _dials;
 
     private string SnippetsFolder => _library.Snippets;
 
@@ -1328,13 +1374,103 @@ internal sealed partial class ConversationView : ViewBase
         return ViewAction.Status("No further matches.", StatusKind.Warning);
     }
 
-    private string BuildHeader(RenderContext context, IReadOnlyList<ChatMessage> visible)
+    /// <summary>
+    /// Works out what the header should say the story is played with, and as whom.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Resolved exactly as a turn resolves it — the conversation's own text, then the file it
+    /// names, then the default — because a header that answered differently would name a card
+    /// the model has never been sent. Sessions run long, and which card and persona a story
+    /// uses is precisely the kind of thing a reader forgets while inside it.
+    /// </para>
+    /// <para>
+    /// A name that resolves to nothing is said out loud rather than elided: two live
+    /// conversations once named a card whose file did not exist, and played for days with an
+    /// empty character layer that nothing on screen admitted to.
+    /// </para>
+    /// </remarks>
+    private async Task RefreshIdentityAsync(CancellationToken cancellationToken)
+    {
+        if (_provider is null)
+        {
+            return;
+        }
+
+        var conversation = await _provider.RawAsync(_conversation.Id, cancellationToken).ConfigureAwait(false);
+
+        if (conversation is null)
+        {
+            return;
+        }
+
+        var character = await Airp.Infrastructure.TextLibrary.ResolveAsync(
+                _library.Characters,
+                conversation.CharacterDefinition,
+                conversation.CharacterName,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        _cardMissing = string.IsNullOrWhiteSpace(character);
+        _cardLabel = !string.IsNullOrWhiteSpace(conversation.CharacterDefinition) ? "own card"
+            : !string.IsNullOrWhiteSpace(conversation.CharacterName)
+                ? conversation.CharacterName + (_cardMissing ? " (missing)" : string.Empty)
+                : "no card";
+
+        var fallback = _options?.CurrentValue.DefaultPersona;
+
+        var persona = await Airp.Infrastructure.TextLibrary.ResolveAsync(
+                _library.Personas,
+                conversation.Persona,
+                conversation.PersonaName,
+                fallback,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        _personaMissing = string.IsNullOrWhiteSpace(persona);
+        var personaName = !string.IsNullOrWhiteSpace(conversation.PersonaName)
+            ? conversation.PersonaName
+            : fallback;
+
+        _personaLabel = !string.IsNullOrWhiteSpace(conversation.Persona) ? "own persona"
+            : !string.IsNullOrWhiteSpace(personaName)
+                ? personaName + (_personaMissing ? " (missing)" : string.Empty)
+                : "no persona";
+
+        // "No persona" is a legitimate way to play; a warning would nag about a choice.
+        _personaMissing = _personaMissing && !string.IsNullOrWhiteSpace(personaName);
+    }
+
+    /// <summary>The participants line: the card in play, and who you are in it.</summary>
+    private string IdentitySegment(Theme theme)
+    {
+        if (_cardLabel is null || _personaLabel is null)
+        {
+            return string.Empty;
+        }
+
+        return Draw.Literal(_cardLabel, _cardMissing ? theme.Warning : theme.Muted)
+               + Draw.Literal("  ·  as ", theme.Muted)
+               + Draw.Literal(_personaLabel, _personaMissing ? theme.Warning : theme.Muted);
+    }
+
+    /// <summary>
+    /// The header, one fact per line: the chat, the participants, the cost.
+    /// </summary>
+    /// <remarks>
+    /// Three lines rather than one, because as the identity and the day's cost joined the
+    /// counts, the single line outgrew the reading column and wrapped wherever the fold
+    /// happened to fall — three unrelated facts are easier to find when each keeps its own
+    /// line. A line with nothing to say is dropped rather than left blank, so an unloaded
+    /// identity or an unspent story costs no height.
+    /// </remarks>
+    private IReadOnlyList<string> BuildHeaderLines(RenderContext context, IReadOnlyList<ChatMessage> visible)
     {
         var theme = context.Theme;
 
         if (_searching)
         {
-            return Draw.Literal("Search: ", theme.Accent) + _search.ToMarkup(theme);
+            return [Draw.Literal("Search: ", theme.Accent) + _search.ToMarkup(theme)];
         }
 
         if (_branching)
@@ -1344,42 +1480,88 @@ internal sealed partial class ConversationView : ViewBase
             // name. Getting it wrong is not destructive, but it is a wasted conversation.
             var at = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
 
-            return Draw.Literal($"Branch at message {at} — name: ", theme.Accent)
-                   + _branchName.ToMarkup(theme);
+            return
+            [
+                Draw.Literal($"Branch at message {at} — name: ", theme.Accent)
+                + _branchName.ToMarkup(theme),
+            ];
         }
+
+        var lines = new List<string>();
 
         if (_pending.Describe() is { Length: > 0 } pending)
         {
-            return Draw.Literal(pending + "…", theme.Warning);
+            lines.Add(Draw.Literal(pending + "…", theme.Warning));
+        }
+        else
+        {
+            var position = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
+            var words = Selected?.WordCount ?? 0;
+
+            lines.Add(Draw.Literal($"message {position}", theme.Accent)
+                + Draw.Literal(
+                    $"  ·  {visible.Count(static m => m.Role == ChatRole.User)} yours"
+                    + $"  ·  {visible.Count(static m => m.Role == ChatRole.Assistant)} replies"
+                    + $"  ·  {words} words in this one"
+                    + (_activeQuery.Length > 0 ? $"  ·  filter \"{_activeQuery}\"" : string.Empty),
+                    theme.Muted));
         }
 
-        var position = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
-        var words = Selected?.WordCount ?? 0;
+        if (IdentitySegment(theme) is { Length: > 0 } identity)
+        {
+            lines.Add(identity);
+        }
 
-        var header = Draw.Literal($"message {position}", theme.Accent)
-               + Draw.Literal(
-                   $"  ·  {visible.Count(static m => m.Role == ChatRole.User)} yours"
-                   + $"  ·  {visible.Count(static m => m.Role == ChatRole.Assistant)} replies"
-                   + $"  ·  {words} words in this one"
-                   + (_activeQuery.Length > 0 ? $"  ·  filter \"{_activeQuery}\"" : string.Empty),
-                   theme.Muted);
+        if (CostLine(theme) is { Length: > 0 } cost)
+        {
+            lines.Add(cost);
+        }
 
+        return lines;
+    }
+
+    /// <summary>The cost line: the total, with the day's share and the rerolled share beside it.</summary>
+    private string CostLine(Theme theme)
+    {
         if (_spent is not { Calls: > 0 } spent)
         {
-            return header;
+            return string.Empty;
         }
 
         // The money is its own colour, not more grey. It is the one figure here that is about
         // the world outside the story, and the reason for showing it at all is that it should
         // be noticed before it adds up rather than after.
-        header += Draw.Literal($"  ·  {spent.Cost:$0.0000}", theme.Warning);
+        var line = Draw.Literal($"{spent.Cost:$0.0000}", theme.Warning);
+
+        // The month's share, the day's share, and the rerolled share, in one aside. A window
+        // equal to the figure before it is omitted rather than repeated: a story started this
+        // month collapses to total + today, one played only today collapses to the total
+        // alone, and only a long-lived story earns all three.
+        var asides = new List<string>();
+        var previous = spent.Cost;
+
+        if (_spentThisMonth > 0 && _spentThisMonth != previous)
+        {
+            asides.Add($"{_spentThisMonth:$0.0000} this month");
+            previous = _spentThisMonth;
+        }
+
+        if (_spentToday > 0 && _spentToday != previous)
+        {
+            asides.Add($"{_spentToday:$0.0000} today");
+        }
 
         if (spent.DiscardedCost > 0)
         {
-            header += Draw.Literal($" ({spent.DiscardedCost:$0.0000} rerolled away)", theme.Muted);
+            asides.Add($"{spent.DiscardedCost:$0.0000} rerolled away");
         }
 
-        return header;
+        if (asides.Count > 0)
+        {
+            line += Draw.Literal($" ({string.Join("  ·  ", asides)})", theme.Muted);
+        }
+
+        return line;
     }
 
     /// <summary>

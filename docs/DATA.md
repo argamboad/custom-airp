@@ -18,6 +18,7 @@ erDiagram
     Conversations ||--o{ Summaries : "by ConversationId"
     Conversations ||--o{ Facts : "by ConversationId"
     Conversations ||--o{ Trackers : "by ConversationId"
+    Conversations ||--o{ DialValues : "by ConversationId"
     Conversations ||--o{ Asides : "by ConversationId"
     Conversations ||--o{ Spend : "by ConversationId (no FK)"
     Messages }o..o| Spend : "MessageId, id-only link"
@@ -31,10 +32,10 @@ erDiagram
         string PersonaName "file in the library"
         string Persona "inline text; wins over the name"
         string Model "per-conversation override"
-        int Lust "dial, nullable"
-        int ResponseLength "dial, nullable"
-        int Creativity "dial, nullable"
-        bool InnerThoughts
+        int Lust "dead - migrated to DialValues"
+        int ResponseLength "dead - migrated"
+        int Creativity "dead - migrated"
+        bool InnerThoughts "dead - migrated"
         datetime CreatedAtUtc
         datetime DeletedAtUtc "tombstone"
     }
@@ -76,6 +77,13 @@ erDiagram
         datetime CreatedAtUtc
         string Model "null when a person wrote it"
         bool Pinned "extractor may not retire"
+    }
+    DialValues {
+        string Id PK
+        string ConversationId
+        string Key "dial key in the pack; unique per conversation"
+        string Value "stored form: level index, true/false, option key, JSON array, or text"
+        datetime UpdatedAtUtc
     }
     Trackers {
         string Id PK
@@ -127,14 +135,14 @@ erDiagram
 ## The invariants, and where each is enforced
 
 1. **`Messages` is append-only.** `AirpDbContext.SaveChanges`/`SaveChangesAsync` route through
-   `GuardAppendOnly` ([AirpDbContext.cs:774](../src/Airp.Infrastructure/Storage/Local/AirpDbContext.cs)),
+   `GuardAppendOnly` ([AirpDbContext.cs:216](../src/Airp.Infrastructure/Storage/Local/AirpDbContext.cs)),
    which throws on a pending message delete **or a text edit** — the edit matters more, because
    it loses what was said while looking innocent. Conversations cannot be deleted either (they
    would take their messages). The single exception is `Purging = true`, set only inside
    `PurgeDeletedAsync`, the operation whose whole purpose is erasure — and it must be set in a
    line of code that says so.
 2. **The user's turn is persisted before the model is called.**
-   `LocalConversationProvider.SendAsync` inserts and saves at line 284–296, then calls
+   `LocalConversationProvider.SendAsync` inserts and saves at line 291–303, then calls
    `ReplyAsync`. A model failure leaves the turn stored and hands it back inside
    `ReplyMissingException`.
 3. **Idempotency by `RequestHash`, anchored on the last reply.** The hash covers
@@ -193,6 +201,10 @@ erDiagram
   report says it excludes them rather than implying completeness.
 
 ## What lives outside the database
+
+The dial pack — `dials.json` beside `airp.json`, or the embedded default when the file does
+not exist. The `DialValues` table stores only choices; what a key *means* lives in the pack,
+so a row whose key the pack no longer declares simply says nothing.
 
 The library — four shelves of plain text files under the data directory: `characters/`,
 `personas/`, `snippets/`, `openings/`. A conversation stores a **name**, not a copy; editing

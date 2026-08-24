@@ -58,6 +58,7 @@ public sealed class OpenRouterClient : ILanguageModelClient
         string? model = null,
         double? temperature = null,
         int? maxTokens = null,
+        double? frequencyPenalty = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
@@ -87,6 +88,13 @@ public sealed class OpenRouterClient : ILanguageModelClient
                 ["content"] = m.Content,
             })]),
         };
+
+        // Only when a dial asks for one. Omitting the field and sending zero are different
+        // requests to some backends, and only omission means "no opinion".
+        if (frequencyPenalty is { } penalty)
+        {
+            payload["frequency_penalty"] = penalty;
+        }
 
         if (Routing(settings) is { } routing)
         {

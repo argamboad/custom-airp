@@ -63,19 +63,10 @@ public sealed class InnerThoughtsSettingTests : IDisposable
     [Fact]
     public async Task The_settings_view_stages_the_toggle_and_apply_persists_it()
     {
-        var conversations = Substitute.For<IConversationService>();
-        conversations.GetSettingsAsync("c1", Arg.Any<CancellationToken>())
-            .Returns(new ChatSettings { Lust = 1, ResponseLength = 1, Creativity = 1, InnerThoughts = false });
+        var dials = new FakeDialService()
+            .With("lust", "1").With("response-length", "1").With("creativity", "1");
 
-        ChatSettings? sent = null;
-        conversations.UpdateSettingsAsync("c1", Arg.Any<ChatSettings>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                sent = call.ArgAt<ChatSettings>(1);
-                return new ChatSettings { Lust = 1, ResponseLength = 1, Creativity = 1, InnerThoughts = true };
-            });
-
-        var view = new ChatSettingsView(conversations, "c1", "Vardhal");
+        var view = new ChatSettingsView(dials, "c1", "Vardhal");
 
         // Load, walk down past the three dials to the toggle, flip it, apply.
         var load = (await view.OnActivatedAsync(CancellationToken.None)).ShouldBeOfType<ViewAction.RunAction>();
@@ -92,8 +83,7 @@ public sealed class InnerThoughtsSettingTests : IDisposable
             .ShouldBeOfType<ViewAction.RunAction>();
         await apply.Work(CancellationToken.None);
 
-        sent.ShouldNotBeNull();
-        sent.InnerThoughts.ShouldBe(true);
-        sent.Lust.ShouldBeNull();
+        // The toggle alone was written: staged navigation must not touch the dials it passed.
+        dials.Writes.ShouldBe([("inner-thoughts", "true")]);
     }
 }

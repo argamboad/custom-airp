@@ -282,8 +282,21 @@ classDiagram
         +ForText(text) int
         +ForMessage(message) int
     }
+    class DialEngine {
+        <<static>>
+        +Directives(pack, values) string?
+        +Sampler(pack, values) SamplerOverrides
+        +Effective(dial, values) string?
+    }
+    class DialService {
+        +PackAsync() DialPack
+        +ValuesAsync(conversationId)
+        +SetAsync(conversationId, key, value)
+    }
     ConversationService --> LocalConversationProvider : IConversationProvider
     LocalConversationProvider --> LocalPrompt
+    LocalConversationProvider --> DialEngine
+    LocalConversationProvider --> DialService : IDialService
     LocalConversationProvider --> ModelRouter
     LocalConversationProvider --> OpenRouterClient : ILanguageModelClient
     LocalPrompt --> ContextBuilder
@@ -294,12 +307,18 @@ classDiagram
 - `ModelRouter.For` gives each task its own temperature and output ceiling: replies run at the
   dials' choice, summaries at 0.3/1200, fact extraction at 0.2/4000 (a reasoning model
   deliberates before it writes JSON, and those tokens bill as output), asides at 0.4/600.
+- **The dials are data** ([ADR 0016](adr/0016-dials-are-data.md)): a pack — `dials.json`, or
+  the embedded default — declares scales, toggles, choices, lists and free texts, each pulling
+  a `prompt` lever (text into the directives layer) or a `sampler` lever (temperature, token
+  ceiling, frequency penalty). `DialEngine` renders both halves from one effective value, so
+  the prompt and the sampler cannot disagree; per-conversation choices live in the
+  `DialValues` table.
 - `TokenEstimator` embeds the real o200k vocabulary — not a characters-per-token constant,
   because the owner plays in English (~4.7 chars/token) and writes in Spanish (~3.6).
 - `OpenRouterClient` is plain OpenAI on the wire except the optional `provider` routing object,
   which is omitted entirely when unset. It treats a 200 with no message content as a failure
   and says why (`finish_reason`, host, whether only reasoning came back) —
-  [OpenRouterClient.cs:123](../src/Airp.Infrastructure/Providers/OpenRouterClient.cs).
+  [OpenRouterClient.cs:131](../src/Airp.Infrastructure/Providers/OpenRouterClient.cs).
 
 ---
 
@@ -439,7 +458,7 @@ classDiagram
     DpapiSecretStore --> AppPaths : secrets dir
 ```
 
-- `GuardAppendOnly` ([AirpDbContext.cs:774](../src/Airp.Infrastructure/Storage/Local/AirpDbContext.cs))
+- `GuardAppendOnly` ([AirpDbContext.cs:216](../src/Airp.Infrastructure/Storage/Local/AirpDbContext.cs))
   makes `SaveChanges` **refuse** to delete a message or edit its text — the invariant enforced
   at the choke point rather than remembered. `Purging` lifts it for the one operation whose
   purpose is erasure, and only there. Full schema and invariants: [DATA.md](DATA.md).

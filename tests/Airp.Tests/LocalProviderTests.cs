@@ -21,6 +21,8 @@ internal sealed class ScriptedModel : ILanguageModelClient
 
     public int? LastMaxTokens { get; private set; }
 
+    public double? LastFrequencyPenalty { get; private set; }
+
     public ScriptedModel Says(string text)
     {
         _answers.Enqueue(() => new ModelReply
@@ -117,11 +119,13 @@ internal sealed class ScriptedModel : ILanguageModelClient
         string? model = null,
         double? temperature = null,
         int? maxTokens = null,
+        double? frequencyPenalty = null,
         CancellationToken cancellationToken = default)
     {
         Calls.Add(messages);
         LastTemperature = temperature;
         LastMaxTokens = maxTokens;
+        LastFrequencyPenalty = frequencyPenalty;
 
         var next = _answers.Count > 0 ? _answers.Dequeue() : () => new ModelReply { Text = "…" };
         return Task.FromResult(next());
@@ -380,7 +384,7 @@ public sealed class LocalProviderTests : IDisposable
 
         await Provider().SendAsync(id, "Hello.");
 
-        var directives = _model.Calls[^1].First(m => m.Content.Contains("Lust Level"));
+        var directives = _model.Calls[^1].First(m => m.Content.Contains("Lust:"));
         directives.Content.ShouldContain("Explicit");
     }
 

@@ -263,6 +263,14 @@ the top of the transcript for the rest of the story.
 The conversation stores **the name** of the character, not a copy. If you edit `elena.txt`
 later, the change reaches every conversation using it.
 
+**The conversation's header says which card and persona are in play** — `elena · as allan`,
+on its own line between the message counts and the cost — resolved exactly as the next turn
+will resolve them, so
+after weeks inside a story you never have to remember what you set up. Two states are said
+out loud in warning colour: a name whose file no longer exists (`elena (missing)`) and a
+conversation with `no card` — both mean the model is playing with an empty character layer,
+which has happened silently before. `/card` and `/persona` open the full text.
+
 Then play:
 
 ```bash
@@ -599,7 +607,8 @@ for instance — those were that engine's plumbing and do nothing here.
 
 ## Tuning how it replies
 
-Three dials per conversation, with `S` inside or from outside:
+The dials live in a **pack** — the application ships one, and `S` inside a conversation shows
+whatever the pack in force declares. The originals are still the first four:
 
 ```bash
 airp settings --chat <id> --lust 3 --length 2 --creativity 2
@@ -608,14 +617,46 @@ airp settings --chat <id> --lust 3 --length 2 --creativity 2
 | Dial | What it moves |
 |---|---|
 | **Creativity** | the model's temperature: 0.6 to 1.4 |
-| **Response Length** | the token ceiling: 200 to 2600 |
+| **Response Length** | the token ceiling: 200 to 2600, and the prompt |
 | **Lust** | goes into the prompt, in the scale's own words |
+| **Inner thoughts** | a toggle — see below |
 
-Levels run 0 to 4.
+Levels run 0 to 4. The shipped pack carries more — pacing, initiative, consequence, prose
+balance, register, NPC liveliness, point of view, reply endings, veils, reply language, an
+anti-loop penalty — every one unset until you touch it, so a conversation you never adjust
+plays exactly as it always has.
+
+```bash
+airp dials                              # what exists, and what is in force
+airp dials --chat <id> --set pacing=1   # set any dial from the command line
+airp dials --chat <id> --clear pacing   # back to the pack's default
+```
+
+Scales, toggles and choices are adjusted with `←→` in the `S` view; the typed kinds — veils,
+reply language — are set with `--set` (`--set veils=graphic violence,character death`,
+`--set language=Spanish`).
+
+### A pack of your own
+
+```bash
+airp dials --write
+```
+
+writes the shipped pack to `dials.json` beside `airp.json`, comments and all, and from then
+on **your file is the pack** — it replaces the shipped one whole, no merging; delete it to go
+back. Every dial documents itself in the file: what it does, what values it takes, whether it
+is enabled. Two fields worth knowing:
+
+- `enabled: false` hides a dial from the `S` view **without turning it off** — its `default`
+  still applies on every prompt. A dial pinned this way is a house rule; a dial you delete
+  from the file is gone.
+- `default` is what applies when a conversation has not chosen. `null` means the dial says
+  nothing at all.
 
 ### In your own words
 
-The shipped wording can be replaced:
+The `Airp:Scales` section still works and still wins for the three original dials — the pack
+supplies the controls, this rewords them:
 
 ```json
 {
@@ -789,7 +830,9 @@ number this client computed itself would drift away from the invoice and never s
 
 ### In the chat
 
-The conversation header carries the running total, and `/cost` opens the breakdown: which kinds
+The conversation header carries the running total — with the month's and the day's share in
+parentheses, each shown only when it differs from the figure before it, so a story played
+in one sitting stays a single number — and `/cost` opens the breakdown: which kinds
 of call it went on, how much of the prompt came from cache, and what was spent on replies you
 regenerated away.
 

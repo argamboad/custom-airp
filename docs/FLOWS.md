@@ -38,8 +38,9 @@ sequenceDiagram
     end
     P->>P: ComposeAsync
     activate P
-    P->>DB: read visible history, live facts, trackers
+    P->>DB: read visible history, live facts, trackers, dial choices
     P->>P: resolve character and persona (own text → file → default)
+    P->>P: DialEngine — dial choices + pack → directives text<br/>and sampler overrides (temperature, ceiling, penalty)
     P->>SUM: PrepareAsync(resolved layers)
     Note over SUM: may compress — see flow 2
     P->>DB: re-read live facts (extraction may have just run)

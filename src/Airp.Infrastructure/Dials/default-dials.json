@@ -1,0 +1,283 @@
+{
+  // ── Airp dial pack ───────────────────────────────────────────────────────────
+  //
+  // This is the pack the application ships. To make it yours:
+  //
+  //     airp dials --write
+  //
+  // writes this file to dials.json beside airp.json in the data directory, and
+  // from then on your file is the pack — it replaces this one whole, no merging.
+  //
+  // kind:  "scale"  five steps exactly, read by index — never fewer
+  //        "toggle" on/off; "on" carries the injected text, off injects nothing
+  //        "choice" named options, one active
+  //        "list"   reader-supplied items rendered through a template
+  //        "text"   one free value rendered through a template
+  //
+  // lever: "prompt"  the chosen text joins the prompt's directives layer
+  //        "sampler" the chosen value becomes the API parameter named in "maps";
+  //                  nothing is injected (labels are for the settings screen only)
+  //        "both"    a value and a text, one per level
+  //
+  // enabled:  whether the settings screen offers the dial (default true).
+  //           A DISABLED dial is pinned, not off: its "default" still applies on
+  //           every prompt. A stored per-conversation choice survives disablement
+  //           and resurfaces if the dial is re-enabled.
+  //
+  // default:  what applies when a conversation has not chosen. null is a legal
+  //           default and means "inject nothing — the model's own behaviour".
+  //           Scales take a level index 0–4; toggles true/false; choices an
+  //           option key; lists an array of strings; texts a string.
+  //
+  // The text the settings screen shows is the exact text the model receives, and
+  // every prompt-lever sentence rides every prompt of every conversation that
+  // sets it — keep wording terse.
+
+  "version": 1,
+
+  "dials": {
+
+    "lust": {
+      "kind": "scale",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Lust",
+      "help": "The chat's current arousal level — heat only. Pace lives in 'pacing', hard boundaries live in 'veils'.",
+      "levels": [
+        { "label": "Cold",     "text": "detached, deflects all romantic or sexual cues" },
+        { "label": "Friendly", "text": "warm but platonic, open to slow natural connection" },
+        { "label": "Flirty",   "text": "playful and suggestive, follows the scenario pace" },
+        { "label": "Explicit", "text": "sexually forward, fast escalation, anatomically detailed" },
+        { "label": "Unhinged", "text": "no limits, no pacing, maximum intensity every message" }
+      ]
+    },
+
+    "response-length": {
+      "kind": "scale",
+      "lever": "both",
+      "maps": "max_tokens",
+      "enabled": true,
+      "default": null,
+      "title": "Response length",
+      "help": "How much the character writes per reply. Sets both the token ceiling on the call and a wording the model sees, so the ceiling never cuts a reply the prompt asked to be long.",
+      "levels": [
+        { "label": "Minimal",   "value": 200,  "text": "a very brief response, straight to the point" },
+        { "label": "Concise",   "value": 450,  "text": "a short response with essential details" },
+        { "label": "Detailed",  "value": 900,  "text": "balanced response length" },
+        { "label": "Verbose",   "value": 1600, "text": "a longer response with significant detail" },
+        { "label": "Extensive", "value": 2600, "text": "extensive response with comprehensive details" }
+      ]
+    },
+
+    "creativity": {
+      "kind": "scale",
+      "lever": "sampler",
+      "maps": "temperature",
+      "enabled": true,
+      "default": null,
+      "title": "Creativity",
+      "help": "How varied and surprising the replies are. Pure sampler temperature — nothing is added to the prompt, because temperature is a far stronger lever than asking in words for variety. The middle is the model's recommended setting.",
+      "levels": [
+        { "label": "Precise",  "value": 0.6, "description": "very consistent, minimal surprises" },
+        { "label": "Focused",  "value": 0.8, "description": "mostly predictable with a little variation" },
+        { "label": "Balanced", "value": 1.0, "description": "the model's recommended default" },
+        { "label": "Creative", "value": 1.2, "description": "more varied wording and unexpected turns" },
+        { "label": "Wild",     "value": 1.4, "description": "maximum variation" }
+      ]
+    },
+
+    "inner-thoughts": {
+      "kind": "toggle",
+      "lever": "prompt",
+      "enabled": true,
+      "default": false,
+      "title": "Inner thoughts",
+      "help": "Each character adds one line of what they did NOT say, after their turn — the one thing a scene with a model cannot give you any other way. Never written for you.",
+      "on": "After each character speaks and acts, give one line of what they did not say, in this shape:\n\n>NAME's inner thoughts: what they are actually thinking\n\nOne line, first person, and never for the user. It is for what the character is keeping back — if it only repeats what they said out loud, leave it out."
+    },
+
+    "pacing": {
+      "kind": "scale",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Pacing",
+      "help": "How fast the story moves, independent of heat. Split out of Lust on purpose: a slow story told explicitly and a fast chaste one are both reachable only if pace and heat are separate dials.",
+      "levels": [
+        { "label": "Glacial",    "text": "linger in each moment; let scenes breathe over many turns" },
+        { "label": "Slow burn",  "text": "advance deliberately; developments are earned, never rushed" },
+        { "label": "Scene pace", "text": "move at the natural pace of the scene" },
+        { "label": "Brisk",      "text": "keep things moving; compress transitions, skip idle beats" },
+        { "label": "Headlong",   "text": "escalate every reply; something changes each turn" }
+      ]
+    },
+
+    "initiative": {
+      "kind": "scale",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Initiative",
+      "help": "How much the character drives versus follows. Low suits a story you want to steer; high suits a character with their own agenda who acts whether or not you engage it.",
+      "levels": [
+        { "label": "Passive",    "text": "react to the user; introduce nothing unprompted" },
+        { "label": "Responsive", "text": "follow the user's lead, adding small touches of your own" },
+        { "label": "Balanced",   "text": "share the wheel: follow when led, act when the scene stalls" },
+        { "label": "Driving",    "text": "pursue your character's own goals; act without being prompted" },
+        { "label": "Relentless", "text": "drive every scene; your character's agenda moves whether or not the user engages it" }
+      ]
+    },
+
+    "consequence": {
+      "kind": "scale",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Consequence",
+      "help": "How hard the world pushes back: whether plans can fail, people can refuse, and mistakes persist. Models drift toward letting you win; this dial is the counterweight.",
+      "levels": [
+        { "label": "Gentle",    "text": "things tend to work out; setbacks are brief and soft" },
+        { "label": "Forgiving", "text": "failure is possible but recoverable" },
+        { "label": "Fair",      "text": "actions have proportionate consequences, good and bad" },
+        { "label": "Hard",      "text": "plans can fail, people can refuse, injuries and mistakes persist" },
+        { "label": "Merciless", "text": "the world owes the user nothing; consequences are permanent and arrive without warning" }
+      ]
+    },
+
+    "prose-balance": {
+      "kind": "scale",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Prose balance",
+      "help": "Where replies sit between dialogue-led and description-led. Orthogonal to length: Minimal+Cinematic is one vivid paragraph, Verbose+Script is a long conversation.",
+      "levels": [
+        { "label": "Script",    "text": "mostly dialogue; action only where it changes the scene" },
+        { "label": "Talky",     "text": "dialogue leads, light staging around it" },
+        { "label": "Balanced",  "text": "balance dialogue and description evenly" },
+        { "label": "Painterly", "text": "description leads; dialogue lands sparingly, with weight" },
+        { "label": "Cinematic", "text": "rich sensory description; let silence and setting carry scenes" }
+      ]
+    },
+
+    "register": {
+      "kind": "scale",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Register",
+      "help": "How the prose itself is written, from bare to ornate. A card's example dialogue usually sets this implicitly; the dial overrides per conversation without editing the card.",
+      "levels": [
+        { "label": "Sparse",   "text": "short sentences, plain words, no ornament" },
+        { "label": "Plain",    "text": "clear contemporary prose, unshowy" },
+        { "label": "Balanced", "text": "natural prose with occasional colour" },
+        { "label": "Literary", "text": "textured prose: rhythm, imagery, precise vocabulary" },
+        { "label": "Purple",   "text": "lush, maximal prose; indulge the language" }
+      ]
+    },
+
+    "npc-liveliness": {
+      "kind": "scale",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "NPC liveliness",
+      "help": "How much the rest of the cast exists without being addressed. High suits worlds — a university, a city; low suits two-hander scenes.",
+      "levels": [
+        { "label": "Empty stage", "text": "keep the scene to the main characters" },
+        { "label": "Background",  "text": "others are present but stay scenery" },
+        { "label": "Peopled",     "text": "side characters speak and act when the scene touches them" },
+        { "label": "Lively",      "text": "side characters have their own small intentions each scene" },
+        { "label": "Crowded",     "text": "the world is full of people acting on their own; scenes interleave them" }
+      ]
+    },
+
+    "agency-guard": {
+      "kind": "scale",
+      "lever": "prompt",
+      "enabled": false,
+      "default": null,
+      "title": "User agency",
+      "help": "How strictly the model must leave your character alone. Shipped disabled and unset: the persona layer already carries the standard rule, and two statements of one rule pull against each other. Enable it, and set a level, for per-conversation control.",
+      "levels": [
+        { "label": "Relaxed",  "text": "you may carry the user through routine moments; never decide anything that matters for them" },
+        { "label": "Loose",    "text": "small incidental actions of the user may be implied; never their words or decisions" },
+        { "label": "Standard", "text": "never write the user's words or actions" },
+        { "label": "Strict",   "text": "never write the user's words, actions or thoughts; do not imply their reactions" },
+        { "label": "Ironclad", "text": "never write, imply, or anticipate anything of the user; end every reply leaving them fully free to act" }
+      ]
+    },
+
+    "veils": {
+      "kind": "list",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Veils",
+      "help": "Topics the story may reach but never depicts on the page — the scene cuts away and resumes after. Boundaries live here so intensity dials stay about intensity. An empty list injects nothing.",
+      "accepts": "Short noun phrases naming what is faded to black, not sentences.",
+      "examples": [ "graphic violence", "character death, serious injury" ],
+      "template": "Never depict on the page: {items}. When the story reaches one, cut away and resume after."
+    },
+
+    "pov": {
+      "kind": "choice",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Point of view",
+      "help": "Narrative person and tense. Unset follows whatever the card and opening establish — set it only to override them, since a mid-story change reads as a style break.",
+      "options": {
+        "second-present": { "label": "Second person, present", "text": "narrate in second person, present tense" },
+        "second-past":    { "label": "Second person, past",    "text": "narrate in second person, past tense" },
+        "third-present":  { "label": "Third limited, present", "text": "narrate in third person limited, present tense" },
+        "third-past":     { "label": "Third limited, past",    "text": "narrate in third person limited, past tense" },
+        "first-present":  { "label": "First person, present",  "text": "narrate in first person as your character, present tense" }
+      }
+    },
+
+    "ending": {
+      "kind": "choice",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Reply endings",
+      "help": "How a turn hands the scene back. 'Completed beat' cures the habit of ending every reply with a question; 'On a hook' does the opposite for readers who like being pulled.",
+      "options": {
+        "open": { "label": "Open",           "text": "end where the beat ends" },
+        "hook": { "label": "On a hook",      "text": "end each reply on something unresolved that invites a response" },
+        "beat": { "label": "Completed beat", "text": "end on a completed beat; never end with a question to the user" }
+      }
+    },
+
+    "language": {
+      "kind": "text",
+      "lever": "prompt",
+      "enabled": true,
+      "default": null,
+      "title": "Reply language",
+      "help": "Write replies in this language regardless of what language the cards or your messages are in. Unset follows the story's own language.",
+      "accepts": "A language name, optionally with a variety or register.",
+      "examples": [ "Spanish", "Costa Rican Spanish", "formal Japanese" ],
+      "template": "Write every reply in {value}, whatever language the cards or the user use."
+    },
+
+    "anti-loop": {
+      "kind": "scale",
+      "lever": "sampler",
+      "maps": "frequency_penalty",
+      "enabled": true,
+      "default": null,
+      "title": "Anti-loop",
+      "help": "Penalises re-used wording at the sampler, which is stronger than asking in prose not to repeat. Raise it when a story starts circling; back off if word choice starts bending oddly.",
+      "levels": [
+        { "label": "Off",      "value": 0.0, "description": "no penalty" },
+        { "label": "Light",    "value": 0.2, "description": "discourage exact echoes" },
+        { "label": "Moderate", "value": 0.4, "description": "push away from repeated phrasing" },
+        { "label": "Firm",     "value": 0.7, "description": "strongly avoid re-used wording" },
+        { "label": "Maximum",  "value": 1.0, "description": "aggressive; can bend word choice" }
+      ]
+    }
+  }
+}

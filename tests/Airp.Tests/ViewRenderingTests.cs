@@ -669,18 +669,40 @@ public class ViewRenderingTests
         RenderToText(view.Render(Context())).ShouldContain("cannot be rendered");
     }
 
-    private static IConversationService SettingsService(Domain.Conversations.ChatSettings settings)
+    /// <summary>Walks the cursor down to a dial by key, wherever the pack ordered it.</summary>
+    private static void MoveTo(ChatSettingsView view, string key)
     {
-        var conversations = Substitute.For<IConversationService>();
-        conversations.GetSettingsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(settings);
-        return conversations;
+        var pack = Airp.Infrastructure.Providers.DialService.DefaultPackText();
+        var order = Application.Dials.DialPackParser.Parse(pack).Dials
+            .Where(static d => d.Enabled)
+            .Select(static d => d.Key)
+            .ToList();
+
+        var target = order.FindIndex(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
+
+        for (var i = 0; i < target; i++)
+        {
+            view.HandleKeyAsync(Down(), Context(), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static FakeDialService Dials(params (string Key, string Value)[] seeded)
+    {
+        var dials = new FakeDialService();
+
+        foreach (var (key, value) in seeded)
+        {
+            dials.With(key, value);
+        }
+
+        return dials;
     }
 
     [Fact]
     public async Task ChatSettingsView_NamesEachLevelRatherThanNumberingIt()
     {
         var view = new ChatSettingsView(
-            SettingsService(new Domain.Conversations.ChatSettings { Lust = 3, ResponseLength = 1, Creativity = 4 }),
+            Dials(("lust", "3"), ("response-length", "1"), ("creativity", "4")),
             "chat-1",
             "North Dock");
 
@@ -695,10 +717,7 @@ public class ViewRenderingTests
     [Fact]
     public async Task ChatSettingsView_SaysWhenALevelHasNeverBeenSet()
     {
-        var view = new ChatSettingsView(
-            SettingsService(new Domain.Conversations.ChatSettings { Lust = 2 }),
-            "chat-1",
-            "North Dock");
+        var view = new ChatSettingsView(Dials(("lust", "2")), "chat-1", "North Dock");
 
         await ActivateAsync(view);
 
@@ -710,56 +729,41 @@ public class ViewRenderingTests
     {
         // Arrowing across a scale must not commit anything: these settings change every
         // reply that follows, so the write waits for Enter.
-        var conversations = SettingsService(new Domain.Conversations.ChatSettings { Creativity = 2 });
-        var view = new ChatSettingsView(conversations, "chat-1", "North Dock");
+        var dials = Dials(("creativity", "2"));
+        var view = new ChatSettingsView(dials, "chat-1", "North Dock");
 
         await ActivateAsync(view);
+        MoveTo(view, "creativity");
         await view.HandleKeyAsync(Right(), Context(), CancellationToken.None);
 
         var text = RenderToText(view.Render(Context()));
         text.ShouldContain("Creative");
         text.ShouldContain("was Balanced");
 
-        await conversations.DidNotReceive().UpdateSettingsAsync(
-            Arg.Any<string>(),
-            Arg.Any<Domain.Conversations.ChatSettings>(),
-            Arg.Any<CancellationToken>());
+        dials.Writes.ShouldBeEmpty();
     }
 
     [Fact]
     public async Task ChatSettingsView_AppliesOnlyTheSettingThatMoved()
     {
-        var conversations = SettingsService(
-            new Domain.Conversations.ChatSettings { Lust = 3, ResponseLength = 3, Creativity = 2 });
-
-        conversations.UpdateSettingsAsync(
-                Arg.Any<string>(),
-                Arg.Any<Domain.Conversations.ChatSettings>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new Domain.Conversations.ChatSettings { Lust = 3, ResponseLength = 3, Creativity = 3 });
-
-        var view = new ChatSettingsView(conversations, "chat-1", "North Dock");
+        var dials = Dials(("lust", "3"), ("response-length", "3"), ("creativity", "2"));
+        var view = new ChatSettingsView(dials, "chat-1", "North Dock");
 
         await ActivateAsync(view);
+        MoveTo(view, "creativity");
         await view.HandleKeyAsync(Right(), Context(), CancellationToken.None);
         await RunAsync(await view.HandleKeyAsync(Enter(), Context(), CancellationToken.None));
 
-        await conversations.Received(1).UpdateSettingsAsync(
-            "chat-1",
-            Arg.Is<Domain.Conversations.ChatSettings>(s =>
-                s != null && s.Creativity == 3 && s.Lust == null && s.ResponseLength == null),
-            Arg.Any<CancellationToken>());
+        dials.Writes.ShouldBe([("creativity", "3")]);
     }
 
     [Fact]
     public async Task ChatSettingsView_CannotBeMovedOutsideTheSitesRange()
     {
-        var view = new ChatSettingsView(
-            SettingsService(new Domain.Conversations.ChatSettings { Creativity = 4 }),
-            "chat-1",
-            "North Dock");
+        var view = new ChatSettingsView(Dials(("creativity", "4")), "chat-1", "North Dock");
 
         await ActivateAsync(view);
+        MoveTo(view, "creativity");
 
         for (var i = 0; i < 5; i++)
         {

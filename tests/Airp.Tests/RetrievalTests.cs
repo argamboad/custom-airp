@@ -100,7 +100,7 @@ public sealed class RetrievalTests : IDisposable
         NullLogger<LocalConversationProvider>.Instance,
         _embedder);
 
-    private async Task<string> SeedAsync(int turns, string buried)
+    private async Task<string> SeedAsync(int turns, string buried, string? personaName = null)
     {
         var id = Guid.NewGuid().ToString("N");
         await using var store = _factory.CreateDbContext();
@@ -110,6 +110,7 @@ public sealed class RetrievalTests : IDisposable
             Id = id,
             Name = "Vardhal",
             Speaker = "Elena",
+            PersonaName = personaName,
             CreatedAtUtc = DateTimeOffset.UnixEpoch,
         });
 
@@ -158,6 +159,24 @@ public sealed class RetrievalTests : IDisposable
         var lastTranscript = prompt.FindLastIndex(m => m.Content.StartsWith("Turn "));
 
         recalled.ShouldBeGreaterThan(lastTranscript);
+    }
+
+    [Fact]
+    public async Task A_recalled_turn_names_the_reader_by_their_persona()
+    {
+        // The buried turn is the reader's own line. Recalled as "User: …" it sits under
+        // summaries that call the same person by name, and the character's memory splits them
+        // into two people — the exact bug Transcript.Reader fixed for the summariser and the
+        // extractor, alive in the third background reader until now.
+        var id = await SeedAsync(40, "Ferrin paid me in clipped silver at the dock.", "allan-sanlucar");
+        _model.Summarises("Summary.").Says("Fine.");
+
+        await Provider().SendAsync(id, "What happened with Ferrin?");
+
+        var recalled = _model.Calls[^1].Single(m => m.Content.Contains("clipped silver"));
+
+        recalled.Content.ShouldContain("Allan Sanlucar:");
+        recalled.Content.ShouldNotContain("User:");
     }
 
     [Fact]

@@ -32,7 +32,16 @@ public enum ModelTask
 /// <param name="Model">Model identifier.</param>
 /// <param name="Temperature">Sampling temperature.</param>
 /// <param name="MaxTokens">Ceiling on the generated output.</param>
-public readonly record struct ModelChoice(string Model, double Temperature, int MaxTokens);
+/// <param name="FrequencyPenalty">
+/// Penalty on re-used wording, or null to send none. Only a reply ever carries one: the
+/// background tasks want accuracy, and penalising a summary for repeating the transcript's
+/// own names would be penalising it for doing its job.
+/// </param>
+public readonly record struct ModelChoice(
+    string Model,
+    double Temperature,
+    int MaxTokens,
+    double? FrequencyPenalty = null);
 
 /// <summary>
 /// Decides which model answers which kind of request.
@@ -58,12 +67,14 @@ public static class ModelRouter
     /// <param name="settings">The configured models.</param>
     /// <param name="temperature">Temperature the conversation asks for, for a reply.</param>
     /// <param name="maxTokens">Ceiling the conversation asks for, for a reply.</param>
+    /// <param name="frequencyPenalty">Repetition penalty the conversation asks for, for a reply.</param>
     /// <returns>The choice.</returns>
     public static ModelChoice For(
         ModelTask task,
         ModelOptions settings,
         double? temperature = null,
-        int? maxTokens = null)
+        int? maxTokens = null,
+        double? frequencyPenalty = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
@@ -109,7 +120,8 @@ public static class ModelRouter
             _ => new ModelChoice(
                 settings.Name,
                 temperature ?? settings.Temperature,
-                maxTokens ?? settings.MaxTokens),
+                maxTokens ?? settings.MaxTokens,
+                frequencyPenalty),
         };
     }
 }
