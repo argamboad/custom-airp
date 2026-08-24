@@ -263,6 +263,14 @@ the top of the transcript for the rest of the story.
 The conversation stores **the name** of the character, not a copy. If you edit `elena.txt`
 later, the change reaches every conversation using it.
 
+**The conversation's header says which card and persona are in play** — `elena · as allan`,
+on its own line between the message counts and the cost — resolved exactly as the next turn
+will resolve them, so
+after weeks inside a story you never have to remember what you set up. Two states are said
+out loud in warning colour: a name whose file no longer exists (`elena (missing)`) and a
+conversation with `no card` — both mean the model is playing with an empty character layer,
+which has happened silently before. `/card` and `/persona` open the full text.
+
 Then play:
 
 ```bash
@@ -822,7 +830,9 @@ number this client computed itself would drift away from the invoice and never s
 
 ### In the chat
 
-The conversation header carries the running total, and `/cost` opens the breakdown: which kinds
+The conversation header carries the running total — with the month's and the day's share in
+parentheses, each shown only when it differs from the figure before it, so a story played
+in one sitting stays a single number — and `/cost` opens the breakdown: which kinds
 of call it went on, how much of the prompt came from cache, and what was spent on replies you
 regenerated away.
 
