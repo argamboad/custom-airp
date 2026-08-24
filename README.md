@@ -75,7 +75,14 @@ repository, unchanged. This one owns `%LOCALAPPDATA%\Airp` and knows nothing abo
 [`docs/MANUAL.md`](docs/MANUAL.md) — how to set it up, start a story, and everything above in
 the order you would actually do it.
 
-[`CLAUDE.md`](CLAUDE.md) — why each decision was made, and what was measured to make it.
+[`docs/adr/`](docs/adr/README.md) — why each decision was made, and what was measured to make
+it: one record per decision, from append-only storage to the prompt's layer order.
+
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the code is put together: the five
+projects and their class diagrams, with [FLOWS.md](docs/FLOWS.md) for the sequence diagrams,
+[CALLSTACK.md](docs/CALLSTACK.md) for one send line by line, [DATA.md](docs/DATA.md) for the
+schema and its invariants, [CONFIGURATION.md](docs/CONFIGURATION.md) for every setting, and
+[GLOSSARY.md](docs/GLOSSARY.md) for the vocabulary.
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to run it from source, what is most wanted, and the
 five invariants a change has to argue with.

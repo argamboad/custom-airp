@@ -1,6 +1,8 @@
 # Airp manual
 
-How to use it. For why each decision was made, see `CLAUDE.md`.
+How to use it. For why each decision was made, see the [decision records](adr/README.md).
+For how the code is put together — diagrams, call stacks, the schema — start at
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
