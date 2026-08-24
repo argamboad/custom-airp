@@ -34,6 +34,7 @@ internal sealed class ChatSettingsView : ViewBase
     private Dictionary<string, string> _staged = new(StringComparer.OrdinalIgnoreCase);
     private bool _loaded;
     private int _selected;
+    private int _scroll;
 
     /// <summary>Initialises the view.</summary>
     /// <param name="dials">The pack and the conversation's choices.</param>
@@ -103,8 +104,17 @@ internal sealed class ChatSettingsView : ViewBase
             return new Rows(rows);
         }
 
+        // Every dial's rows are laid out first, with the row each block starts on, so the
+        // window can be chosen around the cursor. Fifteen dials of four-plus rows each is
+        // three screens of content, and a screen that draws them all shows whichever the
+        // terminal happens to keep — which is the top, forever.
+        var lines = new List<string>();
+        var starts = new int[_rows.Count];
+
         for (var i = 0; i < _rows.Count; i++)
         {
+            starts[i] = lines.Count;
+
             var dial = _rows[i];
             var selected = i == _selected;
             var value = _staged.GetValueOrDefault(dial.Key);
@@ -113,26 +123,58 @@ internal sealed class ChatSettingsView : ViewBase
 
             var gutter = Draw.Literal(selected ? "▌ " : "  ", selected ? theme.Accent : theme.Border);
 
-            rows.Add(new Markup(
+            lines.Add(
                 gutter
                 + Draw.Literal(dial.Title, selected ? theme.Accent : theme.Text)
-                + Draw.Literal("  " + Shorten(dial.Help), theme.Muted)));
+                + Draw.Literal("  " + Shorten(dial.Help), theme.Muted));
 
             var (label, meaning) = Describe(dial, value);
 
-            rows.Add(new Markup(
+            lines.Add(
                 gutter
                 + Control(dial, value, theme, selected)
                 + Draw.Literal("  " + label, changed ? theme.Warning : theme.Success)
-                + Draw.Literal(changed ? "  (was " + Describe(dial, was).Label + ")" : string.Empty, theme.Muted)));
+                + Draw.Literal(changed ? "  (was " + Describe(dial, was).Label + ")" : string.Empty, theme.Muted));
 
             foreach (var line in Draw.Wrap(meaning, width - 6))
             {
-                rows.Add(new Markup(gutter + Draw.Literal("  " + line, theme.Muted)));
+                lines.Add(gutter + Draw.Literal("  " + line, theme.Muted));
             }
 
-            rows.Add(Draw.Blank);
+            lines.Add(" ");
         }
+
+        // The heading above and the rule-plus-status below are always on screen; the dials
+        // scroll between them. The window follows the cursor: the selected dial's whole block
+        // is brought into view, from its title.
+        var available = Math.Max(1, context.Height - 3);
+        var blockStart = starts[_selected];
+        var blockEnd = _selected + 1 < _rows.Count ? starts[_selected + 1] - 1 : lines.Count - 1;
+
+        if (blockStart < _scroll)
+        {
+            _scroll = blockStart;
+        }
+        else if (blockEnd >= _scroll + available)
+        {
+            _scroll = Math.Min(blockStart, blockEnd - available + 1);
+        }
+
+        _scroll = Math.Clamp(_scroll, 0, Math.Max(0, lines.Count - available));
+
+        var shown = lines.Skip(_scroll).Take(available).ToList();
+        var bar = Draw.Scrollbar(lines.Count, _scroll, available, theme);
+
+        // The bar sits against the content, exactly as the transcript's does: a bar out at
+        // the window's edge belongs to nothing the reader is looking at.
+        var scrolled = new Grid();
+        scrolled.AddColumn(new GridColumn { Width = width, NoWrap = true, Padding = new Padding(0, 0, 1, 0) });
+        scrolled.AddColumn(new GridColumn { Width = 1, NoWrap = true, Padding = new Padding(0, 0, 0, 0) });
+        scrolled.AddRow(
+            new Rows([.. shown.Select(static line => new Markup(line))]),
+            new Rows([.. bar.Take(shown.Count).Select(static cell => new Markup(cell))]));
+
+        rows.Add(scrolled);
 
         rows.Add(new Rule { Style = theme.Border });
         rows.Add(new Markup(IsDirty
@@ -241,6 +283,25 @@ internal sealed class ChatSettingsView : ViewBase
 
             case AppCommand.MoveDown or AppCommand.Tab when _rows.Count > 0:
                 _selected = (_selected + 1) % _rows.Count;
+                return ValueTask.FromResult(ViewAction.None);
+
+            // The page keys move the selection rather than the window: the window follows the
+            // cursor, and a viewport that scrolled away from it would leave the arrows acting
+            // somewhere off screen.
+            case AppCommand.PageUp when _rows.Count > 0:
+                _selected = Math.Max(0, _selected - 3);
+                return ValueTask.FromResult(ViewAction.None);
+
+            case AppCommand.PageDown when _rows.Count > 0:
+                _selected = Math.Min(_rows.Count - 1, _selected + 3);
+                return ValueTask.FromResult(ViewAction.None);
+
+            case AppCommand.Home when _rows.Count > 0:
+                _selected = 0;
+                return ValueTask.FromResult(ViewAction.None);
+
+            case AppCommand.End when _rows.Count > 0:
+                _selected = _rows.Count - 1;
                 return ValueTask.FromResult(ViewAction.None);
 
             case AppCommand.MoveLeft:
