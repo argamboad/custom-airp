@@ -111,6 +111,11 @@ public interface ILanguageModelClient
     /// <param name="model">Model identifier, or <see langword="null"/> for the configured one.</param>
     /// <param name="temperature">Sampling temperature, or <see langword="null"/> for the configured one.</param>
     /// <param name="maxTokens">Token ceiling for the reply, or <see langword="null"/> for the configured one.</param>
+    /// <param name="frequencyPenalty">
+    /// Penalty on re-used wording, or <see langword="null"/> to send none. Null rather than
+    /// zero, because omitting the field and sending <c>0</c> are different requests to some
+    /// backends and only one of them is "no opinion".
+    /// </param>
     /// <param name="cancellationToken">Token used to abort the call.</param>
     /// <returns>The reply.</returns>
     /// <exception cref="Domain.ModelUnavailableException">
@@ -121,6 +126,7 @@ public interface ILanguageModelClient
         string? model = null,
         double? temperature = null,
         int? maxTokens = null,
+        double? frequencyPenalty = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Lists the model identifiers the account can reach.</summary>

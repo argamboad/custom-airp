@@ -27,6 +27,10 @@
          still has it. Visible in the repository as ordinary text, which is the point:
          a card is a file a person writes, and it should read like one. -->
     <EmbeddedResource Include="Samples\**\*.txt" />
+
+    <!-- The shipped dial pack, carried the same way. The dials verb can emit it as the
+         starting point for a user's own dials.json, which then replaces it whole. -->
+    <EmbeddedResource Include="Dials\default-dials.json" />
   </ItemGroup>
 
   <ItemGroup>

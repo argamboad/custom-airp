@@ -48,6 +48,7 @@ public static class DependencyInjection
 
         services.TryAddSingleton<ISecretStore, DpapiSecretStore>();
         services.TryAddSingleton<TextLibrary>();
+        services.TryAddSingleton<IDialService, DialService>();
         services.AddHttpClient<ILanguageModelClient, OpenRouterClient>();
         services.AddHttpClient<IEmbeddingClient, OpenRouterEmbeddingClient>();
 

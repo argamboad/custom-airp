@@ -42,9 +42,30 @@ absolute against the app root at options-build time.
 | `DatabaseFile` | `./airp.db` | relative to the data directory |
 | `RestoreSession` | `true` | reopen the last chat and view |
 | `Provider` | `local` | the seam. The only registered value; anything else fails at startup by name |
-| `Scales` | empty | your own wording for the dials, keyed `Lust` / `ResponseLength` / `Creativity`; a replacement must supply exactly five levels or it is ignored |
+| `Scales` | empty | your own wording for the three original dials, keyed `Lust` / `ResponseLength` / `Creativity`; applied over the dial pack (words only, never the sampler values); a replacement must supply exactly five levels or it is ignored |
 | `MessageCharacterLimit` | `0` (none) | composer refuses to send past it |
 | `InstructionCharacterLimit` | `0` (none) | same, for regenerate instructions |
+
+## `dials.json` — the dial pack
+
+The controls a conversation can be tuned with are **data**: the application ships a pack of
+sixteen (the original four plus pacing, initiative, consequence, prose balance, register, NPC
+liveliness, user-agency, veils, point of view, reply endings, reply language, anti-loop), and
+`dials.json` beside `airp.json` replaces it whole when present — no merging.
+
+```bash
+airp dials            # list the pack and what is in force
+airp dials --write    # emit the shipped pack as dials.json, ready to edit
+```
+
+Each dial declares its `kind` (scale/toggle/choice/list/text), its `lever` (`prompt` injects
+the chosen text into the directives layer; `sampler` sets the API parameter in `maps` and
+injects nothing), `enabled` (disabled = hidden **and pinned to its default**, not off), and
+`default` (`null` = the dial says nothing). The file documents every field in its own
+comments; parsing tolerates comments and trailing commas, a scale needs exactly five levels
+or it is skipped whole, and an unparseable file falls back to the shipped pack with a logged
+warning rather than taking the dials down. Per-conversation choices live in the `DialValues`
+table and survive re-enabling a disabled dial.
 
 ## `Airp:Model:` — the model
 

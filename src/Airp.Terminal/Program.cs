@@ -109,6 +109,8 @@ internal static partial class Program
                     .ConfigureAwait(false),
                 "thoughts" => await InnerThoughtsAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
+                "dials" or "dial" => await DialsAsync(host.Services, args, lifetime.ApplicationStopping)
+                    .ConfigureAwait(false),
                 "tracker" or "trackers" => await TrackerAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
                 "config" => await ConfigurationAsync(host.Services, args, lifetime.ApplicationStopping)
@@ -391,6 +393,9 @@ internal static partial class Program
         AnsiConsole.MarkupLine("  airp [grey][[run]][/]              Start the terminal interface (default)");
         AnsiConsole.MarkupLine("  airp settings --chat <id>   Show a conversation's lust, length and creativity");
         AnsiConsole.MarkupLine("  airp settings --chat <id> --lust 2 --length 3 --creativity 2");
+        AnsiConsole.MarkupLine("  airp dials              List every dial the pack declares, and what is in force");
+        AnsiConsole.MarkupLine("  airp dials --write      Emit the shipped pack as dials.json, ready to edit");
+        AnsiConsole.MarkupLine("  airp dials --chat <id> --set pacing=1    Set any dial; --clear <key> unsets it");
         AnsiConsole.MarkupLine("  airp export             Write every conversation to disk, one file each");
         AnsiConsole.MarkupLine("  airp export --format md Use Markdown instead of JSON");
         AnsiConsole.MarkupLine("  airp export --out <dir> Write somewhere other than the export directory");

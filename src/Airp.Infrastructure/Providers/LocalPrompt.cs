@@ -74,69 +74,6 @@ internal static class LocalPrompt
     }
 
     /// <summary>
-    /// The instruction that makes characters show what they are not saying.
-    /// </summary>
-    /// <remarks>
-    /// Placed with the dials rather than with the meters: it changes when the reader toggles it
-    /// and not otherwise, so it belongs in the part of the prompt a provider can cache.
-    /// </remarks>
-    /// <param name="conversation">The conversation.</param>
-    /// <returns>The directive, or an empty string when the setting is off.</returns>
-    public static string InnerThoughtsDirective(ConversationRecord conversation)
-    {
-        ArgumentNullException.ThrowIfNull(conversation);
-
-        if (!conversation.InnerThoughts)
-        {
-            return string.Empty;
-        }
-
-        return """
-
-
-            After each character speaks and acts, give one line of what they did not say, in
-            this shape:
-
-            >NAME's inner thoughts: what they are actually thinking
-
-            One line, first person, and never for the user. It is for what the character is
-            keeping back — if it only repeats what they said out loud, leave it out.
-            """;
-    }
-
-    /// <summary>
-    /// Maps the creativity dial onto a sampling temperature.
-    /// </summary>
-    /// <param name="creativity">The level, or null when unset.</param>
-    /// <param name="fallback">The configured temperature, used when the dial is unset.</param>
-    /// <returns>A temperature.</returns>
-    public static double Temperature(int? creativity, double fallback) => creativity switch
-    {
-        0 => 0.6,
-        1 => 0.8,
-        2 => 1.0,
-        3 => 1.2,
-        4 => 1.4,
-        _ => fallback,
-    };
-
-    /// <summary>
-    /// Maps the response-length dial onto a token ceiling.
-    /// </summary>
-    /// <param name="length">The level, or null when unset.</param>
-    /// <param name="fallback">The configured ceiling, used when the dial is unset.</param>
-    /// <returns>A token ceiling.</returns>
-    public static int MaxTokens(int? length, int fallback) => length switch
-    {
-        0 => 200,
-        1 => 450,
-        2 => 900,
-        3 => 1600,
-        4 => 2600,
-        _ => fallback,
-    };
-
-    /// <summary>
     /// Turns a regenerate reason into an instruction for the next attempt.
     /// </summary>
     /// <remarks>

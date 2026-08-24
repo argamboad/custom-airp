@@ -21,6 +21,7 @@ The diagrams and walkthroughs live in [ARCHITECTURE.md](../ARCHITECTURE.md),
 | [0013](0013-secrets-never-in-configuration.md) | Secrets never pass through IConfiguration |
 | [0014](0014-proxy-is-passive.md) | The proxy is passive; no automated access to JanitorAI |
 | [0015](0015-dials.md) | Three dials, each wired to the strongest lever available |
+| [0016](0016-dials-are-data.md) | Dials are data: a configurable pack instead of a hardcoded trio |
 
 New records take the next number. A superseded decision keeps its file and gains a
 **Status**: superseded by NNNN line — the history of being wrong is part of the record.

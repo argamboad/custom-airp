@@ -100,7 +100,8 @@ internal sealed partial class ConversationView : ViewBase
         Airp.Infrastructure.TextLibrary? library = null,
         Airp.Infrastructure.Providers.LocalConversationProvider? provider = null,
         Microsoft.Extensions.Options.IOptionsMonitor<Application.Options.AirpOptions>? options = null,
-        IChatService? chats = null)
+        IChatService? chats = null,
+        IDialService? dials = null)
     {
         _library = library ?? new Airp.Infrastructure.TextLibrary();
         _conversation = conversation;
@@ -110,6 +111,7 @@ internal sealed partial class ConversationView : ViewBase
         _provider = provider;
         _options = options;
         _chats = chats;
+        _dials = dials;
     }
 
     /// <inheritdoc />
@@ -537,9 +539,13 @@ internal sealed partial class ConversationView : ViewBase
             case AppCommand.Refresh:
                 return ValueTask.FromResult(Load(forceRefresh: true));
 
-            case AppCommand.Settings:
+            case AppCommand.Settings when _dials is not null:
                 return ValueTask.FromResult(ViewAction.Push(
-                    new ChatSettingsView(_conversations, _conversation.Id, _conversation.Name)));
+                    new ChatSettingsView(_dials, _conversation.Id, _conversation.Name)));
+
+            case AppCommand.Settings:
+                return ValueTask.FromResult(ViewAction.Status(
+                    "Settings are not available in this session.", StatusKind.Warning));
 
             // The site offers this on the newest reply only, so the cursor's position does
             // not choose the target — the view says which reply it will replace.
@@ -972,6 +978,7 @@ internal sealed partial class ConversationView : ViewBase
     /// only thing this view does that adds to it.
     /// </remarks>
     private readonly IChatService? _chats;
+    private readonly IDialService? _dials;
 
     private string SnippetsFolder => _library.Snippets;
 

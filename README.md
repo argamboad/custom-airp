@@ -56,8 +56,11 @@ the directive is written to get.*
   sits in the conversation header.
 - **A library of characters and personas** as plain text files, referred to by name, so
   editing one reaches every conversation using it.
-- **Reply dials** per conversation — lust, response length, creativity — with configurable
-  wording, where the text you read and the text the model receives are the same text.
+- **Reply dials as data** — a configurable pack of sixteen controls (heat, pacing,
+  initiative, consequence, prose balance, register, point of view, veils, an anti-loop
+  penalty, more), each a five-step scale, a toggle, a choice or free text, each wired to the
+  prompt or straight to the sampler. `airp dials --write` hands you the pack to edit; the
+  text you read and the text the model receives are the same text.
 - **Optional per conversation**: inner thoughts, and named meters the story keeps.
 - **Slash commands in the composer** — `/do` to steer a turn, `/ask` to put a question to the
   story out of character and keep the answer out of the transcript, plus free lookups for the

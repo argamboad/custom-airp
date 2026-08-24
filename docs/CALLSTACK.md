@@ -13,7 +13,7 @@ The same walkthrough as a picture: [FLOWS.md §1](FLOWS.md). The classes:
 
 | Step | Where |
 |---|---|
-| The process started as `airp` with no verb → `run` → the TUI | `Program.Main`, [Program.cs:56](../src/Airp.Terminal/Program.cs) |
+| The process started as `airp` with no verb → `run` → the TUI | `Program.Main`, [Program.cs:54](../src/Airp.Terminal/Program.cs) |
 | The shell's loop reads the key, paste-aware | `Shell.LoopAsync`, [Shell.cs:192](../src/Airp.Terminal/Ui/Shell.cs) |
 | `KeyMap` resolves it under the composer's `KeyContext` | `Shell.DispatchAsync`, [Shell.cs:235](../src/Airp.Terminal/Ui/Shell.cs) |
 | `ConversationView` returns `ViewAction.Run("Sending…", work)` — the shell spins while the work runs | `Shell.RunWithSpinnerAsync`, [Shell.cs:393](../src/Airp.Terminal/Ui/Shell.cs) |
@@ -28,26 +28,26 @@ Everything from here on is `LocalConversationProvider` —
 
 ```text
 SendAsync(conversationId, text, instruction, progress, ct)
-├─ 230  OpenAsync                 lazy migration behind a semaphore, first call only (line 87)
-├─ 231  RequireAsync              the conversation row, or ContractException (line 2053)
-├─ 238  anchor                    max Sequence of LIVE ASSISTANT rows — the state this
+├─ 237  OpenAsync                 lazy migration behind a semaphore, first call only (line 94)
+├─ 238  RequireAsync              the conversation row, or ContractException
+├─ 245  anchor                    max Sequence of LIVE ASSISTANT rows — the state this
 │                                 message answers, NOT the next free slot
-├─ 248  Hash(...)                 SHA256 over {conversationId | anchor | text ␟ instruction},
-│                                 first 32 hex chars (line 2085); the instruction is part of
+├─ 255  Hash(...)                 SHA256 over {conversationId | anchor | text ␟ instruction},
+│                                 first 32 hex chars; the instruction is part of
 │                                 the request's identity, joined by U+001F so prose cannot
 │                                 fake the separator
-├─ 250  lookup by RequestHash
-│   ├─ found + answered  → 273   return the stored exchange; no second charge
-│   ├─ found + unanswered → 280  the previous attempt died at the model; reuse the row
-│   └─ not found          → 284  INSERT the user's turn NOW — invariant 2: persist
+├─ 257  lookup by RequestHash
+│   ├─ found + answered   →      return the stored exchange; no second charge
+│   ├─ found + unanswered →      the previous attempt died at the model; reuse the row
+│   └─ not found          → 302  INSERT the user's turn NOW — invariant 2: persist
 │                                 before calling the model
-└─ 299  ReplyAsync(store, conversation, pending: sent, instruction, ...)
+└─ 306  ReplyAsync(store, conversation, pending: sent, instruction, ...)
 ```
 
 Why the anchor matters: anchored on the next free position, a retry after a failure would hash
 differently and store the line twice. Anchored on the last reply, the retry collides with the
 unique `(ConversationId, RequestHash)` index instead —
-[AirpDbContext.cs:644](../src/Airp.Infrastructure/Storage/Local/AirpDbContext.cs) — and the
+[AirpDbContext.cs:75](../src/Airp.Infrastructure/Storage/Local/AirpDbContext.cs) — and the
 database enforces what a check-then-insert could race past.
 
 ---
@@ -60,23 +60,28 @@ hit.
 
 ```text
 ComposeAsync(store, conversation, instruction, ct)
-├─ 817  visible history            live rows, ordered by Sequence
-├─ 831  character  = TextLibrary.ResolveAsync(own text → file by name → default)
-├─ 838  persona    = same rule, with Airp:DefaultPersona as the default   (TextLibrary.cs:206)
-├─ 846  known      = FactExtractor.LiveAsync    facts with ValidToSequence == null
-├─ 849  meters     = trackers by name
-├─ 855  directives = SettingScales.Directives(dials) + InnerThoughtsDirective
-├─ 874  prepared   = ConversationSummariser.PrepareAsync(...)   ← §3, may compress
-├─ 892  live       = FactExtractor.LiveAsync AGAIN — extraction may have just run,
+├─ 829  visible history            live rows, ordered by Sequence
+├─ 843  character  = TextLibrary.ResolveAsync(own text → file by name → default)
+├─ 850  persona    = same rule, with Airp:DefaultPersona as the default   (TextLibrary.cs:206)
+├─ 858  known      = FactExtractor.LiveAsync    facts with ValidToSequence == null
+├─ 861  meters     = trackers by name
+├─ 871  pack       = IDialService.PackAsync     dials.json, or the embedded default
+├─ 873  dialValues = the conversation's stored choices (DialValues rows)
+├─ 875  directives = DialEngine.Directives(pack, values)   every prompt-lever dial
+│                    in force, rendered in the screen's own words (DialEngine.cs:54)
+├─ 876  sampler    = DialEngine.Sampler(pack, values)      temperature / ceiling /
+│                    frequency penalty, from the sampler-lever dials (DialEngine.cs:124)
+├─ 887  prepared   = ConversationSummariser.PrepareAsync(...)   ← §3, may compress
+├─ 905  live       = FactExtractor.LiveAsync AGAIN — extraction may have just run,
 │                    and a fact established in the compressed stretch must reach
 │                    THIS turn's prompt, not the next one's
-├─ 898  budget     = prepared.CompressionFailed ? int.MaxValue : ContextBudget
+├─ 911  budget     = prepared.CompressionFailed ? int.MaxValue : ContextBudget
 │                    — going over budget costs cents; dropping turns costs the story
-├─ 905  memories   = RecallAsync(...)                            ← §4
-└─ 911  LocalPrompt.Build(named arguments, every one)            ← §5
+├─ 918  memories   = RecallAsync(...)                            ← §4
+└─ 924  LocalPrompt.Build(named arguments, every one)            ← §5
 ```
 
-The resolution at 831/838 is the line the 202-message failure taught: the summariser must see
+The resolution at 843/850 is the line the 202-message failure taught: the summariser must see
 the **resolved** layers, because `conversation.CharacterDefinition` is empty in every
 conversation the application creates — the conversation stores a name, the text lives in a
 file.
@@ -130,13 +135,13 @@ occupies.
 ## 4. Retrieval — `RecallAsync` (provider line 943) → `MemoryRetriever`
 
 ```text
-RecallAsync(store, conversation, prepared, ct)
-├─ 949  no embedding client, or no recent turns → []
-├─ 954  compressedUpTo = prepared.Recent[0].Sequence − 1;  ≤0 → []
-├─ 961  query = the newest USER turn among the recent ones; blank → []
-├─ 969  MemoryRetriever.BackfillAsync                    (MemoryRetriever.cs:49)
+RecallAsync(store, conversation, prepared, ct)        (line 956)
+├─ no embedding client, or no recent turns → []
+├─ compressedUpTo = prepared.Recent[0].Sequence − 1;  ≤0 → []
+├─ query = the newest USER turn among the recent ones; blank → []
+├─ MemoryRetriever.BackfillAsync                     (MemoryRetriever.cs:49)
 │         aged-out, live, un-embedded turns, ≤128 per pass → EmbedAsync → BLOBs
-└─ 972  MemoryRetriever.RecallAsync                      (MemoryRetriever.cs:105)
+└─ MemoryRetriever.RecallAsync                       (MemoryRetriever.cs:105)
           embed the query · cosine vs. every candidate
           keep ≥ RecallThreshold (0.35) · top RecallCount (4)
           re-sort into transcript order — a scene out of sequence invites reordering
@@ -179,30 +184,31 @@ memories, trackers, instruction`. Least → most volatile; the prefix cache cont
 
 ```text
 ReplyAsync(store, conversation, pending, instruction, progress, ct)
-├─ 703  composed = ComposeAsync(...)                     §2–§5
-├─ 716  choice = ModelRouter.For(Reply, settings,
-│                LocalPrompt.Temperature(Creativity dial → 0.6..1.4),
-│                LocalPrompt.MaxTokens(ResponseLength dial → 200..2600))
-├─ 722  _model.CompleteAsync(messages, conversation.Model ?? choice.Model, ...)
+├─ 711  composed = ComposeAsync(...)                     §2–§5
+├─ 723  choice = ModelRouter.For(Reply, settings,
+│                composed.Sampler — the dial engine's temperature (0.6..1.4),
+│                ceiling (200..2600) and frequency penalty, each falling back
+│                to the configured default when its dial is unset)
+├─ 731  _model.CompleteAsync(messages, conversation.Model ?? choice.Model, ...)
 │         OpenRouterClient (OpenRouterClient.cs:56):
 │         · payload is plain OpenAI; "provider" routing object only when
-│           Prefer/IgnoreProviders are set (line 170), omitted otherwise
+│           Prefer/IgnoreProviders are set (line 178), omitted otherwise
 │         · 200 with no content THROWS, naming finish_reason, host, and
-│           whether only reasoning came back (line 123)
+│           whether only reasoning came back (line 131)
 │         · reads model, provider, usage.cost, cached_tokens, generation id
 │           straight off the response — cost is never computed from a price list
-├─ 731  on failure: ReplyMissingException carrying the pending turn —
+├─ 741  on failure: ReplyMissingException carrying the pending turn —
 │       "the message was kept"; nothing is rolled back
-├─ 743  MessageRecord: reply text, Sequence = NextSequenceAsync (counts hidden
-│       rows too — a freed number would collide with the unique index, line 2072),
+├─ 753  MessageRecord: reply text, Sequence = NextSequenceAsync (counts hidden
+│       rows too — a freed number would collide with the unique index),
 │       Model, Provider, PromptTokens, CompletionTokens,
 │       EstimatedPromptTokens, ContextAudit = context.Describe()
-├─ 761  Trackers.Absorb: parse "[NAME] bar v/max | Δ d | note" lines out of the
+├─ 771  Trackers.Absorb: parse "[NAME] bar v/max | Δ d | note" lines out of the
 │       reply, clamp to [0, Max], write value/delta/note back to the store —
 │       the round trip that lets a meter survive compression
-├─ 766  Spend row via Ledger.Row — written whatever becomes of the reply;
+├─ 776  Spend row via Ledger.Row — written whatever becomes of the reply;
 │       a reroll a second later hides the message and leaves this row
-└─ 768  SaveChangesAsync — through GuardAppendOnly (AirpDbContext.cs:774),
+└─ 779  SaveChangesAsync — through GuardAppendOnly,
         which would throw on any message delete or text edit
 ```
 
@@ -215,8 +221,8 @@ transcript and redraws.
 
 | Variation | Divergence point |
 |---|---|
-| Carry on (no user turn) | `ContinueAsync` (line 366): no pending row, a framed "carry the scene forward" instruction — then `ReplyAsync` as above |
-| Regenerate | `RegenerateAsync` (line 312): tombstone the newest reply **before** the call, restore it on failure — then `ReplyAsync` with `RegenerateDirective` |
-| Aside (`/ask`) | `AskAsync` (line 452): `ComposeAsync` with `AskDirective`, `ModelTask.Aside`; answer goes to `Asides` + a spend row — **never** to `Messages` |
-| Rebuild | `RebuildMemoryAsync` (line 1081): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
+| Carry on (no user turn) | `ContinueAsync` (line 373): no pending row, a framed "carry the scene forward" instruction — then `ReplyAsync` as above |
+| Regenerate | `RegenerateAsync` (line 319): tombstone the newest reply **before** the call, restore it on failure — then `ReplyAsync` with `RegenerateDirective` |
+| Aside (`/ask`) | `AskAsync` (line 459): `ComposeAsync` with `AskDirective`, `ModelTask.Aside`; answer goes to `Asides` + a spend row — **never** to `Messages` |
+| Rebuild | `RebuildMemoryAsync` (line 1094): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
 | From the proxy | identical from `SendAsync` down; only the entry differs ([FLOWS.md §7](FLOWS.md)) |
