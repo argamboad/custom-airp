@@ -26,9 +26,9 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -61,7 +61,7 @@ jobs:
             tar czf "../airp-${{ matrix.rid }}.tar.gz" airp
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: airp-${{ matrix.rid }}
           path: airp-${{ matrix.rid }}.*
@@ -76,7 +76,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
@@ -108,4 +108,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release create "$GITHUB_REF_NAME" airp-* --generate-notes --notes-file notes.md
+        # Idempotent on purpose: re-pushing a tag — a retargeted release, a history
+        # rewrite — must not paint the repository red for a release that already
+        # exists and is fine. The existing release and its assets are left alone.
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "A release for $GITHUB_REF_NAME already exists; leaving it as it is."
+          else
+            gh release create "$GITHUB_REF_NAME" airp-* --generate-notes --notes-file notes.md
+          fi
