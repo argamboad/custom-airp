@@ -87,6 +87,28 @@ schema and its invariants, [CONFIGURATION.md](docs/CONFIGURATION.md) for every s
 [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to run it from source, what is most wanted, and the
 five invariants a change has to argue with.
 
+### Reading the code for the first time
+
+Motivation first, mechanics last — in this order, each document confirms something the
+previous one made you expect:
+
+1. This README — what it is and why it exists.
+2. [Decision records](docs/adr/README.md) — skim the index; read
+   [0002](docs/adr/0002-retrieval-over-context.md) (retrieval over context),
+   [0003](docs/adr/0003-append-only-messages.md) (append-only) and
+   [0005](docs/adr/0005-prompt-layer-order.md) (layer order). Nearly everything in the
+   codebase is a consequence of one of those three.
+3. [ARCHITECTURE.md](docs/ARCHITECTURE.md) — the map: where any file lives, and what it is
+   allowed to talk to.
+4. [FLOWS.md](docs/FLOWS.md) — the machine in motion. §1, a send, carefully; §8, the message
+   lifecycle, until it sticks; the rest when you care about that feature.
+5. [DATA.md](docs/DATA.md) — the schema, now that you have seen every table get written to.
+   The eight invariants are the contract every change argues with.
+6. [CALLSTACK.md](docs/CALLSTACK.md) — with the repo open: one send, file and line, the bridge
+   from understanding the design to changing it.
+7. [CONFIGURATION.md](docs/CONFIGURATION.md) and [GLOSSARY.md](docs/GLOSSARY.md) — references;
+   open them when a setting or a term stops you.
+
 ---
 
 ## Getting started
