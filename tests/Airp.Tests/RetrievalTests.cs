@@ -132,6 +132,124 @@ public sealed class RetrievalTests : IDisposable
         return id;
     }
 
+    /// <summary>
+    /// A turn long enough that a few of them swamp the memories layer.
+    /// </summary>
+    /// <remarks>
+    /// About 180 tokens, against a recall ceiling of 250. One fits and a second does not,
+    /// which is the point: the layer comes back non-empty and bounded, rather than empty,
+    /// which a test cannot tell from retrieval having never run.
+    /// </remarks>
+    private static string LongMatch =>
+        "Ferrin at the dock with clipped silver. "
+        + string.Join(' ', Enumerable.Repeat("and then a great deal more happened", 20));
+
+    /// <summary>
+    /// Seeds a story whose matching turns are long, the shape that broke a real one.
+    /// </summary>
+    /// <remarks>
+    /// The reader posted the same kind of long entry over and over across a story, so each one
+    /// matched the next almost perfectly. Retrieval returned four, they came to 9,096 tokens,
+    /// and there was no room left for the message that had just been sent.
+    /// </remarks>
+    /// <param name="turns">How long the story is.</param>
+    /// <returns>The conversation id.</returns>
+    private async Task<string> SeedLongMatchesAsync(int turns)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        await using var store = _factory.CreateDbContext();
+
+        store.Conversations.Add(new ConversationRecord
+        {
+            Id = id,
+            Name = "Vardhal",
+            Speaker = "Elena",
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+        });
+
+        for (var i = 1; i <= turns; i++)
+        {
+            store.Messages.Add(new MessageRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ConversationId = id,
+                Sequence = i,
+                Role = i % 2 == 1 ? ChatRole.User : ChatRole.Assistant,
+                Text = i is 3 or 5 or 7 or 9
+                    ? LongMatch
+                    : $"Turn {i}. " + string.Join(' ', Enumerable.Repeat("filler", 60)),
+                SentAtUtc = DateTimeOffset.UnixEpoch.AddMinutes(i),
+            });
+        }
+
+        await store.SaveChangesAsync();
+        return id;
+    }
+
+    /// <summary>A summary long enough to be an account of a stretch this size.</summary>
+    /// <remarks>
+    /// The stretch here is larger than the other seeds', so the standard scripted summary is
+    /// below the credibility floor and would be refused — leaving nothing compressed, nothing
+    /// embedded, and a retrieval test quietly asserting nothing at all. It was, until this.
+    /// </remarks>
+    private void ScriptCredibleSummaries()
+    {
+        var gist = string.Join(' ', Enumerable.Repeat("Ferrin, the dock and the silver came up again.", 12));
+
+        for (var i = 0; i < 4; i++)
+        {
+            _model.Summarises(gist);
+        }
+    }
+
+    /// <summary>The memories layer stays inside its share of the budget.</summary>
+    /// <remarks>
+    /// RecallCount bounds the number of recalled turns and says nothing about their size. Four
+    /// turns is three hundred tokens in one story and nine thousand in another, and it is the
+    /// second kind where the budget was already tight.
+    /// </remarks>
+    [Fact]
+    public async Task Recalled_turns_cannot_take_more_than_their_share_of_the_budget()
+    {
+        var id = await SeedLongMatchesAsync(40);
+        ScriptCredibleSummaries();
+        _model.Says("Fine.");
+
+        var settings = TestOptions.Default(SmallBudget).CurrentValue.Model;
+
+        await Provider().SendAsync(id, "Ferrin at the dock with clipped silver, what happened?");
+
+        var recalled = _model.Calls[^1]
+            .Where(m => m.Content.StartsWith("Earlier in this conversation:", StringComparison.Ordinal))
+            .Sum(m => TokenEstimator.ForText(m.Content));
+
+        // Non-empty, or this is a test of retrieval never having run.
+        recalled.ShouldBeGreaterThan(0);
+        recalled.ShouldBeLessThanOrEqualTo(settings.RecallBudget);
+    }
+
+    /// <summary>
+    /// The message just sent reaches the model, whatever retrieval brought back.
+    /// </summary>
+    /// <remarks>
+    /// This is the failure as the reader met it: for two nights the replies had nothing to do
+    /// with what had just been written, because what had just been written was not in the
+    /// prompt. The audit said so — <c>history 0 (2 dropped)</c> — and nothing on screen did.
+    /// </remarks>
+    [Fact]
+    public async Task The_message_just_sent_is_in_the_prompt_however_much_was_recalled()
+    {
+        var id = await SeedLongMatchesAsync(40);
+        ScriptCredibleSummaries();
+        _model.Says("Fine.");
+
+        const string Sent = "Ferrin at the dock with clipped silver, and now I am asking about the knife.";
+
+        await Provider().SendAsync(id, Sent);
+
+        _model.Calls[^1].Any(m => m.Content.Contains(Sent, StringComparison.Ordinal)).ShouldBeTrue();
+    }
+
     [Fact]
     public async Task A_buried_turn_comes_back_when_the_new_message_is_about_it()
     {

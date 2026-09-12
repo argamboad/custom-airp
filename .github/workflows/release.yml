@@ -26,7 +26,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      # Deep, with tags. The version is the nearest v* tag, and a shallow clone has no
+      # tags to find — the build would quietly call itself 0.0.0 and the release binaries
+      # would be wrong about what they are.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v6
         with:

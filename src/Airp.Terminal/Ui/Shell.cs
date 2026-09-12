@@ -90,8 +90,8 @@ internal sealed class Shell
         {
             throw new InvalidOperationException(
                 $"The terminal interface needs an interactive console ({reason}). "
-                + "Run 'airp' directly in a terminal, or use 'airp diagnose' and "
-                + "'airp config' when output is redirected.");
+                + "Run 'airp' directly in a terminal. The commands that print rather than draw — "
+                + "'airp config', 'airp audit', 'airp cost' — work with output redirected.");
         }
 
         var mouse = _options.CurrentValue.MouseSupport;
@@ -737,10 +737,11 @@ internal sealed class Shell
         // of date with, so the header reports the two things that are true — where the
         // conversations live, and which model is writing.
         return BuildHeaderRows(
-            theme,
-            $"[{theme.Badge.ToMarkup()}] Local [/]",
-            Markup.Escape(options.Model.Name),
-            breadcrumbLine);
+            theme: theme,
+            identity: $"[{theme.Badge.ToMarkup()}] Local [/]",
+            detail: Markup.Escape(options.Model.Name),
+            breadcrumb: breadcrumbLine,
+            version: Markup.Escape(AppVersion.Short));
     }
 
     /// <summary>Lays out the header: name and state on the left, adapter detail on the right.</summary>
@@ -753,14 +754,26 @@ internal sealed class Shell
     /// and the breadcrumb, moving from view to view as the breadcrumb grew, and reading as a
     /// gap that meant something rather than as a column.
     /// </para>
+    /// <para>
+    /// The version goes in the second row's right cell, which the breadcrumb already left
+    /// empty. So it costs no height, and it sits under the model rather than beside it: both
+    /// are facts about what is answering, and the two of them competing for one line would
+    /// have pushed the model's name off the edge on a narrow window.
+    /// </para>
     /// <para>Internal so the alignment can be asserted; nothing else calls it.</para>
     /// </remarks>
     /// <param name="theme">The palette in force.</param>
     /// <param name="identity">Markup describing the adapter's state, already coloured.</param>
     /// <param name="detail">Escaped plain text shown muted on the right.</param>
     /// <param name="breadcrumb">Markup for the view stack.</param>
+    /// <param name="version">Escaped plain text shown muted under the detail.</param>
     /// <returns>The header.</returns>
-    internal static IRenderable BuildHeaderRows(Theme theme, string identity, string detail, string breadcrumb)
+    internal static IRenderable BuildHeaderRows(
+        Theme theme,
+        string identity,
+        string detail,
+        string breadcrumb,
+        string version)
     {
         var grid = new Grid { Expand = true };
         grid.AddColumn(new GridColumn().NoWrap());
@@ -770,7 +783,9 @@ internal sealed class Shell
             new Markup($"[{theme.Heading.ToMarkup()}]airp[/]  {identity}"),
             new Markup($"[{theme.Muted.ToMarkup()}]{detail}[/]"));
 
-        grid.AddRow(new Markup(breadcrumb), new Markup(string.Empty));
+        grid.AddRow(
+            new Markup(breadcrumb),
+            new Markup($"[{theme.Muted.ToMarkup()}]{version}[/]"));
 
         return new Rows(grid, new Rule { Style = theme.Border });
     }

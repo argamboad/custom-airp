@@ -32,8 +32,8 @@ public sealed class ReplyTimeoutException : AirpException
 }
 
 /// <summary>
-/// The page loaded but did not look the way the adapter expected — usually because the
-/// site changed its markup.
+/// The store answered, but not in a shape the caller can work with — a message that is not
+/// there, a turn that cannot be regenerated, a file holding nothing to import.
 /// </summary>
 public sealed class ContractException : AirpException
 {
@@ -59,15 +59,23 @@ public sealed class ContractException : AirpException
 
     /// <inheritdoc />
     /// <remarks>
-    /// Defaults to the selector advice, which fits the common case of an extraction that
-    /// stopped matching. A caller that knows better — a request the site actively rejected,
-    /// say, where no selector is involved — supplies its own rather than sending the reader
-    /// to edit configuration that has nothing to do with the failure.
+    /// <para>
+    /// Every throw supplies its own, because a shape that surprised the caller is only
+    /// explicable in terms of what it was reading: the hint for a branch point that is not in
+    /// the conversation has nothing to say to an import that found no files.
+    /// </para>
+    /// <para>
+    /// So this default exists for a caller that forgets, and it says the only thing true of
+    /// all of them. It used to say something else — that the site's markup had changed, and to
+    /// run 'airp diagnose' and edit Site:Selectors. That was the browser client's advice,
+    /// which left with the browser client: there is no such command here and no such
+    /// configuration section, and the hint was unreachable besides.
+    /// </para>
     /// </remarks>
     public override string RecoveryHint =>
         _recoveryHint
-        ?? "The site's layout no longer matches the configured selectors. Run 'airp diagnose' to dump what "
-        + "the page actually contains, then adjust the Site:Selectors section of the config file.";
+        ?? "The local store answered in a shape this did not expect. "
+        + "The log has what was actually found.";
 }
 
 /// <summary>

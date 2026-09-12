@@ -328,7 +328,14 @@ internal sealed class ConversationSummariser
         }
 
         var mean = history.Sum(m => TokenEstimator.ForText(m.Text)) / history.Count;
-        return Math.Min(settings.RecallCount, history.Count) * mean;
+        var estimate = Math.Min(settings.RecallCount, history.Count) * mean;
+
+        // Never above what retrieval will actually send. The mean is a fair guess at the size
+        // of a recalled turn and a poor one at its ceiling: on a story with a few very long
+        // turns it ran to thousands of tokens, and reserving room the layer can no longer take
+        // compresses the transcript earlier than anything needs. The ceiling is the same
+        // number the retriever trims itself to, derived in one place so the two cannot drift.
+        return Math.Min(estimate, settings.RecallBudget);
     }
 
     /// <summary>Asks the model to compress a stretch of transcript.</summary>

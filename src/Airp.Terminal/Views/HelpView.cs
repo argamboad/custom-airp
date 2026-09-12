@@ -87,7 +87,15 @@ internal sealed class HelpView : ViewBase
             ]);
         }
 
-        var rows = new List<IRenderable>();
+        // Above the sections rather than inside one: it is not a binding, and a build number
+        // dressed up as a key would be read as a key. This is where the version is reachable
+        // without leaving a story, which is the only time anyone wonders what they are running.
+        var rows = new List<IRenderable>
+        {
+            new Markup(Draw.Literal($"airp {AppVersion.Full}", theme.Muted)),
+            Draw.Blank,
+        };
+
         var section = string.Empty;
 
         foreach (var (group, key, description) in lines)
