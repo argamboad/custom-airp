@@ -368,15 +368,42 @@ public class ViewRenderingTests
         // spaces after the longer of the identity and the breadcrumb — a gap that moved from
         // view to view as the breadcrumb grew, and read as if it meant something.
         var header = Shell.BuildHeaderRows(
-            Theme.For(ThemeName.Dark),
-            "Local",
-            "deepseek/deepseek-v4-flash",
-            "Chats");
+            theme: Theme.For(ThemeName.Dark),
+            identity: "Local",
+            detail: "deepseek/deepseek-v4-flash",
+            breadcrumb: "Chats",
+            version: "1.2.3");
 
         var first = RenderToText(header, width: 100).Split('\n')[0].TrimEnd('\r');
 
         first.TrimEnd().ShouldEndWith("deepseek/deepseek-v4-flash");
         Draw.Width(first.TrimEnd()).ShouldBe(100);
+    }
+
+    /// <summary>
+    /// The version rides in the cell the breadcrumb row already left empty.
+    /// </summary>
+    /// <remarks>
+    /// Under the model rather than beside it, and pinned to the same edge, so the header still
+    /// costs the two rows it always did and the two facts about what is answering line up.
+    /// </remarks>
+    [Fact]
+    public void Header_PutsTheVersionUnderTheModel()
+    {
+        var header = Shell.BuildHeaderRows(
+            theme: Theme.For(ThemeName.Dark),
+            identity: "Local",
+            detail: "deepseek/deepseek-v4-flash",
+            breadcrumb: "Chats",
+            version: "1.2.3");
+
+        var second = RenderToText(header, width: 100)
+            .Split('\n')[1]
+            .TrimEnd('\r')
+            .TrimEnd();
+
+        second.ShouldEndWith("1.2.3");
+        Draw.Width(second).ShouldBe(100);
     }
 
     [Fact]

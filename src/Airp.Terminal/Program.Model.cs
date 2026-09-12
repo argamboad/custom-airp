@@ -235,6 +235,9 @@ internal static partial class Program
         table.AddColumn("Setting");
         table.AddColumn("Value");
 
+        // First, because every other row is only worth reading once you know which build is
+        // reporting them.
+        table.AddRow("Version", AppVersion.Full);
         table.AddRow("Configuration file", configuration.ConfigurationFilePath);
         table.AddRow("Application data", AppPaths.Root);
         table.AddRow("Database", AppPaths.Resolve(options.DatabaseFile));

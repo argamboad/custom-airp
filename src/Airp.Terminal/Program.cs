@@ -53,10 +53,15 @@ internal static partial class Program
 
         var command = Positional(args).FirstOrDefault()?.ToLowerInvariant() ?? "run";
 
-        if (command is "help" or "--help" or "-h" or "/?")
+        switch (Immediate(args))
         {
-            PrintUsage();
-            return 0;
+            case EarlyExit.Version:
+                AnsiConsole.MarkupLine($"airp {Markup.Escape(AppVersion.Full)}");
+                return 0;
+
+            case EarlyExit.Usage:
+                PrintUsage();
+                return 0;
         }
 
         // Only the interactive terminal wants a background refresh loop. For a one-shot
@@ -265,6 +270,59 @@ internal static partial class Program
     private static string[] Positional(string[] args)
         => [.. args.TakeWhile(static a => !a.StartsWith('-'))];
 
+    /// <summary>What, if anything, is answered before a host is built.</summary>
+    internal enum EarlyExit
+    {
+        /// <summary>Nothing; dispatch the command normally.</summary>
+        None = 0,
+
+        /// <summary>Print the build and stop.</summary>
+        Version,
+
+        /// <summary>Print the usage and stop.</summary>
+        Usage,
+    }
+
+    /// <summary>
+    /// Decides whether the command line is asking a question the host is not needed for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The flags are matched against the raw arguments, not against the resolved command.
+    /// <see cref="Positional"/> stops at the first argument starting with a dash, so a line
+    /// beginning with one resolves to no command at all and falls through to the default —
+    /// which meant <c>airp --help</c> and <c>airp -h</c> started the terminal interface
+    /// instead of printing anything, for as long as the check has existed.
+    /// </para>
+    /// <para>
+    /// Internal so that the routing is tested through this method rather than a copy of it.
+    /// The command-line tests used to mirror <see cref="Positional"/> rather than call it,
+    /// which is precisely why a mirror reproduces a mistake instead of catching it.
+    /// </para>
+    /// </remarks>
+    /// <param name="args">The command line.</param>
+    /// <returns>What to answer before building anything.</returns>
+    internal static EarlyExit Immediate(string[] args)
+    {
+        var command = Positional(args).FirstOrDefault()?.ToLowerInvariant();
+
+        if (command is "version" || HasFlag(args, "--version"))
+        {
+            return EarlyExit.Version;
+        }
+
+        return command is "help" or "/?" || HasFlag(args, "--help") || HasFlag(args, "-h")
+            ? EarlyExit.Usage
+            : EarlyExit.None;
+    }
+
+    /// <summary>Whether a bare flag appears anywhere on the command line.</summary>
+    /// <param name="args">The command line.</param>
+    /// <param name="flag">The flag, dashes included.</param>
+    /// <returns><see langword="true"/> when it was given.</returns>
+    private static bool HasFlag(string[] args, string flag)
+        => Array.Exists(args, a => string.Equals(a, flag, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Reads the value following a flag, if it was given one.</summary>
     /// <param name="args">The command line.</param>
     /// <param name="flag">The flag to look for.</param>
@@ -387,7 +445,7 @@ internal static partial class Program
 
     private static void PrintUsage()
     {
-        AnsiConsole.MarkupLine("[bold]airp[/] — a keyboard-driven terminal client");
+        AnsiConsole.MarkupLine($"[bold]airp[/] [grey]{Markup.Escape(AppVersion.Short)}[/] — a keyboard-driven terminal client");
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[bold]Usage[/]");
         AnsiConsole.MarkupLine("  airp [grey][[run]][/]              Start the terminal interface (default)");
@@ -437,10 +495,12 @@ internal static partial class Program
         AnsiConsole.MarkupLine("  airp secret set         Store an API key, encrypted for this account");
         AnsiConsole.MarkupLine("  airp secret show        Say where the key is read from, without printing it");
         AnsiConsole.MarkupLine("  airp config             Show the effective configuration and paths");
+        AnsiConsole.MarkupLine("  airp version            Print the build, commit included, and exit");
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[bold]Options[/]");
         AnsiConsole.MarkupLine("  --theme <name>             Dark, Light, HighContrast or Monochrome");
         AnsiConsole.MarkupLine("  --keyboard <mode>          Standard or Vim");
         AnsiConsole.MarkupLine("  --refresh <seconds>        Background refresh interval; 0 disables it");
+        AnsiConsole.MarkupLine("  --version                  The same as 'airp version'");
     }
 }

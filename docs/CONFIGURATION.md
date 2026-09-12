@@ -34,7 +34,7 @@ absolute against the app root at options-build time.
 |---|---|---|
 | `Theme` | `Dark` | `Dark` · `Light` · `HighContrast` · `Monochrome` |
 | `Keyboard` | `Standard` | `Standard` · `Vim` (a shortcut layer — hjkl, G, n/N, u — not a modal editor) |
-| `TranscriptWidthPercent` | `60` | centred reading column, clamped 30–100; 100 = full window. `--transcript-width` sets it, `airp model` prints it |
+| `TranscriptWidthPercent` | `60` | centred reading column, clamped 30–100; 100 = full window. `--transcript-width` sets it, `airp config` prints it |
 | `AutoRefreshSeconds` | `60` | background store re-read; ≤0 disables |
 | `MouseSupport` | `false` | click + scroll wheel |
 | `ExportDirectory` | `./exports` | made absolute at startup so exports never land where the shell was standing |
