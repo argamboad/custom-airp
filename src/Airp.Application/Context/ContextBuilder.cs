@@ -214,11 +214,20 @@ public static class ContextBuilder
         var spent = 0;
 
         // Newest first while filling, so the turns nearest the reply are the ones that survive.
+        //
+        // The newest goes in whatever it costs. Everything ahead of the transcript is either
+        // permanent or was chosen for this turn, so when the two met at the budget it was
+        // always the transcript that gave way — including, on a long story with a large card,
+        // the message the reader had just sent. Observed on the real BJU transcript as
+        // 'history 0 (2 dropped)': the model was handed the card, the world, the summaries and
+        // four recalled turns, no transcript at all, and answered the recalled turns. A prompt
+        // whose transcript is empty cannot answer anything, so going over budget is the
+        // cheaper wrong: it costs a fraction of a cent, and the alternative costs the turn.
         for (var i = history.Count - 1; i >= 0; i--)
         {
             var cost = TokenEstimator.ForMessage(history[i]);
 
-            if (spent + cost > remaining)
+            if (kept.Count > 0 && spent + cost > remaining)
             {
                 break;
             }

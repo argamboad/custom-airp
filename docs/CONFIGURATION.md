@@ -80,6 +80,7 @@ table and survive re-enabling a disabled dial.
 | `EmbeddingApiKeyName` | null → `ApiKeyName` | second endpoint usually means second account |
 | `RecallCount` | `4` (0–20) | retrieved turns per prompt; small on purpose |
 | `RecallThreshold` | `0.35` | cosine floor below which a recalled turn is noise |
+| `RecallPercent` | `10` (0–50) | share of the budget the memories layer may take; a count is not a size, and four long turns once filled a 60,000-token prompt |
 | `Temperature` | `1.0` | fallback when the Creativity dial is unset (dial: 0.6–1.4; summaries pinned at 0.3, facts 0.2 regardless) |
 | `MaxTokens` | `1024` | reply ceiling fallback (dial: 200–2600) |
 | `ContextBudget` | `32000` | prompt ceiling, far under the model's window on purpose — attention thins, and every token is paid on every turn |

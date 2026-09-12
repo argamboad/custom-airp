@@ -244,17 +244,58 @@ public class ContextBuilderTests
         numbers.ShouldBe([.. numbers.OrderBy(static n => n)]);
     }
 
+    /// <summary>
+    /// A budget the fixed layers already fill still carries the newest turn.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This used to assert the opposite, and the opposite is what happened to a real story:
+    /// a 30,000-token card, 17,000 tokens of summaries and 9,000 tokens of recalled turns
+    /// filled a 60,000-token budget, the audit read <c>history 0 (2 dropped)</c>, and the
+    /// message the reader had just sent never reached the model. The replies answered the
+    /// recalled turns instead, for two nights.
+    /// </para>
+    /// <para>
+    /// Over budget is the cheaper wrong. It costs a fraction of a cent and the audit says so;
+    /// an empty transcript costs the turn, and the reader cannot see why.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public void A_budget_too_small_for_even_the_fixed_layers_drops_the_whole_transcript()
+    public void A_budget_too_small_for_even_the_fixed_layers_still_sends_the_newest_turn()
     {
-        // It does not throw. A prompt with the character and no history is still a prompt; one
-        // that failed to build is a turn the reader loses.
         var built = Build(character: new string('x', 4000), history: History(10), budget: 100);
+
+        var kept = built.Sections.Single(static s => s.Name == ContextBuilder.Layer.History).Messages;
+
+        kept.Count.ShouldBe(1);
+        kept[0].Content.ShouldStartWith("turn 10 ");
+        built.Dropped.ShouldBe(9);
+    }
+
+    /// <summary>The guarantee is one turn, not the whole transcript.</summary>
+    /// <remarks>
+    /// Everything older still gives way, which is the rule that lets a long story go on being
+    /// played at all. What changed is only that the floor is one rather than zero.
+    /// </remarks>
+    [Fact]
+    public void Older_turns_still_give_way_when_the_budget_is_gone()
+    {
+        var built = Build(character: new string('x', 4000), history: History(10), budget: 100);
+
+        built.Dropped.ShouldBe(9);
+        built.Sections.Single(static s => s.Name == ContextBuilder.Layer.History)
+            .Messages.Count.ShouldBe(1);
+    }
+
+    /// <summary>An empty transcript is still empty; the floor does not invent a turn.</summary>
+    [Fact]
+    public void No_transcript_at_all_keeps_the_history_layer_empty()
+    {
+        var built = Build(character: new string('x', 4000), history: [], budget: 100);
 
         built.Sections.Single(static s => s.Name == ContextBuilder.Layer.History)
             .Messages.ShouldBeEmpty();
-        built.Dropped.ShouldBe(10);
-        built.Messages.Count.ShouldBe(1);
+        built.Dropped.ShouldBe(0);
     }
 
     [Fact]

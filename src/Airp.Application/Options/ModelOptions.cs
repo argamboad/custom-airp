@@ -150,6 +150,36 @@ public sealed class ModelOptions
     [Range(0d, 1d)]
     public double RecallThreshold { get; set; } = 0.35;
 
+    /// <summary>
+    /// The share of the context budget the memories layer may occupy, as a percentage.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="RecallCount"/> bounds how many turns come back, which is not the same as
+    /// bounding how much room they take: four turns is three hundred tokens in one story and
+    /// nine thousand in another, and it is the story with the long turns where the budget was
+    /// already tight. Measured on the real BJU transcript, four recalled turns came to 9,096
+    /// tokens and left thirty-two for the transcript.
+    /// </para>
+    /// <para>
+    /// Ten percent because the layer earns its place by finding the one exchange that matters.
+    /// It is far above every recall this has been observed to make except the one that broke a
+    /// conversation, which is the shape a limit should have: invisible until it is the problem.
+    /// </para>
+    /// </remarks>
+    [Range(0, 50)]
+    public int RecallPercent { get; set; } = 10;
+
+    /// <summary>
+    /// Tokens the memories layer may occupy, from <see cref="RecallPercent"/> of the budget.
+    /// </summary>
+    /// <remarks>
+    /// Derived rather than configured, so the ceiling retrieval trims itself to and the room
+    /// the summariser holds back for it are the same number. Those two disagreeing is what put
+    /// a real story into the state this exists to prevent.
+    /// </remarks>
+    public int RecallBudget => (int)((long)ContextBudget * Math.Clamp(RecallPercent, 0, 50) / 100);
+
     /// <summary>Sampling temperature. Higher wanders further from the obvious reply.</summary>
     [Range(0d, 2d)]
     public double Temperature { get; set; } = 1.0;
