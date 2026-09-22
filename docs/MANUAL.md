@@ -67,6 +67,10 @@ prerelease and `--prerelease` is what lets NuGet see it. `airp version` then say
 which commit you are running, which is the point: a tool installed from a working tree should
 not be able to pass for a release.
 
+Installing somewhere less ordinary — WSL, an Android tablet through Termux, a machine you reach
+over SSH — is [PORTABLE.md](PORTABLE.md), along with what moving your stories between them
+costs.
+
 ### Where everything lives
 
 Everything the application keeps sits under one folder — `%LOCALAPPDATA%\Airp` on Windows,

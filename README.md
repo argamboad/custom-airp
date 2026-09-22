@@ -85,6 +85,10 @@ repository, unchanged. This one owns `%LOCALAPPDATA%\Airp` and knows nothing abo
 [`docs/MANUAL.md`](docs/MANUAL.md) — how to set it up, start a story, and everything above in
 the order you would actually do it.
 
+[`docs/PORTABLE.md`](docs/PORTABLE.md) — running it somewhere other than the machine you built
+it on: WSL, an Android tablet through Termux, moving your stories between them, and reaching
+any of it over SSH.
+
 [`docs/adr/`](docs/adr/README.md) — why each decision was made, and what was measured to make
 it: one record per decision, from append-only storage to the prompt's layer order.
 
