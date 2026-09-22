@@ -66,7 +66,12 @@ public static class DependencyInjection
         AddLocalProvider(services);
 
         services.TryAddSingleton<IConfigurationService, JsonConfigurationService>();
-        services.TryAddSingleton<IClipboardService, TextCopyClipboardService>();
+
+        // Two of them, in order: the system clipboard where there is one, the terminal's own
+        // where there is not — a container, a tablet's sandbox, anything reached over SSH.
+        services.TryAddSingleton<TextCopyClipboardService>();
+        services.TryAddSingleton<Osc52Clipboard>();
+        services.TryAddSingleton<IClipboardService, FallbackClipboard>();
 
         return services;
     }

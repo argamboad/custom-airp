@@ -18,6 +18,13 @@ jobs:
             os: windows-latest
           - rid: linux-x64
             os: ubuntu-latest
+          # Cross-compiled from the x64 runner, which is all a self-contained publish
+          # needs. It covers the ARM single-board machines and — through a glibc
+          # distribution hosted by Termux — an Android phone or tablet, which is the
+          # only way to play away from a desk. Its absence meant building this one by
+          # hand, on a machine with the SDK, every time.
+          - rid: linux-arm64
+            os: ubuntu-latest
           - rid: osx-arm64
             os: macos-latest
           - rid: osx-x64
@@ -26,7 +33,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      # Deep, with tags. The version is the nearest v* tag, and a shallow clone has no
+      # tags to find — the build would quietly call itself 0.0.0 and the release binaries
+      # would be wrong about what they are.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -96,6 +108,10 @@ jobs:
 
           macOS refuses an unsigned binary the first time it is opened. Right-click,
           Open, and confirm — or `xattr -d com.apple.quarantine airp`.
+
+          `linux-arm64` is for ARM machines — a single-board computer, or an Android
+          phone or tablet through a glibc distribution hosted by Termux. See
+          [PORTABLE.md](https://github.com/argamboad/custom-airp/blob/main/docs/PORTABLE.md).
 
           Everything it keeps lives in one folder: `%LOCALAPPDATA%\Airp` on Windows,
           `~/.local/share/Airp` elsewhere.

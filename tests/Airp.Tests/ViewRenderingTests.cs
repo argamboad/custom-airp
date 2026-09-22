@@ -368,15 +368,42 @@ public class ViewRenderingTests
         // spaces after the longer of the identity and the breadcrumb — a gap that moved from
         // view to view as the breadcrumb grew, and read as if it meant something.
         var header = Shell.BuildHeaderRows(
-            Theme.For(ThemeName.Dark),
-            "Local",
-            "deepseek/deepseek-v4-flash",
-            "Chats");
+            theme: Theme.For(ThemeName.Dark),
+            identity: "Local",
+            detail: "deepseek/deepseek-v4-flash",
+            breadcrumb: "Chats",
+            version: "1.2.3");
 
         var first = RenderToText(header, width: 100).Split('\n')[0].TrimEnd('\r');
 
         first.TrimEnd().ShouldEndWith("deepseek/deepseek-v4-flash");
         Draw.Width(first.TrimEnd()).ShouldBe(100);
+    }
+
+    /// <summary>
+    /// The version rides in the cell the breadcrumb row already left empty.
+    /// </summary>
+    /// <remarks>
+    /// Under the model rather than beside it, and pinned to the same edge, so the header still
+    /// costs the two rows it always did and the two facts about what is answering line up.
+    /// </remarks>
+    [Fact]
+    public void Header_PutsTheVersionUnderTheModel()
+    {
+        var header = Shell.BuildHeaderRows(
+            theme: Theme.For(ThemeName.Dark),
+            identity: "Local",
+            detail: "deepseek/deepseek-v4-flash",
+            breadcrumb: "Chats",
+            version: "1.2.3");
+
+        var second = RenderToText(header, width: 100)
+            .Split('\n')[1]
+            .TrimEnd('\r')
+            .TrimEnd();
+
+        second.ShouldEndWith("1.2.3");
+        Draw.Width(second).ShouldBe(100);
     }
 
     [Fact]
@@ -758,6 +785,42 @@ public class ViewRenderingTests
     }
 
     [Fact]
+    public async Task ChatSettingsView_ScrollsToTheDialTheCursorIsOn()
+    {
+        // Fifteen dials do not fit a terminal. The window follows the cursor: walking to the
+        // last dial brings it on screen and lets the first scroll away.
+        var view = new ChatSettingsView(Dials(), "chat-1", "North Dock");
+        var small = new RenderContext(100, 14, Theme.For(Application.Options.ThemeName.Dark), new Application.Options.AirpOptions());
+
+        await ActivateAsync(view);
+
+        RenderToText(view.Render(small), height: 14).ShouldContain("Lust");
+
+        MoveTo(view, "anti-loop");
+        var text = RenderToText(view.Render(small), height: 14);
+
+        text.ShouldContain("Anti-loop");
+        text.ShouldNotContain("Lust");
+    }
+
+    [Fact]
+    public async Task ChatSettingsView_ScrollsBackWhenTheCursorReturns()
+    {
+        var view = new ChatSettingsView(Dials(), "chat-1", "North Dock");
+        var small = new RenderContext(100, 14, Theme.For(Application.Options.ThemeName.Dark), new Application.Options.AirpOptions());
+
+        await ActivateAsync(view);
+        MoveTo(view, "anti-loop");
+        view.Render(small);
+
+        await view.HandleKeyAsync(Home(), small, CancellationToken.None);
+
+        var text = RenderToText(view.Render(small), height: 14);
+        text.ShouldContain("Lust");
+        text.ShouldNotContain("Anti-loop");
+    }
+
+    [Fact]
     public async Task ChatSettingsView_CannotBeMovedOutsideTheSitesRange()
     {
         var view = new ChatSettingsView(Dials(("creativity", "4")), "chat-1", "North Dock");
@@ -867,6 +930,12 @@ public class ViewRenderingTests
     private static KeyStroke Delete()
         => KeyMap.Resolve(
             new ConsoleKeyInfo('\0', ConsoleKey.Delete, false, false, false),
+            KeyboardMode.Standard,
+            KeyContext.Navigation);
+
+    private static KeyStroke Home()
+        => KeyMap.Resolve(
+            new ConsoleKeyInfo('\0', ConsoleKey.Home, false, false, false),
             KeyboardMode.Standard,
             KeyContext.Navigation);
 

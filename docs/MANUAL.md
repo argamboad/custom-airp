@@ -59,8 +59,17 @@ Or install it as a global tool, after which `airp` is on your path:
 
 ```bash
 dotnet pack src/Airp.Terminal -c Release
-dotnet tool install --global --add-source ./src/Airp.Terminal/bin/Release Airp.Terminal
+dotnet tool install --global --add-source ./src/Airp.Terminal/bin/Release --prerelease Airp.Terminal
 ```
+
+The version comes from the nearest `v*` tag, so a build from anywhere past that tag is a
+prerelease and `--prerelease` is what lets NuGet see it. `airp version` then says exactly
+which commit you are running, which is the point: a tool installed from a working tree should
+not be able to pass for a release.
+
+Installing somewhere less ordinary — WSL, an Android tablet through Termux, a machine you reach
+over SSH — is [PORTABLE.md](PORTABLE.md), along with what moving your stories between them
+costs.
 
 ### Where everything lives
 
@@ -1105,6 +1114,10 @@ Both fall back to the main ones when unset, so a single-service setup needs neit
 ---
 
 ## When something breaks
+
+**Which build is this?** `airp version`, or the top right of any screen, or the first line of
+the help screen reached with `?`. A number alone is a release; a number with a commit after it
+was built from a working tree and is not any release.
 
 **The terminal will not start** — it needs an interactive console. If you are redirecting
 output, use `airp config` or `airp audit`.

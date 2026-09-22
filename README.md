@@ -85,6 +85,10 @@ repository, unchanged. This one owns `%LOCALAPPDATA%\Airp` and knows nothing abo
 [`docs/MANUAL.md`](docs/MANUAL.md) — how to set it up, start a story, and everything above in
 the order you would actually do it.
 
+[`docs/PORTABLE.md`](docs/PORTABLE.md) — running it somewhere other than the machine you built
+it on: WSL, an Android tablet through Termux, moving your stories between them, and reaching
+any of it over SSH.
+
 [`docs/adr/`](docs/adr/README.md) — why each decision was made, and what was measured to make
 it: one record per decision, from append-only storage to the prompt's layer order.
 
@@ -145,8 +149,13 @@ Or install it as a global tool, after which `airp` is on your path:
 
 ```bash
 dotnet pack src/Airp.Terminal -c Release
-dotnet tool install --global --add-source ./src/Airp.Terminal/bin/Release Airp.Terminal
+dotnet tool install --global --add-source ./src/Airp.Terminal/bin/Release --prerelease Airp.Terminal
 ```
+
+The version comes from the nearest `v*` tag, so a build from anywhere past that tag is a
+prerelease and `--prerelease` is what lets NuGet see it. `airp version` then says exactly
+which commit you are running, which is the point: a tool installed from a working tree should
+not be able to pass for a release.
 
 Set the model key once — never on the command line, where the shell history keeps it — and
 check that it answers:

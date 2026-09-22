@@ -243,7 +243,7 @@ internal sealed partial class ConversationView : ViewBase
             scrolled.AddColumn(new GridColumn { Width = 1, NoWrap = true, Padding = new Padding(0, 0, 0, 0) });
 
             scrolled.AddRow(
-                new Rows([.. shown.Select(row => new Markup(row.Markup))]),
+                new Rows([.. shown.Select(row => new Markup(Compose(row, row.Message == _selected, theme)))]),
                 new Rows([.. bar.Take(shown.Count).Select(cell => new Markup(cell))]));
 
             rows.Add(scrolled);
@@ -1564,26 +1564,92 @@ internal sealed partial class ConversationView : ViewBase
         return line;
     }
 
+    /// <summary>Where a row's selection marker goes, when it has one at all.</summary>
+    private enum MarkerKind
+    {
+        /// <summary>A separator, which no marker runs down.</summary>
+        None = 0,
+
+        /// <summary>A speaker line: the marker alone.</summary>
+        Speaker,
+
+        /// <summary>A line of the message: the marker and the space after it.</summary>
+        Body,
+    }
+
+    /// <summary>One drawn row, with the selection marker left off.</summary>
+    /// <param name="Message">Index, within the visible messages, of the turn this belongs to.</param>
+    /// <param name="Marker">Which marker to draw in front of it.</param>
+    /// <param name="Body">Everything after the marker, as markup.</param>
+    private readonly record struct DisplayRow(int Message, MarkerKind Marker, string Body);
+
+    /// <summary>What the cached rows were built from.</summary>
+    /// <param name="Messages">The list itself; <see cref="_messages"/> is replaced, never edited.</param>
+    /// <param name="ShowData">Whether non-dialogue payloads were included.</param>
+    /// <param name="Width">The measure they were wrapped to.</param>
+    /// <param name="Theme">The palette's name.</param>
+    /// <param name="Query">The search term painted through them.</param>
+    private readonly record struct DisplayKey(
+        IReadOnlyList<ChatMessage> Messages,
+        bool ShowData,
+        int Width,
+        string Theme,
+        string Query);
+
+    private DisplayKey _displayKey;
+    private List<DisplayRow>? _display;
+
+    /// <summary>How many times the transcript has been laid out since the view opened.</summary>
+    /// <remarks>
+    /// The saving here is a performance one, and a performance claim asserted by a stopwatch
+    /// is a flaky test. This counts the passes instead, so what a test pins down is the thing
+    /// that actually matters: which changes rebuild the transcript and which do not.
+    /// </remarks>
+    internal int LayoutPasses { get; private set; }
+
     /// <summary>
     /// Lays every message out into the rows actually drawn: a speaker line, the wrapped
     /// body, and a blank separator.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every frame needs the whole layout — the scrollbar's proportions and the row the
+    /// selection sits on are both facts about the entire transcript — but building it is the
+    /// most expensive thing this view does, and almost none of it changes between frames.
+    /// Measured on the 386-message BJU story: 6,804 rows costing 113ms to format and wrap, of
+    /// which about thirty reach the screen. At that price the shell's own frame throttle
+    /// collapses — it holds a frame for 100ms while input keeps arriving, so a frame that takes
+    /// longer than that is stale the moment it lands and the next key draws again. That is
+    /// what made pasting a paragraph look like watching it be typed.
+    /// </para>
+    /// <para>
+    /// So the rows are cached, and the key is everything they were built from. The selection
+    /// is deliberately not part of it: the marker is a prefix, applied by
+    /// <see cref="Compose"/> to the thirty rows actually drawn, so moving the cursor through a
+    /// long story costs nothing at all.
+    /// </para>
+    /// </remarks>
     /// <param name="context">Layout context.</param>
     /// <param name="visible">The messages being shown.</param>
     /// <returns>The display rows, each tagged with the message index it belongs to.</returns>
-    private List<(int Message, string Markup)> BuildDisplayRows(
+    private List<DisplayRow> BuildDisplayRows(
         RenderContext context,
         IReadOnlyList<ChatMessage> visible)
     {
         var theme = context.Theme;
-        var rows = new List<(int Message, string Markup)>();
         var width = Measure(context);
+        var key = new DisplayKey(_messages, _showData, width, theme.Name, _activeQuery);
+
+        if (_display is not null && _displayKey == key)
+        {
+            return _display;
+        }
+
+        var rows = new List<DisplayRow>();
 
         for (var i = 0; i < visible.Count; i++)
         {
             var message = visible[i];
-            var selected = i == _selected;
-            var marker = selected ? "▌" : " ";
 
             var (label, style) = message.Role switch
             {
@@ -1606,14 +1672,18 @@ internal sealed partial class ConversationView : ViewBase
                 ? string.Empty
                 : $"  ⚑ {message.FlaggedReason}";
 
+            // The marker occupies one column whether it is drawn or not, so the stamp lands in
+            // the same place on the selected turn as on every other.
             var gap = Math.Max(
                 1,
-                width + 1 - Draw.Width(marker) - Draw.Width(chip) - Draw.Width(flag) - Draw.Width(stamp));
+                width - Draw.Width(chip) - Draw.Width(flag) - Draw.Width(stamp));
 
-            rows.Add((i, Draw.Literal(marker, selected ? theme.Accent : theme.Border)
-                        + Draw.Literal(chip, style.Combine(theme.Surface))
-                        + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
-                        + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
+            rows.Add(new DisplayRow(
+                i,
+                MarkerKind.Speaker,
+                Draw.Literal(chip, style.Combine(theme.Surface))
+                + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
+                + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
 
             foreach (var line in message.Text.Split('\n'))
             {
@@ -1625,23 +1695,48 @@ internal sealed partial class ConversationView : ViewBase
 
                 foreach (var (start, segment) in Draw.WrapSegments(formatted.Text, width))
                 {
-                    rows.Add((i, Draw.Literal(marker + " ", selected ? theme.Accent : theme.Border)
-                                 + Body(formatted, start, segment, theme)));
+                    rows.Add(new DisplayRow(i, MarkerKind.Body, Body(formatted, start, segment, theme)));
                 }
             }
 
             // A blank and then a hairline, so a long transcript scans as a sequence of turns
             // rather than as one wall of prose. The blank was there before and never drew: an
             // empty string becomes an empty Markup, which occupies no row at all.
-            rows.Add((i, " "));
+            rows.Add(new DisplayRow(i, MarkerKind.None, " "));
 
             if (i < visible.Count - 1)
             {
-                rows.Add((i, Draw.Literal("  " + new string('─', width), theme.Border)));
+                rows.Add(new DisplayRow(
+                    i,
+                    MarkerKind.None,
+                    Draw.Literal("  " + new string('─', width), theme.Border)));
             }
         }
 
+        _displayKey = key;
+        _display = rows;
+        LayoutPasses++;
         return rows;
+    }
+
+    /// <summary>Draws a cached row, putting the selection marker back in front of it.</summary>
+    /// <param name="row">The row.</param>
+    /// <param name="selected">Whether the turn it belongs to is the one under the cursor.</param>
+    /// <param name="theme">The palette.</param>
+    /// <returns>Markup for the whole row.</returns>
+    private static string Compose(DisplayRow row, bool selected, Theme theme)
+    {
+        if (row.Marker == MarkerKind.None)
+        {
+            return row.Body;
+        }
+
+        var marker = selected ? "▌" : " ";
+
+        return Draw.Literal(
+                   row.Marker == MarkerKind.Speaker ? marker : marker + " ",
+                   selected ? theme.Accent : theme.Border)
+               + row.Body;
     }
 
     /// <summary>The column count prose is wrapped to, whatever the terminal is.</summary>
@@ -1741,7 +1836,7 @@ internal sealed partial class ConversationView : ViewBase
     /// </remarks>
     /// <param name="display">Every drawn row, tagged with the message it belongs to.</param>
     /// <param name="available">Rows the transcript can show.</param>
-    private void KeepSelectionVisible(List<(int Message, string Markup)> display, int available)
+    private void KeepSelectionVisible(List<DisplayRow> display, int available)
     {
         var first = display.FindIndex(row => row.Message == _selected);
         if (first < 0)

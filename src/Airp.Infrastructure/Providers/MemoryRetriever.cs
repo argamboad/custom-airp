@@ -159,11 +159,17 @@ internal sealed class MemoryRetriever
             return [];
         }
 
-        var scored = candidates
+        var reader = Transcript.Reader(conversation);
+        var character = Transcript.Character(conversation);
+
+        var ranked = candidates
             .Select(c => (c.Sequence, c.Role, c.Text, Score: Similarity.Cosine(wanted, Similarity.FromBytes(c.Embedding))))
             .Where(c => c.Score >= settings.RecallThreshold)
             .OrderByDescending(static c => c.Score)
             .Take(settings.RecallCount)
+            .ToArray();
+
+        var scored = WithinBudget(ranked, settings, reader, character)
             // Back into transcript order once chosen: they are excerpts of a conversation, and
             // handing the model a scene out of sequence invites it to reorder events.
             .OrderBy(static c => c.Sequence)
@@ -175,18 +181,85 @@ internal sealed class MemoryRetriever
         }
 
         _logger.LogInformation(
-            "Recalled {Count} turn(s), best score {Score:F2}.",
+            "Recalled {Count} of {Ranked} turn(s), best score {Score:F2}.",
             scored.Length,
+            ranked.Length,
             scored.Max(static s => s.Score));
-
-        var reader = Transcript.Reader(conversation);
-        var character = Transcript.Character(conversation);
 
         return
         [
-            "Earlier in this conversation:",
-            .. scored.Select(s =>
-                $"[{s.Sequence}] {(s.Role == ChatRole.Assistant ? character : reader)}: {s.Text}"),
+            Header,
+            .. scored.Select(s => Line(s.Sequence, s.Role, s.Text, reader, character)),
         ];
+    }
+
+    /// <summary>The line that introduces the recalled turns.</summary>
+    private const string Header = "Earlier in this conversation:";
+
+    /// <summary>Renders one recalled turn the way the prompt will carry it.</summary>
+    /// <param name="sequence">Its position in the story.</param>
+    /// <param name="role">Who was speaking.</param>
+    /// <param name="text">What they said.</param>
+    /// <param name="reader">What to call the reader.</param>
+    /// <param name="character">What to call the character.</param>
+    /// <returns>The line.</returns>
+    private static string Line(long sequence, ChatRole role, string text, string reader, string character)
+        => $"[{sequence}] {(role == ChatRole.Assistant ? character : reader)}: {text}";
+
+    /// <summary>
+    /// Takes the best matches that fit the layer's token ceiling.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>RecallCount</c> bounds the number of turns and nothing else, and a count is not a
+    /// size. On a story whose turns run to twelve thousand characters, four of them came to
+    /// 9,096 tokens, filled a 60,000-token budget alongside a 30,000-token card, and left
+    /// thirty-two tokens for the transcript. The reader's own message was dropped from the
+    /// prompt it was supposed to be answering, four near-identical older copies of it went in
+    /// instead, and the model answered those.
+    /// </para>
+    /// <para>
+    /// Weakest first out, because the scores are known here and nowhere downstream. An
+    /// oversized match is skipped rather than ending the walk, so one long turn does not take
+    /// the shorter and equally relevant ones with it. Nothing is kept unconditionally:
+    /// retrieval improves a prompt and is never the reason one cannot be sent, so a layer that
+    /// will not fit is a layer that does not go.
+    /// </para>
+    /// </remarks>
+    /// <param name="ranked">The matches, best first.</param>
+    /// <param name="settings">Model settings, for the ceiling.</param>
+    /// <param name="reader">What to call the reader.</param>
+    /// <param name="character">What to call the character.</param>
+    /// <returns>Those that fit, still best first.</returns>
+    private static List<(long Sequence, ChatRole Role, string Text, float Score)> WithinBudget(
+        IReadOnlyList<(long Sequence, ChatRole Role, string Text, float Score)> ranked,
+        ModelOptions settings,
+        string reader,
+        string character)
+    {
+        var kept = new List<(long Sequence, ChatRole Role, string Text, float Score)>(ranked.Count);
+
+        if (ranked.Count == 0)
+        {
+            return kept;
+        }
+
+        var ceiling = settings.RecallBudget;
+        var spent = TokenEstimator.ForText(Header);
+
+        foreach (var match in ranked)
+        {
+            var cost = TokenEstimator.ForText(Line(match.Sequence, match.Role, match.Text, reader, character));
+
+            if (spent + cost > ceiling)
+            {
+                continue;
+            }
+
+            kept.Add(match);
+            spent += cost;
+        }
+
+        return kept;
     }
 }
