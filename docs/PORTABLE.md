@@ -94,9 +94,11 @@ cannot run in Termux directly. It runs in a small glibc Linux that Termux hosts 
 `proot-distro`. Expect it to be slower than a laptop: every system call goes through a
 translation layer.
 
-There is a second problem. The release binaries cover `win-x64`, `linux-x64`, `osx-arm64` and
-`osx-x64` — no `linux-arm64`, which is what a phone or tablet is. Build one on any machine with
-the SDK, the same way [the release workflow](../.github/workflows/release.yml) does:
+Releases carry a `linux-arm64` binary, which is what a phone or tablet needs. Releases cut
+before that target was added do not, and neither does a working tree you want to run from
+today. Either way, building one needs any machine with the SDK — it cross-compiles, so an x64
+laptop produces an ARM binary — with the same flags
+[the release workflow](../.github/workflows/release.yml) uses:
 
 ```bash
 dotnet publish src/Airp.Terminal -c Release -r linux-arm64 --self-contained true \
