@@ -41,9 +41,18 @@ and on a shared machine it is worth a password manager or a keyring instead.
 **Where the data lives.** `%LOCALAPPDATA%\Airp` on Windows, `~/.local/share/Airp` on Linux and
 macOS. `AIRP_HOME` overrides it anywhere.
 
-**The clipboard.** `C` needs a clipboard to exist. Under WSL the copy goes to the Windows
-clipboard and works; in a container or a `proot` sandbox with no display server there is
-nothing to copy to, and the copy is reported as rejected rather than pretending to succeed.
+**The clipboard.** `C` copies to the system clipboard where there is one — under WSL that is
+the Windows clipboard, and it works. Where there is not, in a container or the `proot` sandbox
+an Android tablet runs this in, it asks the terminal instead with an OSC 52 escape sequence,
+and the text lands on the clipboard of the machine you are sitting at. That is also what
+happens over SSH, which is the right end of the connection: the remote machine's clipboard is
+one you cannot paste from.
+
+The terminal never answers, so a copy that way is reported as written, not as accepted. A
+terminal with OSC 52 disabled — a few have it off, since it lets a remote program write to a
+local clipboard — and one refusing an oversized payload, often anything past about 8 KB, both
+discard it in silence. Windows Terminal, iTerm2, WezTerm, Alacritty, kitty and Termux all
+support it; `tmux` and `screen` need it turned on.
 
 ---
 
