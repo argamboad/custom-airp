@@ -36,7 +36,7 @@ absolute against the app root at options-build time.
 | `Keyboard` | `Standard` | `Standard` · `Vim` (a shortcut layer — hjkl, G, n/N, u — not a modal editor) |
 | `TranscriptWidthPercent` | `60` | centred reading column, clamped 30–100; 100 = full window. `--transcript-width` sets it, `airp config` prints it |
 | `AutoRefreshSeconds` | `60` | background store re-read; ≤0 disables |
-| `MouseSupport` | `false` | click + scroll wheel |
+| `MouseSupport` | `false` | click + scroll wheel; on a phone, the bottom row becomes buttons |
 | `ExportDirectory` | `./exports` | made absolute at startup so exports never land where the shell was standing |
 | `DefaultPersona` | — | **file name** in `personas/`, no extension. Descriptions never live in configuration — a name defined in both places once silently preferred the wrong one |
 | `DatabaseFile` | `./airp.db` | relative to the data directory |

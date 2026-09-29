@@ -304,6 +304,27 @@ first, name it: `airp send --chat vardhal --text "…"`.
 current screen's keys as fit on one line, in the order they are worth knowing; when there are
 more than that, the last thing on the line is `? All keys` rather than a legend that wraps.
 
+### On a phone
+
+Below sixty columns — a phone held upright, at a font you can read — the screen changes shape,
+and changes back as soon as it is wider again, so a phone turned sideways gets the desk layout.
+Over SSH this is the phone's size, not the server's.
+
+- **One row at the top and one at the bottom.** The top says what you are reading and where
+  you are in it; a message that would have gone in the footer stands there for a few seconds.
+- **A turn is its speaker's name, its text and a blank line.** Times and dividers are the
+  desk's.
+- **The chat list is one column**, with the latest line of each chat under its name.
+- **In the composer, Enter is a new line and sending is Send** (or Alt+Enter) — the reverse
+  of the desk, because a touch keyboard's Enter is where a thumb lands mid-paragraph and a
+  send cannot be taken back.
+
+With `mouseSupport` on in `airp.json`, the bottom row is **buttons**: `‹` is back, `⋯` is the
+command list, and the rest are what that screen does most. One tap opens a chat or runs a
+command, and a swipe scrolls. Every button is only a key the keyboard already has — the help
+lists them all. Without mouse support the bottom row stays a key legend, since no tap would
+ever arrive.
+
 ### Everywhere
 
 | Key | |
