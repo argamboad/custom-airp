@@ -210,7 +210,7 @@ internal sealed partial class ConversationView : ViewBase
         // composer: it appears mid-sentence, and stealing a row from the text being written
         // would make the draft jump under the caret as the list opened and closed.
         var suggestionRows = _composing && _suggestions.Count > 0 ? 1 : 0;
-        var available = Math.Max(1, context.Height - 1 - headerLines.Count - composerRows - suggestionRows);
+        var available = TranscriptRows(context, headerLines.Count, composerRows + suggestionRows);
 
         if (visible.Count == 0)
         {
@@ -305,6 +305,14 @@ internal sealed partial class ConversationView : ViewBase
         parts.Add(Draw.Literal(Hint, theme.Muted));
         return string.Concat(parts);
     }
+
+    /// <summary>Rows the transcript gets, once the header, its rule and the composer have theirs.</summary>
+    /// <param name="context">Layout context.</param>
+    /// <param name="headerLines">Lines the header is drawing this frame.</param>
+    /// <param name="composerRows">Rows the composer and its suggestions take; none while closed.</param>
+    /// <returns>The transcript's height, at least one row.</returns>
+    private static int TranscriptRows(RenderContext context, int headerLines, int composerRows = 0)
+        => Math.Max(1, context.Height - 1 - headerLines - composerRows);
 
     /// <summary>Columns available to the composer's text, leaving room for the caret.</summary>
     /// <param name="context">Layout context.</param>
@@ -506,11 +514,11 @@ internal sealed partial class ConversationView : ViewBase
                 return ValueTask.FromResult(ViewAction.Status("Type your message. Enter sends it."));
 
             case AppCommand.MoveDown:
-                Move(1, visible);
+                Step(1, context, visible);
                 return ValueTask.FromResult(ViewAction.None);
 
             case AppCommand.MoveUp:
-                Move(-1, visible);
+                Step(-1, context, visible);
                 return ValueTask.FromResult(ViewAction.None);
 
             case AppCommand.PageDown:
@@ -720,6 +728,105 @@ internal sealed partial class ConversationView : ViewBase
         }
 
         _selected = Math.Clamp(_selected + delta, 0, visible.Count - 1);
+    }
+
+    /// <summary>Rows one ↑ or ↓ moves through a turn taller than the screen.</summary>
+    /// <remarks>
+    /// Three rather than a page, because on a phone the arrows are not pressed one at a time:
+    /// Termux turns a swipe into a burst of them, one for every line the finger travels — or,
+    /// with mouse support on, a burst of wheel events, which the shell turns into the same
+    /// arrows. A page per press would throw the reader screens past what they were reading.
+    /// PgUp and PgDn are still there for the jump.
+    /// </remarks>
+    private const int ReadStep = 3;
+
+    /// <summary>
+    /// Reads on through the selected turn if there is more of it off screen, and moves to the
+    /// neighbouring one only when there is not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The arrows used to mean the next message and nothing else, so a reply taller than the
+    /// screen could be read only with the page keys. On a phone, where a swipe arrives as
+    /// arrows, that meant a long reply could not be read at all: the conversation opens on the
+    /// newest reply at its first line, there is no next message to move to, and the swipe did
+    /// nothing. Earlier in a story it skipped the rest of the turn instead.
+    /// </para>
+    /// <para>
+    /// Moving into a neighbour scrolls by the same step rather than jumping to it, so a
+    /// continuous swipe reads the transcript as one continuous thing: going down, the next
+    /// turn's opening rows come up from the bottom; going up, the previous turn is entered at
+    /// its end, which is where reading backwards meets it. The step works because a turn's
+    /// rows, separators included, are contiguous in the layout.
+    /// </para>
+    /// </remarks>
+    /// <param name="direction">One for down, minus one for up.</param>
+    /// <param name="context">Layout context, for the height the transcript gets.</param>
+    /// <param name="visible">The messages being shown.</param>
+    private void Step(int direction, RenderContext context, IReadOnlyList<ChatMessage> visible)
+    {
+        var display = visible.Count == 0 ? [] : BuildDisplayRows(context, visible);
+        var first = display.FindIndex(row => row.Message == _selected);
+
+        if (first < 0)
+        {
+            Move(direction, visible);
+            return;
+        }
+
+        var last = display.FindLastIndex(row => row.Message == _selected);
+        var available = TranscriptRows(context, BuildHeaderLines(context, visible).Count);
+
+        // Where the screen actually starts, resolved the way the next frame would resolve it:
+        // a pending pin lands on the turn's first row, and a stale offset is clamped.
+        var top = _scroll == PinToSelection
+            ? first
+            : Math.Clamp(_scroll, 0, Math.Max(0, display.Count - available));
+        var bottom = top + available - 1;
+
+        if (direction > 0)
+        {
+            if (last > bottom)
+            {
+                _scroll = Math.Min(top + ReadStep, last - available + 1);
+                return;
+            }
+
+            _scroll = top;
+
+            if (_selected < visible.Count - 1)
+            {
+                _selected++;
+
+                var next = last + 1;
+                if (next > bottom)
+                {
+                    _scroll = Math.Clamp(next - available + ReadStep, top, next);
+                }
+            }
+
+            return;
+        }
+
+        if (first < top)
+        {
+            _scroll = Math.Max(top - ReadStep, first);
+            return;
+        }
+
+        _scroll = top;
+
+        if (_selected > 0)
+        {
+            _selected--;
+
+            var previous = first - 1;
+            if (previous < top)
+            {
+                var previousFirst = display.FindIndex(row => row.Message == _selected);
+                _scroll = Math.Clamp(previous - ReadStep + 1, previousFirst, top);
+            }
+        }
     }
 
     /// <summary>
