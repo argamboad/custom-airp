@@ -42,6 +42,15 @@ internal sealed class ExportView : ViewBase
     public override string Title => "Export";
 
     /// <inheritdoc />
+    public override IReadOnlyList<Button> Buttons =>
+    [
+        Button.Back,
+        Button.Enter("Save"),
+        Button.Press("Copy", 'c'),
+        Button.Press("Format", ConsoleKey.Tab, '\t'),
+    ];
+
+    /// <inheritdoc />
     public override IReadOnlyList<KeyHint> KeyHints =>
     [
         new("← →", "Change format"),
@@ -58,11 +67,20 @@ internal sealed class ExportView : ViewBase
 
         var tabs = Draw.Tabs([.. Formats.Select(Describe)], _format, theme);
 
-        var rows = new List<IRenderable>
-        {
-            new Markup(Draw.Literal($"{_label}   ", theme.Heading) + tabs),
-            new Rule { Style = theme.Border },
-        };
+        // The file's name and the formats share a line at a desk; on a phone the name alone is
+        // most of the width, so the formats take the line under it.
+        var rows = context.Narrow
+            ? new List<IRenderable>
+            {
+                new Markup(Draw.Literal(Draw.Fit(_label, context.Width), theme.Heading)),
+                new Markup(tabs),
+                new Rule { Style = theme.Border },
+            }
+            : new List<IRenderable>
+            {
+                new Markup(Draw.Literal($"{_label}   ", theme.Heading) + tabs),
+                new Rule { Style = theme.Border },
+            };
 
         string preview;
         try
@@ -76,7 +94,7 @@ internal sealed class ExportView : ViewBase
         }
 
         var lines = preview.ReplaceLineEndings("\n").Split('\n');
-        var available = Math.Max(1, context.Height - 2);
+        var available = Math.Max(1, context.Height - rows.Count);
         _scroll = Math.Clamp(_scroll, 0, Math.Max(0, lines.Length - available));
 
         foreach (var line in lines.Skip(_scroll).Take(available))

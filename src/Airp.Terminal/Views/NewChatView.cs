@@ -186,6 +186,27 @@ internal sealed class NewChatView : ViewBase
         new("Esc", "Cancel"),
     ];
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// ◂ and ▸ are there only while a character or a persona is being picked, since that is all
+    /// they pick. Create presses Ctrl+Enter, the chord that reaches the application everywhere.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => _focus is CharacterField or PersonaField
+        ?
+        [
+            Button.Escape("Cancel"),
+            Button.Press("Next", ConsoleKey.Tab, '\t'),
+            Button.Press("◂", ConsoleKey.LeftArrow),
+            Button.Press("▸", ConsoleKey.RightArrow),
+            Button.Press("Create", ConsoleKey.Enter, '\n', control: true),
+        ]
+        :
+        [
+            Button.Escape("Cancel"),
+            Button.Press("Next", ConsoleKey.Tab, '\t'),
+            Button.Press("Create", ConsoleKey.Enter, '\n', control: true),
+        ];
+
     private bool Touched
         => _name.Length > 0 || _speaker.Length > 0 || _persona > 0
            || (_opening.CharacterCount > 0 && !_openingFromShelf);
@@ -195,41 +216,49 @@ internal sealed class NewChatView : ViewBase
     {
         var theme = context.Theme;
         var width = Math.Max(20, context.Width - 4);
+        var phone = context.Narrow;
         var rows = new List<IRenderable>();
+
+        // On a phone the hints beside the fields go and every value is fitted: a field that
+        // wraps pushes the panel below it down a row nobody counted. The label column is kept,
+        // so what each line is stays readable at a glance.
+        var room = Math.Max(1, context.Width - 11 - 1);
 
         string Caret(int field) => _focus == field ? "▌" : string.Empty;
 
         string Label(int field, string text)
             => Draw.Literal(text.PadRight(11), _focus == field ? theme.Accent : theme.Muted);
 
+        string Value(string text) => phone ? Draw.Fit(text, room) : text;
+
         rows.Add(new Markup(
-            Label(NameField, "Name") + Draw.Literal(_name, theme.Text)
+            Label(NameField, "Name") + Draw.Literal(Value(_name), theme.Text)
             + Draw.Literal(Caret(NameField), theme.Selection)
-            + (_name.Length == 0 && _focus != NameField
+            + (_name.Length == 0 && _focus != NameField && !phone
                 ? Draw.Literal("  how it appears in your list", theme.Muted)
                 : string.Empty)));
 
         rows.Add(new Markup(
-            Label(SpeakerField, "Speaker") + Draw.Literal(_speaker, theme.Text)
+            Label(SpeakerField, "Speaker") + Draw.Literal(Value(_speaker), theme.Text)
             + Draw.Literal(Caret(SpeakerField), theme.Selection)
-            + (_speaker.Length == 0 && _focus != SpeakerField
+            + (_speaker.Length == 0 && _focus != SpeakerField && !phone
                 ? Draw.Literal("  who replies", theme.Muted)
                 : string.Empty)));
 
         rows.Add(new Markup(
             Label(CharacterField, "Character")
             + Draw.Literal(
-                _characters[_character] ?? "(none — the opening carries the scene)",
+                Value(_characters[_character] ?? (phone ? "(none)" : "(none — the opening carries the scene)")),
                 _characters[_character] is null ? theme.Muted : theme.Text)
-            + Draw.Literal(_focus == CharacterField ? "  ←→" : string.Empty, theme.Muted)));
+            + Draw.Literal(_focus == CharacterField && !phone ? "  ←→" : string.Empty, theme.Muted)));
 
         rows.Add(new Markup(
             Label(PersonaField, "Persona")
             + Draw.Literal(
-                _personas[_persona]
-                    ?? (_defaultPersona is null ? "(none)" : $"(default: {_defaultPersona})"),
+                Value(_personas[_persona]
+                    ?? (_defaultPersona is null ? "(none)" : $"(default: {_defaultPersona})")),
                 _personas[_persona] is null ? theme.Muted : theme.Text)
-            + Draw.Literal(_focus == PersonaField ? "  ←→" : string.Empty, theme.Muted)));
+            + Draw.Literal(_focus == PersonaField && !phone ? "  ←→" : string.Empty, theme.Muted)));
 
         rows.Add(new Rule { Style = theme.Border });
 
@@ -245,11 +274,17 @@ internal sealed class NewChatView : ViewBase
             // columns.
             var body = height - 2;
 
-            if (_preview.Count == 0 || _personaPreview.Count == 0)
+            // On a phone the two never stand side by side — two columns of prose at 38 columns
+            // are seventeen each — so the one shown is the one being chosen: the persona while
+            // the persona is focused, the character's world otherwise. The page keys already
+            // follow the focus the same way.
+            if (_preview.Count == 0 || _personaPreview.Count == 0 || phone)
             {
                 // Only one of them to show: it takes the width rather than sitting in half of
                 // it with a rule down the middle of nothing.
-                var only = _preview.Count > 0;
+                var only = phone
+                    ? _personaPreview.Count == 0 || (_focus != PersonaField && _preview.Count > 0)
+                    : _preview.Count > 0;
                 var lines = Wrapped(only ? _preview : _personaPreview, width - 2);
                 var scroll = only ? _previewScroll : _personaScroll;
 
@@ -270,7 +305,7 @@ internal sealed class NewChatView : ViewBase
                     lines,
                     body,
                     scroll,
-                    scrolls: true,
+                    scrolls: !phone,
                     indent: "  "));
 
                 return new Rows(rows);
@@ -314,7 +349,9 @@ internal sealed class NewChatView : ViewBase
 
         rows.Add(new Markup(
             Label(OpeningField, "Opening")
-            + Draw.Literal("the first message, written by you — worth more than it looks", theme.Muted)));
+            + Draw.Literal(
+                phone ? Draw.Fit("the first message", room) : "the first message, written by you — worth more than it looks",
+                theme.Muted)));
 
         var text = _opening.Text;
 

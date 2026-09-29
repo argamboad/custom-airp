@@ -68,10 +68,16 @@ internal sealed class AskView : ViewBase
         ];
 
     /// <inheritdoc />
+    public override IReadOnlyList<Button> Buttons => _pinned
+        ? [Button.Escape("Close")]
+        : [Button.Escape("Discard"), Button.Press("Pin as fact", 'f')];
+
+    /// <inheritdoc />
     public override IRenderable Render(RenderContext context)
     {
         var theme = context.Theme;
         var width = Math.Max(20, context.Width - 4);
+        var phone = context.Narrow;
 
         var body = new List<(string Text, Style Style)>();
 
@@ -101,9 +107,11 @@ internal sealed class AskView : ViewBase
 
         var rows = new List<IRenderable>
         {
+            // The aside after the heading is wider than a phone on its own; there the heading
+            // says it, and the buttons say what can be done with the answer.
             new Markup(
                 Draw.Literal("Out of character", theme.Heading)
-                + Draw.Literal("   not in the transcript, not in any later prompt", theme.Muted)),
+                + (phone ? string.Empty : Draw.Literal("   not in the transcript, not in any later prompt", theme.Muted))),
             new Rule { Style = theme.Border },
         };
 
@@ -124,7 +132,7 @@ internal sealed class AskView : ViewBase
             _pinned
                 ? Draw.Literal("  Pinned. It is in the world layer from the next turn on.", theme.Success)
                 : Draw.Literal($"  {spent}", theme.Muted)
-                  + Draw.Literal("   F pins this as a fact · Esc discards it", theme.Muted)));
+                  + (phone ? string.Empty : Draw.Literal("   F pins this as a fact · Esc discards it", theme.Muted))));
 
         return new Rows(rows);
     }
