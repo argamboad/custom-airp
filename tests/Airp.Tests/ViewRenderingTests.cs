@@ -191,6 +191,24 @@ public class ViewRenderingTests
     }
 
     [Fact]
+    public void A_reply_holding_a_tab_still_draws()
+    {
+        // A real stored reply held one tab. The wrapper expanded it to four spaces, so every
+        // offset after it pointed past the line and the conversation could not be drawn at all.
+        var formatted = Airp.Application.Text.ProseFormat.Format(
+            "She paused.\t*She looks away* and says \"fine\" before walking off into the rain.");
+
+        Should.NotThrow(() =>
+        {
+            foreach (var (start, segment) in Draw.WrapSegments(formatted.Text, 14))
+            {
+                formatted.Text.Substring(start, segment.Length).Replace('\t', ' ').ShouldBe(segment);
+                Draw.Prose(formatted, start, segment, Style.Plain, Style.Plain);
+            }
+        });
+    }
+
+    [Fact]
     public void WrapSegments_ReportsOffsetsForAHardBrokenToken()
     {
         var token = new string('x', 25);
@@ -432,6 +450,46 @@ public class ViewRenderingTests
         var text = RenderToText(view.Render(Context()));
         text.ShouldContain("1 chat");
         text.ShouldNotContain("character");
+    }
+
+    [Fact]
+    public void ChatListView_OnAPhone_IsOneColumnOfTwoRowsAChat()
+    {
+        // At 38 columns the desk's split left eighteen for the names — "Cadgwit…" — and a
+        // preview too narrow to read. On a phone the preview comes into the list as one line.
+        using var services = BuildServices(
+            Reply("*She closes the lid.* \"You are late.\"", "a") with { Name = "Cadgwith Point" },
+            Chat("Captain", "b"));
+        var view = ActivatorUtilities.CreateInstance<ChatListView>(services);
+
+        var lines = RenderToText(view.Render(Context(38, 30)), 38, 30)
+            .TrimEnd('\r', '\n').Split('\n').Select(static l => l.TrimEnd('\r')).ToArray();
+
+        lines.Length.ShouldBe(4);
+        lines.ShouldAllBe(static l => l.Length <= 38);
+        lines.ShouldNotContain(static l => l.Contains('│'));
+
+        lines[0].ShouldContain("Cadgwith Point");
+        lines[1].ShouldContain("She closes the lid. You are late.");
+        lines[2].ShouldContain("Captain");
+        lines[3].ShouldContain("I settle into my office");
+
+        view.Summary.ShouldBe("2 chats");
+    }
+
+    [Fact]
+    public void ChatListView_OnAPhone_OneTapOpensTheChatUnderIt()
+    {
+        // Either of a chat's two rows is the chat. On the desk the first tap only selects.
+        using var services = BuildServices(Chat("Professor", "a"), Chat("Captain", "b"));
+        var view = ActivatorUtilities.CreateInstance<ChatListView>(services);
+        view.Render(Context(38, 30));
+
+        view.OnClick(3, Context(38, 30)).ShouldBeOfType<ViewAction.PushAction>().View.Title.ShouldBe("Captain");
+        view.OnClick(0, Context(38, 30)).ShouldBeOfType<ViewAction.PushAction>().View.Title.ShouldBe("Professor");
+        view.OnClick(9, Context(38, 30)).ShouldBe(ViewAction.None);
+
+        view.OnClick(3, Context()).ShouldBe(ViewAction.None);
     }
 
     /// <summary>A chat whose latest message is written the way a real reply is.</summary>
@@ -968,6 +1026,192 @@ public class ViewRenderingTests
         if (action is ViewAction.RunAction run)
         {
             await run.Work(CancellationToken.None);
+        }
+    }
+
+    // ------------------------------------------------------------------ on a phone
+    //
+    // A phone at a readable font is 38 columns. Every screen there has to draw no more rows
+    // than it was given: the views that scroll do it by counting rows, and a line that wraps
+    // is a row they did not count, which the renderer then takes back from the bottom — the
+    // last lines of a reply, the status saying whether Enter would apply, the end of the help.
+
+    private const int PhoneWidth = 38;
+
+    private static string[] PhoneLines(IRenderable renderable, int height = 30)
+        => RenderToText(renderable, PhoneWidth, height)
+            .TrimEnd('\r', '\n')
+            .Split('\n')
+            .Select(static line => line.TrimEnd('\r'))
+            .ToArray();
+
+    private static RegenerateView Regenerate()
+        => new(
+            Substitute.For<IConversationService>(),
+            "c",
+            new Domain.Conversations.ChatMessage
+            {
+                Id = "r",
+                ConversationId = "c",
+                Role = Domain.Conversations.ChatRole.Assistant,
+                Text = "*She closes the lid.* \"You are late.\"",
+            },
+            static _ => ViewAction.None);
+
+    [Fact]
+    public async Task ChatSettingsView_KeepsItsStatusLineOnScreen()
+    {
+        // The heading is its title and a rule, and the view counted it as one row: the dials
+        // came out a row taller than the space, and the row the renderer took back was the
+        // status at the bottom. At a desk as much as on a phone.
+        var view = new ChatSettingsView(Dials(), "chat-1", "North Dock");
+        await ActivateAsync(view);
+
+        var desk = RenderToText(view.Render(Context(100, 14)), height: 14)
+            .TrimEnd('\r', '\n').Split('\n');
+        desk.Length.ShouldBeLessThanOrEqualTo(14);
+        desk[^1].ShouldContain("Nothing changed.");
+
+        var phone = PhoneLines(view.Render(Context(PhoneWidth, 30)));
+        phone.Length.ShouldBeLessThanOrEqualTo(30);
+        phone[^1].ShouldContain("Nothing changed.");
+    }
+
+    [Fact]
+    public void HelpView_OnAPhone_CanBeReadToItsLastLine()
+    {
+        var view = new HelpView(KeyboardMode.Standard);
+        var context = Context(PhoneWidth, 30);
+
+        PhoneLines(view.Render(context)).Length.ShouldBeLessThanOrEqualTo(30);
+
+        for (var i = 0; i < 20; i++)
+        {
+            _ = view.HandleKeyAsync(
+                KeyMap.Resolve(new ConsoleKeyInfo('\0', ConsoleKey.PageDown, false, false, false), KeyboardMode.Standard, KeyContext.Navigation),
+                context,
+                CancellationToken.None);
+        }
+
+        var end = PhoneLines(view.Render(context));
+        end.Length.ShouldBeLessThanOrEqualTo(30);
+        end.ShouldContain(static l => l.Contains("Apply to the site"));
+    }
+
+    [Fact]
+    public void RegenerateView_OnAPhone_FitsAndATapPicksAReason()
+    {
+        var view = Regenerate();
+        var context = Context(PhoneWidth, 30);
+
+        var lines = PhoneLines(view.Render(context));
+        lines.Length.ShouldBeLessThanOrEqualTo(30);
+
+        // The picked reason carries its description under it; the others are labels alone.
+        var tooLong = Array.FindIndex(lines, static l => l.Contains("Too long"));
+        tooLong.ShouldBeGreaterThan(0);
+        lines[tooLong].ShouldContain("○");
+
+        view.OnClick(tooLong, context);
+
+        var after = PhoneLines(view.Render(context));
+        after.First(static l => l.Contains("Too long")).ShouldContain("●");
+        after.ShouldContain(static l => l.Contains("too much of it"));
+    }
+
+    [Theory]
+    [InlineData(KeyboardMode.Standard)]
+    [InlineData(KeyboardMode.Vim)]
+    public void RegenerateView_Buttons_PressWhatTheySay(KeyboardMode mode)
+    {
+        var buttons = Regenerate().Buttons;
+
+        KeyStroke Press(string label) => KeyMap.Resolve(buttons.Single(b => b.Label == label).Key, mode, KeyContext.Navigation);
+
+        Press("Reroll").Command.ShouldBe(AppCommand.Accept);
+        Press("Reason").Command.ShouldBe(AppCommand.Tab);
+        Press("Write").Character.ShouldBe('i');
+        Press("‹").Command.ShouldBe(AppCommand.Back);
+    }
+
+    [Fact]
+    public void ConfirmView_Buttons_CancelFirstAndConfirmSecond()
+    {
+        var view = new ConfirmView("Delete", "Delete it?", ["Gone for good."], "Delete", static _ => Task.FromResult(ViewAction.None));
+
+        view.Buttons.Select(static b => b.Label).ShouldBe(["Cancel", "Delete"]);
+        KeyMap.Resolve(view.Buttons[0].Key, KeyboardMode.Standard, KeyContext.Navigation).Command.ShouldBe(AppCommand.Back);
+        KeyMap.Resolve(view.Buttons[1].Key, KeyboardMode.Standard, KeyContext.Navigation).Command.ShouldBe(AppCommand.Accept);
+    }
+
+    [Fact]
+    public void CommandPaletteView_OnAPhone_IsOneLineACommandAndOneTapRunsIt()
+    {
+        var view = new CommandPaletteView(
+        [
+            new PaletteCommand("Refresh", "Re-read the conversations from the store", _ => Task.FromResult(ViewAction.None)),
+            new PaletteCommand("Manage the library", "Characters, personas and snippets", _ => Task.FromResult(ViewAction.None)),
+        ]);
+
+        var lines = PhoneLines(view.Render(Context(PhoneWidth, 30)));
+
+        // The query and its rule, then one line each.
+        lines.Length.ShouldBe(4);
+        lines[2].ShouldContain("Refresh");
+        lines[2].ShouldContain("Re-read");
+        lines[3].ShouldContain("Manage the library");
+
+        view.OnClick(3, Context(PhoneWidth, 30)).ShouldBeOfType<ViewAction.RunAction>();
+        view.OnClick(3, Context()).ShouldBe(ViewAction.None);
+    }
+
+    [Fact]
+    public void ExportView_OnAPhone_Fits()
+    {
+        var export = Substitute.For<IExportService>();
+        export.Render(Arg.Any<object>(), Arg.Any<ExportFormat>())
+            .Returns(string.Join('\n', Enumerable.Range(0, 80).Select(static i => $"line {i}")));
+
+        var view = new ExportView(export, Substitute.For<IClipboardService>(), Chat("A long chat name that will not fit"), "chat-1");
+
+        var lines = PhoneLines(view.Render(Context(PhoneWidth, 30)));
+
+        lines.Length.ShouldBeLessThanOrEqualTo(30);
+        lines[1].ShouldContain("Markdown");
+    }
+
+    [Fact]
+    public void LibraryView_OnAPhone_StacksTheNamesOverTheText()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "airp-phone-library-" + Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var library = new Airp.Infrastructure.TextLibrary(root);
+            library.EnsureCreated();
+            File.WriteAllText(
+                Path.Combine(library.Characters, "lighthouse.txt"),
+                string.Join("\n\n", Enumerable.Repeat("Cadgwith Point, a working lighthouse on a granite headland.", 30)));
+            File.WriteAllText(Path.Combine(library.Characters, "watchtower.txt"), "A watchtower.");
+
+            var view = new LibraryView(library);
+            var lines = PhoneLines(view.Render(Context(PhoneWidth, 30)));
+
+            lines.Length.ShouldBeLessThanOrEqualTo(30);
+            lines.ShouldNotContain(static l => l.Contains("Personas"));
+            lines.ShouldContain(static l => l.Contains("shelf 1 of 4"));
+
+            // The names above the rule, the selected one's text below it, the whole width.
+            var rule = Array.FindIndex(lines, 2, static l => l.StartsWith('─'));
+            lines.Take(rule).ShouldContain(static l => l.Contains("lighthouse"));
+            lines.Skip(rule + 1).ShouldContain(static l => l.Contains("Cadgwith Point"));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
         }
     }
 }

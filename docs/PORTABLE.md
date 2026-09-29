@@ -226,6 +226,9 @@ Host story
 
 **Worth knowing before you rely on it:**
 
+- **A phone gets a layout of its own**, chosen by the width the phone's terminal reports —
+  see [On a phone](MANUAL.md#on-a-phone). Turn `mouseSupport` on in the server's `airp.json`
+  and its bottom row becomes buttons you can tap.
 - **Key authentication, not passwords.** A password prompt where you expected none usually
   means the user name is wrong, so the key was never considered.
 - **Android does not keep servers running.** `sshd` does not survive a reboot, and the system

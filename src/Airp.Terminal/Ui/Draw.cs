@@ -97,16 +97,17 @@ internal static class Draw
     /// <remarks>
     /// An editable line needs more than the wrapped text: to draw a caret on the right row
     /// and at the right column, the renderer has to map a source offset onto a segment, and
-    /// that is only possible if wrapping says where each one started. Offsets are into the
-    /// tab-expanded text, so a document holding literal tabs would map imprecisely — the
-    /// editors here insert spaces instead.
+    /// that is only possible if wrapping says where each one started. Offsets index the text
+    /// exactly as it was passed in, so a tab is drawn as one space rather than expanded: an
+    /// expansion to four made every offset after it point past the caller's string, and a
+    /// single stored reply holding a tab left its whole conversation undrawable.
     /// </remarks>
     /// <param name="text">The logical line.</param>
     /// <param name="width">Column budget, at least one.</param>
     /// <returns>The segments with their start offsets, in order.</returns>
     public static IReadOnlyList<(int Start, string Text)> WrapSegments(string? text, int width)
     {
-        var value = (text ?? string.Empty).Replace("\t", "    ", StringComparison.Ordinal);
+        var value = (text ?? string.Empty).Replace('\t', ' ');
         var budget = Math.Max(1, width);
 
         if (Width(value) <= budget)
@@ -245,13 +246,15 @@ internal static class Draw
 
             // Whatever the runs did not claim is ordinary narration. Drawn rather than skipped:
             // a gap would silently drop the reader's words off the screen.
+            // Sliced from the segment, not the line: the segment is what the wrapper measured,
+            // and the runs only say where the styles change.
             if (from > cursor)
             {
-                markup.Append(paint(formatted.Text[cursor..from], body));
+                markup.Append(paint(segment[(cursor - start)..(from - start)], body));
             }
 
             markup.Append(paint(
-                formatted.Text[from..to],
+                segment[(from - start)..(to - start)],
                 run.Kind == ProseKind.Action ? action : body));
 
             cursor = to;
@@ -259,7 +262,7 @@ internal static class Draw
 
         if (cursor < end)
         {
-            markup.Append(paint(formatted.Text[cursor..end], body));
+            markup.Append(paint(segment[(cursor - start)..], body));
         }
 
         return markup.ToString();

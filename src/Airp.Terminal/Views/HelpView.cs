@@ -112,6 +112,22 @@ internal sealed class HelpView : ViewBase
                 rows.Add(new Rule { Style = theme.Border });
             }
 
+            // On a phone the key stands on its line and what it does under it, wrapped and
+            // indented. Beside an eighteen-column key the description had twenty columns, and
+            // every one that wrapped folded back to the left edge — and was a row this view,
+            // which scrolls by counting rows, did not count, so the last ones could not be reached.
+            if (context.Narrow)
+            {
+                rows.Add(new Markup(Draw.Literal(Draw.Fit(key, context.Width), theme.Accent)));
+
+                foreach (var line in Draw.Wrap(description, Math.Max(1, context.Width - 2)))
+                {
+                    rows.Add(new Markup(Draw.Literal("  " + line, theme.Text)));
+                }
+
+                continue;
+            }
+
             rows.Add(new Markup(
                 Draw.Literal(key.PadRight(18), theme.Accent)
                 + Draw.Literal(description, theme.Text)));

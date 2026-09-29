@@ -46,6 +46,10 @@ internal sealed partial class ConversationView : ViewBase
     private IReadOnlyList<ChatMessage> _messages = [];
     private int _selected;
     private int _scroll;
+
+    // Whether the last frame or key was on a phone. The legend and the buttons are properties
+    // with no layout to ask, and on a phone the composer's Enter and Send change places.
+    private bool _phone;
     private bool _searching;
     private bool _showData;
     private bool _composing;
@@ -118,6 +122,25 @@ internal sealed partial class ConversationView : ViewBase
     public override string Title => _conversation.Name;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The two facts from the desk's header that a phone keeps: where the reader is in the
+    /// story, and what it has cost. The tallies and the word count are the desk's; the card
+    /// and persona come back on a phone only when one of them is missing.
+    /// </remarks>
+    public override string Summary
+    {
+        get
+        {
+            var visible = Visible;
+            var position = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
+
+            return _spent is { Calls: > 0 } spent
+                ? $"{position} · {spent.Cost:$0.0000}"
+                : position;
+        }
+    }
+
+    /// <inheritdoc />
     public override KeyContext KeyContext =>
         _searching || _composing || _branching ? KeyContext.Text : KeyContext.Navigation;
 
@@ -137,6 +160,13 @@ internal sealed partial class ConversationView : ViewBase
             new("Enter", "Create the branch"),
             new("Esc", "Cancel"),
         ]
+        : _composing && _phone
+            ?
+            [
+                new("Alt+Enter", "Send"),
+                new("Enter", "New line"),
+                new("Esc", "Close"),
+            ]
         : _composing
             ?
             [
@@ -163,6 +193,45 @@ internal sealed partial class ConversationView : ViewBase
                 new("Esc", "Back"),
             ];
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Reroll presses Ctrl+G rather than G: in the vim dialect a bare G is the end of the
+    /// transcript, and a button has to mean the same thing whichever dialect is configured.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => _searching
+        ? [Button.Enter("Find"), Button.Escape("Cancel")]
+        : _branching
+        ? [Button.Enter("Branch"), Button.Escape("Cancel")]
+        : _composing
+        ? [_phone ? Button.Press("Send", ConsoleKey.Enter, '\r', alt: true) : Button.Enter("Send"), Button.Escape("Close")]
+        :
+        [
+            Button.Back,
+            Button.Press("Write", 'i'),
+            Button.Press("Reroll", ConsoleKey.G, control: true),
+            Button.Press("Carry on", '>'),
+        ];
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Everything the reading view does that the bar has no room for. Nothing while writing,
+    /// searching or naming a branch: each of those has its own two buttons and nothing else.
+    /// Delete is safe to list — it asks before it does anything.
+    /// </remarks>
+    public override IReadOnlyList<Button> Actions => _searching || _branching || _composing
+        ? []
+        :
+        [
+            Button.Press("Reply settings", 's').Doing("the dials: heat, length, creativity…"),
+            Button.Press("Search this chat", '/').Doing("find words in this conversation"),
+            Button.Press("Branch from here", 'b').Doing("copy the story to this turn into a new chat"),
+            Button.Press("Copy this message", 'c').Doing("the selected turn, to your clipboard"),
+            Button.Press("Export the transcript", 'x').Doing("Markdown, JSON or plain text"),
+            Button.Press("Delete from here", ConsoleKey.Delete).Doing("this turn and every one after it; asks first"),
+            Button.Press("First message", ConsoleKey.Home).Doing("the start of the story"),
+            Button.Press("Last message", ConsoleKey.End).Doing("the newest turn"),
+        ];
+
     /// <summary>The message under the cursor.</summary>
     private ChatMessage? Selected =>
         _selected >= 0 && _selected < Visible.Count ? Visible[_selected] : null;
@@ -184,14 +253,20 @@ internal sealed partial class ConversationView : ViewBase
     /// <inheritdoc />
     public override IRenderable Render(RenderContext context)
     {
+        _phone = context.Narrow;
+
         var theme = context.Theme;
         var visible = Visible;
 
         var headerLines = BuildHeaderLines(context, visible);
-        var rows = new List<IRenderable>(headerLines.Select(static line => (IRenderable)new Markup(line)))
+        var rows = new List<IRenderable>(headerLines.Select(static line => (IRenderable)new Markup(line)));
+
+        // On a phone the header is usually empty — its facts are in the shell's row — and a
+        // rule under nothing would be a second line beneath the one the shell already drew.
+        if (headerLines.Count > 0)
         {
-            new Rule { Style = theme.Border },
-        };
+            rows.Add(new Rule { Style = theme.Border });
+        }
 
         // The composer occupies the bottom of the pane while it is open, so the transcript
         // shrinks rather than being covered. It is laid out before the early exits below,
@@ -210,7 +285,7 @@ internal sealed partial class ConversationView : ViewBase
         // composer: it appears mid-sentence, and stealing a row from the text being written
         // would make the draft jump under the caret as the list opened and closed.
         var suggestionRows = _composing && _suggestions.Count > 0 ? 1 : 0;
-        var available = Math.Max(1, context.Height - 1 - headerLines.Count - composerRows - suggestionRows);
+        var available = TranscriptRows(context, headerLines.Count, composerRows + suggestionRows);
 
         if (visible.Count == 0)
         {
@@ -275,7 +350,9 @@ internal sealed partial class ConversationView : ViewBase
     /// <returns>The strip as markup.</returns>
     private string BuildSuggestionStrip(RenderContext context)
     {
-        const string Hint = "   Tab inserts · ↑↓ chooses · Esc dismisses";
+        // Short on a phone: the long hint alone is wider than the screen, and a strip that
+        // wraps is a row the transcript was not told about.
+        var hint = context.Narrow ? "   Tab inserts" : "   Tab inserts · ↑↓ chooses · Esc dismisses";
 
         var theme = context.Theme;
         var parts = new List<string> { Draw.Literal("  ", theme.Muted) };
@@ -283,7 +360,7 @@ internal sealed partial class ConversationView : ViewBase
         // Entries are measured in columns as they are added and dropped once the row is full.
         // The hint keeps its space throughout: the list is discoverable only if the keys that
         // drive it stay on screen, so it is the suggestions that give way, not the legend.
-        var budget = Math.Max(0, Column(context) - 2 - Draw.Width(Hint));
+        var budget = Math.Max(0, Column(context) - 2 - Draw.Width(hint));
         var used = 0;
 
         for (var i = 0; i < _suggestions.Count; i++)
@@ -302,9 +379,22 @@ internal sealed partial class ConversationView : ViewBase
             parts.Add(Draw.Literal(label, i == _suggestion ? theme.Selection : theme.Muted));
         }
 
-        parts.Add(Draw.Literal(Hint, theme.Muted));
+        parts.Add(Draw.Literal(hint, theme.Muted));
         return string.Concat(parts);
     }
+
+    /// <summary>Rows the transcript gets, once the header, its rule and the composer have theirs.</summary>
+    /// <remarks>
+    /// Every header line has to be exactly one row for this to be true. A line that wraps is a
+    /// row nobody subtracted, and the renderer takes it back from the bottom of the screen —
+    /// which is how the last lines of the last reply went missing on a phone.
+    /// </remarks>
+    /// <param name="context">Layout context.</param>
+    /// <param name="headerLines">Lines the header is drawing this frame; the rule comes with them.</param>
+    /// <param name="composerRows">Rows the composer and its suggestions take; none while closed.</param>
+    /// <returns>The transcript's height, at least one row.</returns>
+    private static int TranscriptRows(RenderContext context, int headerLines, int composerRows = 0)
+        => Math.Max(1, context.Height - (headerLines > 0 ? headerLines + 1 : 0) - composerRows);
 
     /// <summary>Columns available to the composer's text, leaving room for the caret.</summary>
     /// <param name="context">Layout context.</param>
@@ -397,15 +487,25 @@ internal sealed partial class ConversationView : ViewBase
         var length = ComposedLength();
         var over = limit > 0 && length > limit;
 
-        yield return new Markup(
-            Draw.Literal("You  ", theme.Accent)
-            + (limit > 0
-                ? Draw.Literal($"{length:N0}/{limit:N0} characters", over ? theme.Error : theme.Muted)
-                : Draw.Literal($"{length:N0} characters", theme.Muted))
-            + Draw.Literal($" · {_composer.WordCount} words · ", theme.Muted)
-            + Draw.Literal(
-                over ? "too long to send — shorten it first" : "Enter sends · Alt+Enter for a new line",
-                over ? theme.Error : theme.Muted));
+        // On a phone the caption keeps only what the footer does not already say: the words,
+        // and the characters when a limit makes them matter. The key hints are the footer's
+        // job, and spelt out here too they wrapped the caption onto a second row.
+        yield return new Markup(context.Narrow
+            ? Draw.Literal("You  ", theme.Accent)
+              + (limit > 0
+                  ? Draw.Literal($"{length:N0}/{limit:N0} · ", over ? theme.Error : theme.Muted)
+                  : string.Empty)
+              + Draw.Literal(
+                  over ? "too long to send" : $"{_composer.WordCount} words",
+                  over ? theme.Error : theme.Muted)
+            : Draw.Literal("You  ", theme.Accent)
+              + (limit > 0
+                  ? Draw.Literal($"{length:N0}/{limit:N0} characters", over ? theme.Error : theme.Muted)
+                  : Draw.Literal($"{length:N0} characters", theme.Muted))
+              + Draw.Literal($" · {_composer.WordCount} words · ", theme.Muted)
+              + Draw.Literal(
+                  over ? "too long to send — shorten it first" : "Enter sends · Alt+Enter for a new line",
+                  over ? theme.Error : theme.Muted));
 
         var textRows = Math.Max(1, height - 1);
 
@@ -466,6 +566,8 @@ internal sealed partial class ConversationView : ViewBase
         RenderContext context,
         CancellationToken cancellationToken)
     {
+        _phone = context.Narrow;
+
         if (_searching)
         {
             return ValueTask.FromResult(HandleSearchKey(stroke));
@@ -493,14 +595,16 @@ internal sealed partial class ConversationView : ViewBase
             case AppCommand.Edit or AppCommand.Accept:
             case AppCommand.Character when stroke.Character is 'i' or 'I':
                 _composing = true;
-                return ValueTask.FromResult(ViewAction.Status("Type your message. Enter sends it."));
+                return ValueTask.FromResult(ViewAction.Status(context.Narrow
+                    ? "Enter is a new line; Send sends it."
+                    : "Type your message. Enter sends it."));
 
             case AppCommand.MoveDown:
-                Move(1, visible);
+                Step(1, context, visible);
                 return ValueTask.FromResult(ViewAction.None);
 
             case AppCommand.MoveUp:
-                Move(-1, visible);
+                Step(-1, context, visible);
                 return ValueTask.FromResult(ViewAction.None);
 
             case AppCommand.PageDown:
@@ -712,12 +816,119 @@ internal sealed partial class ConversationView : ViewBase
         _selected = Math.Clamp(_selected + delta, 0, visible.Count - 1);
     }
 
+    /// <summary>Rows one ↑ or ↓ moves through a turn taller than the screen.</summary>
+    /// <remarks>
+    /// Three rather than a page, because on a phone the arrows are not pressed one at a time:
+    /// Termux turns a swipe into a burst of them, one for every line the finger travels — or,
+    /// with mouse support on, a burst of wheel events, which the shell turns into the same
+    /// arrows. A page per press would throw the reader screens past what they were reading.
+    /// PgUp and PgDn are still there for the jump.
+    /// </remarks>
+    private const int ReadStep = 3;
+
+    /// <summary>
+    /// Reads on through the selected turn if there is more of it off screen, and moves to the
+    /// neighbouring one only when there is not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The arrows used to mean the next message and nothing else, so a reply taller than the
+    /// screen could be read only with the page keys. On a phone, where a swipe arrives as
+    /// arrows, that meant a long reply could not be read at all: the conversation opens on the
+    /// newest reply at its first line, there is no next message to move to, and the swipe did
+    /// nothing. Earlier in a story it skipped the rest of the turn instead.
+    /// </para>
+    /// <para>
+    /// Moving into a neighbour scrolls by the same step rather than jumping to it, so a
+    /// continuous swipe reads the transcript as one continuous thing: going down, the next
+    /// turn's opening rows come up from the bottom; going up, the previous turn is entered at
+    /// its end, which is where reading backwards meets it. The step works because a turn's
+    /// rows, separators included, are contiguous in the layout.
+    /// </para>
+    /// </remarks>
+    /// <param name="direction">One for down, minus one for up.</param>
+    /// <param name="context">Layout context, for the height the transcript gets.</param>
+    /// <param name="visible">The messages being shown.</param>
+    private void Step(int direction, RenderContext context, IReadOnlyList<ChatMessage> visible)
+    {
+        var display = visible.Count == 0 ? [] : BuildDisplayRows(context, visible);
+        var first = display.FindIndex(row => row.Message == _selected);
+
+        if (first < 0)
+        {
+            Move(direction, visible);
+            return;
+        }
+
+        var last = display.FindLastIndex(row => row.Message == _selected);
+        var available = TranscriptRows(context, BuildHeaderLines(context, visible).Count);
+
+        // Where the screen actually starts, resolved the way the next frame would resolve it:
+        // a pending pin lands on the turn's first row, and a stale offset is clamped.
+        var top = _scroll == PinToSelection
+            ? first
+            : Math.Clamp(_scroll, 0, Math.Max(0, display.Count - available));
+        var bottom = top + available - 1;
+
+        if (direction > 0)
+        {
+            if (last > bottom)
+            {
+                _scroll = Math.Min(top + ReadStep, last - available + 1);
+                return;
+            }
+
+            _scroll = top;
+
+            if (_selected < visible.Count - 1)
+            {
+                _selected++;
+
+                var next = last + 1;
+                if (next > bottom)
+                {
+                    _scroll = Math.Clamp(next - available + ReadStep, top, next);
+                }
+            }
+
+            return;
+        }
+
+        if (first < top)
+        {
+            _scroll = Math.Max(top - ReadStep, first);
+            return;
+        }
+
+        _scroll = top;
+
+        if (_selected > 0)
+        {
+            _selected--;
+
+            var previous = first - 1;
+            if (previous < top)
+            {
+                var previousFirst = display.FindIndex(row => row.Message == _selected);
+                _scroll = Math.Clamp(previous - ReadStep + 1, previousFirst, top);
+            }
+        }
+    }
+
     /// <summary>
     /// Handles a key while the composer has focus.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Enter sends and Alt+Enter inserts a newline, which is the convention every chat
     /// client uses — the common case should be one keystroke.
+    /// </para>
+    /// <para>
+    /// On a phone the two change places. A touch keyboard's Enter is a new line in every text
+    /// box on the device, it sits where a thumb lands mid-paragraph, and a send is permanent
+    /// and billed; Alt is two taps away on Termux's extra keys. So there Enter breaks the line
+    /// and sending is the Send button, which presses Alt+Enter through the same path.
+    /// </para>
     /// </remarks>
     /// <param name="stroke">The resolved key.</param>
     /// <returns>What the shell should do next.</returns>
@@ -778,7 +989,7 @@ internal sealed partial class ConversationView : ViewBase
             // A line break that arrived inside pasted text is part of the message, not an
             // instruction to send it. Getting this wrong sends half of whatever was pasted,
             // which costs credits and cannot be taken back.
-            case AppCommand.NewLine or AppCommand.Accept when alt || stroke.Pasted:
+            case AppCommand.NewLine or AppCommand.Accept when stroke.Pasted || (context.Narrow ? !alt : alt):
                 _composer.InsertNewLine();
                 return ViewAction.None;
 
@@ -1454,6 +1665,46 @@ internal sealed partial class ConversationView : ViewBase
                + Draw.Literal(_personaLabel, _personaMissing ? theme.Warning : theme.Muted);
     }
 
+    /// <summary>The header on a phone: only what must not wait to be noticed.</summary>
+    /// <remarks>
+    /// <para>
+    /// The story, the position and the cost are the shell's one header row there (see
+    /// <see cref="Summary"/>), so in the ordinary case this is empty and the transcript starts
+    /// directly under that row. What stays is what the reader needs to see at once: a turn in
+    /// flight, an active filter, and a card or persona whose file is gone — a missing card
+    /// once went unnoticed for days on two real stories, and a phone is no reason to hide it.
+    /// </para>
+    /// <para>
+    /// Each line is fitted to the column rather than left to wrap. A line that wraps is a row
+    /// the transcript's height was not told about, and it is taken back from the bottom.
+    /// </para>
+    /// </remarks>
+    /// <param name="context">Layout context.</param>
+    /// <returns>The lines, often none.</returns>
+    private List<string> PhoneHeaderLines(RenderContext context)
+    {
+        var theme = context.Theme;
+        var width = Column(context);
+        var lines = new List<string>();
+
+        if (_pending.Describe() is { Length: > 0 } pending)
+        {
+            lines.Add(Draw.Literal(Draw.Fit(pending + "…", width), theme.Warning));
+        }
+
+        if (_activeQuery.Length > 0)
+        {
+            lines.Add(Draw.Literal(Draw.Fit($"filter \"{_activeQuery}\"", width), theme.Muted));
+        }
+
+        if ((_cardMissing || _personaMissing) && _cardLabel is not null && _personaLabel is not null)
+        {
+            lines.Add(Draw.Literal(Draw.Fit($"{_cardLabel}  ·  as {_personaLabel}", width), theme.Warning));
+        }
+
+        return lines;
+    }
+
     /// <summary>
     /// The header, one fact per line: the chat, the participants, the cost.
     /// </summary>
@@ -1480,11 +1731,18 @@ internal sealed partial class ConversationView : ViewBase
             // name. Getting it wrong is not destructive, but it is a wasted conversation.
             var at = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
 
+            // Shorter on a phone, where the desk's prompt alone is most of the width and the
+            // name being typed after it would wrap.
             return
             [
-                Draw.Literal($"Branch at message {at} — name: ", theme.Accent)
+                Draw.Literal(context.Narrow ? $"Branch at {at}: " : $"Branch at message {at} — name: ", theme.Accent)
                 + _branchName.ToMarkup(theme),
             ];
+        }
+
+        if (context.Narrow)
+        {
+            return PhoneHeaderLines(context);
         }
 
         var lines = new List<string>();
@@ -1589,12 +1847,17 @@ internal sealed partial class ConversationView : ViewBase
     /// <param name="Width">The measure they were wrapped to.</param>
     /// <param name="Theme">The palette's name.</param>
     /// <param name="Query">The search term painted through them.</param>
+    /// <param name="Narrow">
+    /// Whether they were laid out for a phone. Not implied by the width: a phone of 56 columns
+    /// and a desk of 94 both wrap prose to 52, and the two lay a turn out differently.
+    /// </param>
     private readonly record struct DisplayKey(
         IReadOnlyList<ChatMessage> Messages,
         bool ShowData,
         int Width,
         string Theme,
-        string Query);
+        string Query,
+        bool Narrow);
 
     private DisplayKey _displayKey;
     private List<DisplayRow>? _display;
@@ -1638,7 +1901,7 @@ internal sealed partial class ConversationView : ViewBase
     {
         var theme = context.Theme;
         var width = Measure(context);
-        var key = new DisplayKey(_messages, _showData, width, theme.Name, _activeQuery);
+        var key = new DisplayKey(_messages, _showData, width, theme.Name, _activeQuery, context.Narrow);
 
         if (_display is not null && _displayKey == key)
         {
@@ -1678,12 +1941,20 @@ internal sealed partial class ConversationView : ViewBase
                 1,
                 width - Draw.Width(chip) - Draw.Width(flag) - Draw.Width(stamp));
 
+            // On a phone the name alone, in its colour: no chip, no time. A screen of thirty-
+            // eight columns reads a turn at a time, and a time at the end of every speaker line
+            // is a column of figures beside the prose that nobody is reading. A flag stays —
+            // it is the one thing on this line that is news. The leading space is the one the
+            // chip carried: a speaker line's marker has no space of its own after it, and
+            // without it the name sat a column left of the text it introduces.
             rows.Add(new DisplayRow(
                 i,
                 MarkerKind.Speaker,
-                Draw.Literal(chip, style.Combine(theme.Surface))
-                + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
-                + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
+                context.Narrow
+                    ? Draw.Literal(Draw.Fit(" " + label + flag, width), style)
+                    : Draw.Literal(chip, style.Combine(theme.Surface))
+                      + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
+                      + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
 
             foreach (var line in message.Text.Split('\n'))
             {
@@ -1704,7 +1975,10 @@ internal sealed partial class ConversationView : ViewBase
             // empty string becomes an empty Markup, which occupies no row at all.
             rows.Add(new DisplayRow(i, MarkerKind.None, " "));
 
-            if (i < visible.Count - 1)
+            // The blank alone separates turns on a phone. The hairline is there so a wall of
+            // prose on a wide screen scans as a sequence of turns; on a narrow one the speaker's
+            // name in its colour already does that, and the rule was a row per turn of nothing.
+            if (i < visible.Count - 1 && !context.Narrow)
             {
                 rows.Add(new DisplayRow(
                     i,
@@ -1770,12 +2044,23 @@ internal sealed partial class ConversationView : ViewBase
     /// The share is <c>Airp:TranscriptWidthPercent</c>, sixty by default. At 100 the column is
     /// the window, there is no margin, and the view is what it was before any of this.
     /// </para>
+    /// <para>
+    /// On a narrow screen the column is the window whatever the share says. A phone is 54
+    /// columns across; the floor of forty below clamped the measure there and centred it,
+    /// which spent fourteen of the fifty-four on a margin — the one screen with no columns
+    /// to spare was the one paying for the desk's typography.
+    /// </para>
     /// <para>Four of these columns are the marker, its space, the gap and the scrollbar.</para>
     /// </remarks>
     /// <param name="context">Layout context.</param>
     /// <returns>Columns the conversation occupies.</returns>
     private static int Column(RenderContext context)
     {
+        if (context.Narrow)
+        {
+            return context.Width;
+        }
+
         var share = Math.Clamp(context.Options.TranscriptWidthPercent, 30, 100);
         var wanted = (int)((long)context.Width * share / 100);
 

@@ -46,6 +46,14 @@ internal sealed class SearchView : ViewBase, IMouseAware
     public override KeyContext KeyContext => KeyContext.Text;
 
     /// <inheritdoc />
+    public override IReadOnlyList<Button> Buttons =>
+    [
+        Button.Back,
+        Button.Enter("Search"),
+        Button.Press("Scope", ConsoleKey.Tab, '\t'),
+    ];
+
+    /// <inheritdoc />
     public override IReadOnlyList<KeyHint> KeyHints =>
     [
         new("Enter", "Search / open"),

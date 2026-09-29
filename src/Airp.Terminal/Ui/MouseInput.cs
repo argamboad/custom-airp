@@ -19,6 +19,17 @@ internal enum MouseEventKind
 
     /// <summary>Wheel rolled towards the user.</summary>
     ScrollDown,
+
+    /// <summary>
+    /// A mouse report nothing here acts on — the release that ends every tap, a middle click,
+    /// or a report that arrived cut short.
+    /// </summary>
+    /// <remarks>
+    /// Decoded rather than refused, because refusing hands the escape that began it back to the
+    /// shell as a bare Escape key. Every tap is a press and then a release, so the release of
+    /// the tap that opened a chat was Back, and the chat closed the moment it opened.
+    /// </remarks>
+    Ignored,
 }
 
 /// <summary>
@@ -53,7 +64,12 @@ internal static class MouseInput
     /// Reads the next available character, or returns <see langword="null"/> when input has
     /// drained — which is how a bare Escape key press is distinguished from a sequence.
     /// </param>
-    /// <returns>The decoded event, or <see langword="null"/> when this was not a mouse report.</returns>
+    /// <returns>
+    /// The decoded event, or <see langword="null"/> when this was not a mouse report. Once the
+    /// <c>ESC [ &lt;</c> prefix has been read the answer is never <see langword="null"/>: the
+    /// input was a mouse report, and one this does not act on is
+    /// <see cref="MouseEventKind.Ignored"/>, never an Escape key.
+    /// </returns>
     public static MouseEvent? TryDecode(Func<char?> readNext)
     {
         if (readNext() is not '[')
@@ -73,7 +89,7 @@ internal static class MouseInput
             var next = readNext();
             if (next is null)
             {
-                return null;
+                return Ignored;
             }
 
             if (next is 'M' or 'm')
@@ -83,14 +99,16 @@ internal static class MouseInput
 
             if (buffer.Count > 24)
             {
-                return null;
+                return Ignored;
             }
 
             buffer.Add(next.Value);
         }
     }
 
-    private static MouseEvent? Parse(string payload, bool pressed)
+    private static MouseEvent Ignored { get; } = new(MouseEventKind.Ignored, 0, 0);
+
+    private static MouseEvent Parse(string payload, bool pressed)
     {
         var parts = payload.Split(';');
         if (parts.Length != 3
@@ -98,7 +116,7 @@ internal static class MouseInput
             || !int.TryParse(parts[1], CultureInfo.InvariantCulture, out var column)
             || !int.TryParse(parts[2], CultureInfo.InvariantCulture, out var row))
         {
-            return null;
+            return Ignored;
         }
 
         return button switch
@@ -106,7 +124,7 @@ internal static class MouseInput
             64 => new MouseEvent(MouseEventKind.ScrollUp, column, row),
             65 => new MouseEvent(MouseEventKind.ScrollDown, column, row),
             0 when pressed => new MouseEvent(MouseEventKind.LeftClick, column, row),
-            _ => null,
+            _ => Ignored,
         };
     }
 }
