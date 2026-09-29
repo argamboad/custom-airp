@@ -73,6 +73,18 @@ internal sealed class ChatListView : ViewBase, IMouseAware
         : [Button.Enter("Open"), Button.Press("New", 'n'), Button.Press("Library", 'm')];
 
     /// <inheritdoc />
+    /// <remarks>Rename and delete act on the chat the cursor is on; delete asks first.</remarks>
+    public override IReadOnlyList<Button> Actions => _filtering || _renaming
+        ? []
+        :
+        [
+            Button.Press("Filter the list", '/').Doing("show only the chats whose name matches"),
+            Button.Press("Search every chat", ConsoleKey.F, '\u0006', control: true).Doing("names and messages, across all of them"),
+            Button.Press("Rename the chat", ConsoleKey.F2).Doing("the one the cursor is on"),
+            Button.Press("Delete the chat", ConsoleKey.Delete).Doing("the one the cursor is on; asks first"),
+        ];
+
+    /// <inheritdoc />
     public override IReadOnlyList<KeyHint> KeyHints => _filtering
         ?
         [

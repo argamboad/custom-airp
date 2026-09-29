@@ -43,7 +43,8 @@ internal readonly record struct KeyHint(string Key, string Label);
 /// </remarks>
 /// <param name="Label">What the button says.</param>
 /// <param name="Key">The key a tap presses.</param>
-internal readonly record struct Button(string Label, ConsoleKeyInfo Key)
+/// <param name="Description">What it does, for where there is room to say so: the <c>⋯</c> list.</param>
+internal readonly record struct Button(string Label, ConsoleKeyInfo Key, string Description = "")
 {
     /// <summary>A button that types a character, the way a shortcut letter is pressed.</summary>
     /// <param name="label">What the button says.</param>
@@ -74,6 +75,11 @@ internal readonly record struct Button(string Label, ConsoleKeyInfo Key)
     /// <param name="label">What giving up does here.</param>
     /// <returns>The button.</returns>
     public static Button Escape(string label) => Press(label, ConsoleKey.Escape, '\u001b');
+
+    /// <summary>The same button, saying what it does.</summary>
+    /// <param name="description">What it does, in a few words.</param>
+    /// <returns>The button.</returns>
+    public Button Doing(string description) => this with { Description = description };
 }
 
 /// <summary>What a view wants the shell to do after handling a key.</summary>
@@ -104,6 +110,16 @@ internal abstract record ViewAction
     /// <returns>The action.</returns>
     public static ViewAction Status(string text, StatusKind kind = StatusKind.Info)
         => new StatusAction(text, kind);
+
+    /// <summary>Press a key on whatever view is current once the actions before it are applied.</summary>
+    /// <remarks>
+    /// How an entry in the <c>⋯</c> list does what it names: the list closes, and the key is
+    /// pressed on the screen underneath through the same dispatch as the keyboard's — so the
+    /// entry cannot do anything the key would not.
+    /// </remarks>
+    /// <param name="key">The key.</param>
+    /// <returns>The action.</returns>
+    public static ViewAction Press(ConsoleKeyInfo key) => new PressAction(key);
 
     /// <summary>
     /// Run asynchronous work while the shell shows a spinner, then apply whatever the work
@@ -136,6 +152,10 @@ internal abstract record ViewAction
     /// <param name="Text">The message.</param>
     /// <param name="Kind">How to colour it.</param>
     public sealed record StatusAction(string Text, StatusKind Kind) : ViewAction;
+
+    /// <summary>Press a key on the current view.</summary>
+    /// <param name="Key">The key.</param>
+    public sealed record PressAction(ConsoleKeyInfo Key) : ViewAction;
 
     /// <summary>Run asynchronous work behind a spinner.</summary>
     /// <param name="Label">What to show next to the spinner.</param>
@@ -189,6 +209,12 @@ internal interface IView
     /// </summary>
     IReadOnlyList<Button> Buttons { get; }
 
+    /// <summary>
+    /// Everything else this screen does, listed first under <c>⋯</c> ahead of the commands that
+    /// work anywhere. What the bar has no room for has to be somewhere a thumb can reach.
+    /// </summary>
+    IReadOnlyList<Button> Actions { get; }
+
     /// <summary>Whether letters typed here are literal text rather than shortcuts.</summary>
     KeyContext KeyContext { get; }
 
@@ -237,6 +263,9 @@ internal abstract class ViewBase : IView
     /// <inheritdoc />
     /// <remarks>Back, unless the view says otherwise: every screen but the first can be left.</remarks>
     public virtual IReadOnlyList<Button> Buttons => [Button.Back];
+
+    /// <inheritdoc />
+    public virtual IReadOnlyList<Button> Actions => [];
 
     /// <inheritdoc />
     public virtual KeyContext KeyContext => KeyContext.Navigation;

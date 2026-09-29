@@ -208,6 +208,83 @@ public class PhoneBarTests
             .ShouldBe(ViewAction.None);
     }
 
+    // ⋯ lists the screen's own actions first. It used to list only refresh, the library, help
+    // and quit, so on a phone a conversation's settings, branching, copying and exporting had
+    // no way to be reached at all.
+
+    [Theory]
+    [InlineData(KeyboardMode.Standard)]
+    [InlineData(KeyboardMode.Vim)]
+    public void The_conversation_lists_the_rest_of_what_it_does_under_the_ellipsis(KeyboardMode mode)
+    {
+        var actions = Conversation().Actions;
+
+        AppCommand Command(string label) => Resolve(Named(actions, label), mode).Command;
+
+        Command("Reply settings").ShouldBe(AppCommand.Settings);
+        Command("Search this chat").ShouldBe(AppCommand.Search);
+        Command("Copy this message").ShouldBe(AppCommand.Copy);
+        Command("Export the transcript").ShouldBe(AppCommand.Export);
+        Command("Delete from here").ShouldBe(AppCommand.Delete);
+        Command("First message").ShouldBe(AppCommand.Home);
+        Command("Last message").ShouldBe(AppCommand.End);
+
+        var branch = Resolve(Named(actions, "Branch from here"), mode);
+        branch.Command.ShouldBe(AppCommand.Character);
+        branch.Character.ShouldBe('b');
+
+        actions.ShouldAllBe(static a => a.Description.Length > 0);
+    }
+
+    [Theory]
+    [InlineData(KeyboardMode.Standard)]
+    [InlineData(KeyboardMode.Vim)]
+    public void The_chat_list_lists_the_rest_of_what_it_does_under_the_ellipsis(KeyboardMode mode)
+    {
+        using var services = new ServiceCollection()
+            .AddSingleton(Substitute.For<IChatService>())
+            .AddSingleton(Substitute.For<IConversationService>())
+            .BuildServiceProvider();
+
+        var actions = ActivatorUtilities.CreateInstance<ChatListView>(services).Actions;
+
+        Resolve(Named(actions, "Filter the list"), mode).Command.ShouldBe(AppCommand.Search);
+        Resolve(Named(actions, "Search every chat"), mode).Command.ShouldBe(AppCommand.GlobalSearch);
+        Resolve(Named(actions, "Rename the chat"), mode).Command.ShouldBe(AppCommand.Rename);
+        Resolve(Named(actions, "Delete the chat"), mode).Command.ShouldBe(AppCommand.Delete);
+    }
+
+    [Fact]
+    public async Task The_ellipsis_puts_the_screens_actions_first_and_choosing_one_presses_its_key()
+    {
+        var view = Conversation();
+        PaletteCommand[] general = [new("Help", "Show every key binding", _ => Task.FromResult(ViewAction.None))];
+
+        var list = Shell.PaletteFor(view, general);
+
+        list.Select(static c => c.Name).ShouldBe([.. view.Actions.Select(static a => a.Label), "Help"]);
+
+        // Run through the list itself, the way a tap on it or Enter does: it closes, then the
+        // key is pressed on the conversation underneath.
+        var palette = new CommandPaletteView(list);
+        var action = await palette.HandleKeyAsync(
+            KeyMap.Resolve(new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false), KeyboardMode.Standard, KeyContext.Navigation),
+            At(Phone),
+            CancellationToken.None);
+
+        var sequence = action.ShouldBeOfType<ViewAction.SequenceAction>();
+        sequence.Actions[0].ShouldBe(ViewAction.Pop);
+        sequence.Actions[1].ShouldBe(ViewAction.Press(Named(view.Actions, "Reply settings").Key));
+    }
+
+    [Fact]
+    public async Task While_writing_there_is_nothing_else_to_list()
+    {
+        var view = await WritingAsync(Phone);
+
+        view.Actions.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task While_writing_the_bar_sends_and_closes()
     {

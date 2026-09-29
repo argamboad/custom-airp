@@ -319,8 +319,9 @@ Over SSH this is the phone's size, not the server's.
   of the desk, because a touch keyboard's Enter is where a thumb lands mid-paragraph and a
   send cannot be taken back.
 
-With `mouseSupport` on in `airp.json`, the bottom row is **buttons**: `‹` is back, `⋯` is the
-command list, and the rest are what that screen does most. One tap opens a chat or runs a
+With `mouseSupport` on in `airp.json`, the bottom row is **buttons**: `‹` is back, the ones
+beside it are what that screen does most, and `⋯` lists everything else that screen does —
+settings, branching, copying, exporting — followed by the commands that work anywhere. One tap opens a chat or runs a
 command, and a swipe scrolls. Every button is only a key the keyboard already has — the help
 lists them all. Without mouse support the bottom row stays a key legend, since no tap would
 ever arrive.

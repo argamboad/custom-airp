@@ -212,6 +212,26 @@ internal sealed partial class ConversationView : ViewBase
             Button.Press("Carry on", '>'),
         ];
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Everything the reading view does that the bar has no room for. Nothing while writing,
+    /// searching or naming a branch: each of those has its own two buttons and nothing else.
+    /// Delete is safe to list — it asks before it does anything.
+    /// </remarks>
+    public override IReadOnlyList<Button> Actions => _searching || _branching || _composing
+        ? []
+        :
+        [
+            Button.Press("Reply settings", 's').Doing("the dials: heat, length, creativity…"),
+            Button.Press("Search this chat", '/').Doing("find words in this conversation"),
+            Button.Press("Branch from here", 'b').Doing("copy the story to this turn into a new chat"),
+            Button.Press("Copy this message", 'c').Doing("the selected turn, to your clipboard"),
+            Button.Press("Export the transcript", 'x').Doing("Markdown, JSON or plain text"),
+            Button.Press("Delete from here", ConsoleKey.Delete).Doing("this turn and every one after it; asks first"),
+            Button.Press("First message", ConsoleKey.Home).Doing("the start of the story"),
+            Button.Press("Last message", ConsoleKey.End).Doing("the newest turn"),
+        ];
+
     /// <summary>The message under the cursor.</summary>
     private ChatMessage? Selected =>
         _selected >= 0 && _selected < Visible.Count ? Visible[_selected] : null;

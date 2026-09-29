@@ -260,7 +260,7 @@ internal sealed class Shell
                     : ViewAction.Push(new HelpView(options.Keyboard));
 
             case AppCommand.CommandPalette when Current is not CommandPaletteView:
-                return ViewAction.Push(new CommandPaletteView(BuildPalette()));
+                return ViewAction.Push(new CommandPaletteView(PaletteFor(Current, BuildPalette())));
 
             case AppCommand.GlobalSearch when !Current.Reserves(AppCommand.GlobalSearch):
                 return Current is SearchView
@@ -337,6 +337,22 @@ internal sealed class Shell
                 _statusKind = status.Kind;
                 _statusAtMs = Environment.TickCount64;
                 _inputSinceStatus = false;
+                break;
+
+            // Dispatched exactly as the key would be, and failing the way a key's handler does:
+            // this runs outside the input loop's own guard, so a throw is caught here.
+            case ViewAction.PressAction press:
+                ViewAction pressed;
+                try
+                {
+                    pressed = await DispatchAsync(press.Key, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    pressed = ShowError(ex);
+                }
+
+                await ApplyAsync(pressed, cancellationToken).ConfigureAwait(false);
                 break;
 
             case ViewAction.PushAction push:
@@ -1174,6 +1190,32 @@ internal sealed class Shell
 
         return new Rows(rows);
     }
+
+    /// <summary>The <c>⋯</c> list for a screen: what that screen does, then what works anywhere.</summary>
+    /// <remarks>
+    /// <para>
+    /// The list used to be the second half alone — refresh, the library, help, quit — so on a
+    /// phone, where the bar has room for four buttons, a conversation's settings, branching,
+    /// copying and exporting had no way to be reached by a thumb at all. The screen's own
+    /// come first because they are what the reader was in the middle of.
+    /// </para>
+    /// <para>
+    /// Choosing one closes the list and presses its key on the screen underneath, through the
+    /// same dispatch as the keyboard. Internal so the order and the wiring can be asserted.
+    /// </para>
+    /// </remarks>
+    /// <param name="view">The screen the list was opened from.</param>
+    /// <param name="general">The commands that work anywhere.</param>
+    /// <returns>The list.</returns>
+    internal static IReadOnlyList<PaletteCommand> PaletteFor(IView view, IReadOnlyList<PaletteCommand> general)
+        =>
+        [
+            .. view.Actions.Select(action => new PaletteCommand(
+                action.Label,
+                action.Description,
+                _ => Task.FromResult(ViewAction.Press(action.Key)))),
+            .. general,
+        ];
 
     private static IReadOnlyList<KeyHint> DefaultHints { get; } =
     [
