@@ -9,7 +9,24 @@ namespace Airp.Terminal.Ui;
 /// <param name="Height">Usable height in rows, excluding the shell's header and footer.</param>
 /// <param name="Theme">Active palette.</param>
 /// <param name="Options">Live application options.</param>
-internal readonly record struct RenderContext(int Width, int Height, Theme Theme, AirpOptions Options);
+internal readonly record struct RenderContext(int Width, int Height, Theme Theme, AirpOptions Options)
+{
+    /// <summary>Columns under which a screen is a phone rather than a desk.</summary>
+    /// <remarks>
+    /// One number, here, rather than a threshold per view: a screen that is narrow for the
+    /// chat list is narrow for the conversation too, and two views disagreeing about it would
+    /// switch layouts at different widths as the window was dragged. Sixty is where the chat
+    /// list's two panes stop fitting their own minimums (28 and 24 columns, and the rule
+    /// between them) — and a phone in a terminal is 54 columns across.
+    /// </remarks>
+    public const int NarrowWidth = 60;
+
+    /// <summary>
+    /// Whether the screen is too narrow for a layout designed at a desk: panes side by side,
+    /// a centred reading column, captions that spell everything out.
+    /// </summary>
+    public bool Narrow => Width < NarrowWidth;
+}
 
 /// <summary>One entry in the footer's key legend.</summary>
 /// <param name="Key">The key, as the user would press it.</param>

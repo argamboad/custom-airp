@@ -397,15 +397,25 @@ internal sealed partial class ConversationView : ViewBase
         var length = ComposedLength();
         var over = limit > 0 && length > limit;
 
-        yield return new Markup(
-            Draw.Literal("You  ", theme.Accent)
-            + (limit > 0
-                ? Draw.Literal($"{length:N0}/{limit:N0} characters", over ? theme.Error : theme.Muted)
-                : Draw.Literal($"{length:N0} characters", theme.Muted))
-            + Draw.Literal($" · {_composer.WordCount} words · ", theme.Muted)
-            + Draw.Literal(
-                over ? "too long to send — shorten it first" : "Enter sends · Alt+Enter for a new line",
-                over ? theme.Error : theme.Muted));
+        // On a phone the caption keeps only what the footer does not already say: the words,
+        // and the characters when a limit makes them matter. The key hints are the footer's
+        // job, and spelt out here too they wrapped the caption onto a second row.
+        yield return new Markup(context.Narrow
+            ? Draw.Literal("You  ", theme.Accent)
+              + (limit > 0
+                  ? Draw.Literal($"{length:N0}/{limit:N0} · ", over ? theme.Error : theme.Muted)
+                  : string.Empty)
+              + Draw.Literal(
+                  over ? "too long to send" : $"{_composer.WordCount} words",
+                  over ? theme.Error : theme.Muted)
+            : Draw.Literal("You  ", theme.Accent)
+              + (limit > 0
+                  ? Draw.Literal($"{length:N0}/{limit:N0} characters", over ? theme.Error : theme.Muted)
+                  : Draw.Literal($"{length:N0} characters", theme.Muted))
+              + Draw.Literal($" · {_composer.WordCount} words · ", theme.Muted)
+              + Draw.Literal(
+                  over ? "too long to send — shorten it first" : "Enter sends · Alt+Enter for a new line",
+                  over ? theme.Error : theme.Muted));
 
         var textRows = Math.Max(1, height - 1);
 
@@ -1498,11 +1508,15 @@ internal sealed partial class ConversationView : ViewBase
             var position = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
             var words = Selected?.WordCount ?? 0;
 
+            // The word count is the one fact here that is about the turn under the cursor
+            // rather than the story, and on a phone it is what pushed the line onto a second
+            // row — two rows of counts in a body of twenty. It goes; the position and the
+            // tallies stay, since those are how a reader knows where they are.
             lines.Add(Draw.Literal($"message {position}", theme.Accent)
                 + Draw.Literal(
                     $"  ·  {visible.Count(static m => m.Role == ChatRole.User)} yours"
                     + $"  ·  {visible.Count(static m => m.Role == ChatRole.Assistant)} replies"
-                    + $"  ·  {words} words in this one"
+                    + (context.Narrow ? string.Empty : $"  ·  {words} words in this one")
                     + (_activeQuery.Length > 0 ? $"  ·  filter \"{_activeQuery}\"" : string.Empty),
                     theme.Muted));
         }
@@ -1770,12 +1784,23 @@ internal sealed partial class ConversationView : ViewBase
     /// The share is <c>Airp:TranscriptWidthPercent</c>, sixty by default. At 100 the column is
     /// the window, there is no margin, and the view is what it was before any of this.
     /// </para>
+    /// <para>
+    /// On a narrow screen the column is the window whatever the share says. A phone is 54
+    /// columns across; the floor of forty below clamped the measure there and centred it,
+    /// which spent fourteen of the fifty-four on a margin — the one screen with no columns
+    /// to spare was the one paying for the desk's typography.
+    /// </para>
     /// <para>Four of these columns are the marker, its space, the gap and the scrollbar.</para>
     /// </remarks>
     /// <param name="context">Layout context.</param>
     /// <returns>Columns the conversation occupies.</returns>
     private static int Column(RenderContext context)
     {
+        if (context.Narrow)
+        {
+            return context.Width;
+        }
+
         var share = Math.Clamp(context.Options.TranscriptWidthPercent, 30, 100);
         var wanted = (int)((long)context.Width * share / 100);
 
