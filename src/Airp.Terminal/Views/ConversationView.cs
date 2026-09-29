@@ -118,6 +118,25 @@ internal sealed partial class ConversationView : ViewBase
     public override string Title => _conversation.Name;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The two facts from the desk's header that a phone keeps: where the reader is in the
+    /// story, and what it has cost. The tallies and the word count are the desk's; the card
+    /// and persona come back on a phone only when one of them is missing.
+    /// </remarks>
+    public override string Summary
+    {
+        get
+        {
+            var visible = Visible;
+            var position = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
+
+            return _spent is { Calls: > 0 } spent
+                ? $"{position} · {spent.Cost:$0.0000}"
+                : position;
+        }
+    }
+
+    /// <inheritdoc />
     public override KeyContext KeyContext =>
         _searching || _composing || _branching ? KeyContext.Text : KeyContext.Navigation;
 
@@ -188,10 +207,14 @@ internal sealed partial class ConversationView : ViewBase
         var visible = Visible;
 
         var headerLines = BuildHeaderLines(context, visible);
-        var rows = new List<IRenderable>(headerLines.Select(static line => (IRenderable)new Markup(line)))
+        var rows = new List<IRenderable>(headerLines.Select(static line => (IRenderable)new Markup(line)));
+
+        // On a phone the header is usually empty — its facts are in the shell's row — and a
+        // rule under nothing would be a second line beneath the one the shell already drew.
+        if (headerLines.Count > 0)
         {
-            new Rule { Style = theme.Border },
-        };
+            rows.Add(new Rule { Style = theme.Border });
+        }
 
         // The composer occupies the bottom of the pane while it is open, so the transcript
         // shrinks rather than being covered. It is laid out before the early exits below,
@@ -307,12 +330,17 @@ internal sealed partial class ConversationView : ViewBase
     }
 
     /// <summary>Rows the transcript gets, once the header, its rule and the composer have theirs.</summary>
+    /// <remarks>
+    /// Every header line has to be exactly one row for this to be true. A line that wraps is a
+    /// row nobody subtracted, and the renderer takes it back from the bottom of the screen —
+    /// which is how the last lines of the last reply went missing on a phone.
+    /// </remarks>
     /// <param name="context">Layout context.</param>
-    /// <param name="headerLines">Lines the header is drawing this frame.</param>
+    /// <param name="headerLines">Lines the header is drawing this frame; the rule comes with them.</param>
     /// <param name="composerRows">Rows the composer and its suggestions take; none while closed.</param>
     /// <returns>The transcript's height, at least one row.</returns>
     private static int TranscriptRows(RenderContext context, int headerLines, int composerRows = 0)
-        => Math.Max(1, context.Height - 1 - headerLines - composerRows);
+        => Math.Max(1, context.Height - (headerLines > 0 ? headerLines + 1 : 0) - composerRows);
 
     /// <summary>Columns available to the composer's text, leaving room for the caret.</summary>
     /// <param name="context">Layout context.</param>
@@ -1571,6 +1599,46 @@ internal sealed partial class ConversationView : ViewBase
                + Draw.Literal(_personaLabel, _personaMissing ? theme.Warning : theme.Muted);
     }
 
+    /// <summary>The header on a phone: only what must not wait to be noticed.</summary>
+    /// <remarks>
+    /// <para>
+    /// The story, the position and the cost are the shell's one header row there (see
+    /// <see cref="Summary"/>), so in the ordinary case this is empty and the transcript starts
+    /// directly under that row. What stays is what the reader needs to see at once: a turn in
+    /// flight, an active filter, and a card or persona whose file is gone — a missing card
+    /// once went unnoticed for days on two real stories, and a phone is no reason to hide it.
+    /// </para>
+    /// <para>
+    /// Each line is fitted to the column rather than left to wrap. A line that wraps is a row
+    /// the transcript's height was not told about, and it is taken back from the bottom.
+    /// </para>
+    /// </remarks>
+    /// <param name="context">Layout context.</param>
+    /// <returns>The lines, often none.</returns>
+    private List<string> PhoneHeaderLines(RenderContext context)
+    {
+        var theme = context.Theme;
+        var width = Column(context);
+        var lines = new List<string>();
+
+        if (_pending.Describe() is { Length: > 0 } pending)
+        {
+            lines.Add(Draw.Literal(Draw.Fit(pending + "…", width), theme.Warning));
+        }
+
+        if (_activeQuery.Length > 0)
+        {
+            lines.Add(Draw.Literal(Draw.Fit($"filter \"{_activeQuery}\"", width), theme.Muted));
+        }
+
+        if ((_cardMissing || _personaMissing) && _cardLabel is not null && _personaLabel is not null)
+        {
+            lines.Add(Draw.Literal(Draw.Fit($"{_cardLabel}  ·  as {_personaLabel}", width), theme.Warning));
+        }
+
+        return lines;
+    }
+
     /// <summary>
     /// The header, one fact per line: the chat, the participants, the cost.
     /// </summary>
@@ -1597,11 +1665,18 @@ internal sealed partial class ConversationView : ViewBase
             // name. Getting it wrong is not destructive, but it is a wasted conversation.
             var at = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
 
+            // Shorter on a phone, where the desk's prompt alone is most of the width and the
+            // name being typed after it would wrap.
             return
             [
-                Draw.Literal($"Branch at message {at} — name: ", theme.Accent)
+                Draw.Literal(context.Narrow ? $"Branch at {at}: " : $"Branch at message {at} — name: ", theme.Accent)
                 + _branchName.ToMarkup(theme),
             ];
+        }
+
+        if (context.Narrow)
+        {
+            return PhoneHeaderLines(context);
         }
 
         var lines = new List<string>();
@@ -1615,15 +1690,11 @@ internal sealed partial class ConversationView : ViewBase
             var position = visible.Count == 0 ? "—" : $"{_selected + 1}/{visible.Count}";
             var words = Selected?.WordCount ?? 0;
 
-            // The word count is the one fact here that is about the turn under the cursor
-            // rather than the story, and on a phone it is what pushed the line onto a second
-            // row — two rows of counts in a body of twenty. It goes; the position and the
-            // tallies stay, since those are how a reader knows where they are.
             lines.Add(Draw.Literal($"message {position}", theme.Accent)
                 + Draw.Literal(
                     $"  ·  {visible.Count(static m => m.Role == ChatRole.User)} yours"
                     + $"  ·  {visible.Count(static m => m.Role == ChatRole.Assistant)} replies"
-                    + (context.Narrow ? string.Empty : $"  ·  {words} words in this one")
+                    + $"  ·  {words} words in this one"
                     + (_activeQuery.Length > 0 ? $"  ·  filter \"{_activeQuery}\"" : string.Empty),
                     theme.Muted));
         }

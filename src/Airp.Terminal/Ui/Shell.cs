@@ -42,6 +42,8 @@ internal sealed class Shell
     private LiveDisplayContext? _live;
     private string _status = string.Empty;
     private StatusKind _statusKind = StatusKind.Info;
+    private long _statusAtMs;
+    private bool _inputSinceStatus;
     private string? _banner;
     private string? _bannerHint;
     private bool _running = true;
@@ -202,6 +204,8 @@ internal sealed class Shell
                 continue;
             }
 
+            _inputSinceStatus = true;
+
             ViewAction action;
             try
             {
@@ -297,7 +301,7 @@ internal sealed class Shell
 
             default:
                 return Current is IMouseAware aware
-                    ? aware.OnClick(mouse.Row - HeaderHeight - 1, context)
+                    ? aware.OnClick(mouse.Row - HeaderRows(context.Narrow) - 1, context)
                     : ViewAction.None;
         }
     }
@@ -316,6 +320,8 @@ internal sealed class Shell
             case ViewAction.StatusAction status:
                 _status = status.Text;
                 _statusKind = status.Kind;
+                _statusAtMs = Environment.TickCount64;
+                _inputSinceStatus = false;
                 break;
 
             case ViewAction.PushAction push:
@@ -655,13 +661,27 @@ internal sealed class Shell
 
     // -------------------------------------------------------------- rendering
 
-    private const int HeaderHeight = 3;
-    private const int FooterHeight = 4;
+    /// <summary>Rows the header takes: three at a desk, one and its rule on a phone.</summary>
+    private static int HeaderRows(bool narrow) => narrow ? 2 : 3;
+
+    /// <summary>Rows the footer takes: four at a desk, one and its rule on a phone.</summary>
+    private static int FooterRows(bool narrow) => narrow ? 2 : 4;
+
+    /// <summary>The narrowest width laid out for; anything below it is drawn as if it were this.</summary>
+    /// <remarks>
+    /// It was forty, and a phone at a readable font is thirty-eight. Every view then laid itself
+    /// out for two columns more than the screen had, and the terminal folded every full-width
+    /// line back onto a row of its own — prose one or two words to a line. Laying out for the
+    /// real width is always better than laying out for a larger lie; this floor only stops the
+    /// arithmetic in the views going negative.
+    /// </remarks>
+    private const int MinimumWidth = 20;
 
     private RenderContext BuildContext()
     {
-        var width = Math.Max(40, SafeWidth());
-        var height = Math.Max(8, SafeHeight() - HeaderHeight - FooterHeight);
+        var width = Math.Max(MinimumWidth, SafeWidth());
+        var narrow = width < RenderContext.NarrowWidth;
+        var height = Math.Max(8, SafeHeight() - HeaderRows(narrow) - FooterRows(narrow));
         return new RenderContext(width, height, Theme.For(_options.CurrentValue.Theme), _options.CurrentValue);
     }
 
@@ -711,10 +731,14 @@ internal sealed class Shell
                               + $"{Markup.Escape(ex.Message)}[/]");
         }
 
+        var header = context.Narrow
+            ? BuildPhoneHeader(context.Theme, Current.Title, Current.Summary, context.Width)
+            : BuildHeader(context);
+
         var layout = new Layout("root").SplitRows(
-            new Layout("header").Update(BuildHeader(context)).Size(HeaderHeight),
+            new Layout("header").Update(header).Size(HeaderRows(context.Narrow)),
             new Layout("body").Update(body),
-            new Layout("footer").Update(BuildFooter(context)).Size(FooterHeight));
+            new Layout("footer").Update(BuildFooter(context)).Size(FooterRows(context.Narrow)));
 
         _live.UpdateTarget(layout);
         _live.Refresh();
@@ -793,8 +817,50 @@ internal sealed class Shell
         return new Rows(grid, new Rule { Style = theme.Border });
     }
 
+    /// <summary>The header on a phone: one row, the view's title and its summary, and a rule.</summary>
+    /// <remarks>
+    /// <para>
+    /// The desk's header is three rows of facts about the application — that it is local,
+    /// which model, which version, the trail of views behind this one — and on a screen of
+    /// thirty-eight columns they were three rows of the story's height spent on things that
+    /// do not change while it is being read. The model and the version are one <c>airp
+    /// config</c> away. What stays is what is being read and where in it the reader is.
+    /// </para>
+    /// <para>
+    /// Built to the exact width rather than laid out by a grid. A grid given less room than
+    /// its contents want breaks a token across two rows — the model's name did exactly that on
+    /// a phone — and a header of two rows is a row the body was not told about.
+    /// </para>
+    /// <para>Internal so the fit can be asserted; nothing else calls it.</para>
+    /// </remarks>
+    /// <param name="theme">The palette in force.</param>
+    /// <param name="title">The current view's title.</param>
+    /// <param name="summary">The current view's summary; may be empty.</param>
+    /// <param name="width">Columns the header has.</param>
+    /// <returns>The header.</returns>
+    internal static IRenderable BuildPhoneHeader(Theme theme, string title, string summary, int width)
+    {
+        // The summary is short and says where the reader is, so it keeps its room and the
+        // title gives way — but never more than half the row, or a long summary would leave a
+        // name nobody can recognise.
+        var right = Fit(summary, width / 2);
+        var gap = right.Length == 0 ? 0 : 2;
+        var left = Fit(title, Math.Max(1, width - Cells(right) - gap));
+        var padding = Math.Max(gap, width - Cells(left) - Cells(right));
+
+        return new Rows(
+            new Markup(
+                $"[{theme.Heading.ToMarkup()}]{Markup.Escape(left)}[/]"
+                + new string(' ', padding)
+                + $"[{theme.Muted.ToMarkup()}]{Markup.Escape(right)}[/]"),
+            new Rule { Style = theme.Border });
+    }
+
     /// <summary>Columns a string occupies, named around this class's own <c>Draw</c> method.</summary>
     private static int Cells(string text) => Airp.Terminal.Ui.Draw.Width(text);
+
+    /// <summary>Text cut to a column budget, named around this class's own <c>Draw</c> method.</summary>
+    private static string Fit(string text, int width) => Airp.Terminal.Ui.Draw.Fit(text, width);
 
     /// <summary>What one hint costs in columns: the cap's own two spaces, and the gap after it.</summary>
     /// <remarks>
@@ -854,6 +920,70 @@ internal sealed class Shell
                 + $"[{theme.Muted.ToMarkup()}]{Markup.Escape(h.Label)}[/]"));
     }
 
+    /// <summary>How long a routine status keeps the phone's one footer row from the legend.</summary>
+    private const long RoutineStatusMs = 4000;
+
+    /// <summary>
+    /// The phone's one footer row: whatever needs saying, and the legend when nothing does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The desk has a row for the legend and a row for what just happened. A phone has room
+    /// for one, and a row that came and went would move the whole transcript up and down by a
+    /// line each time. So the row is shared, in order of how much it matters: an error banner,
+    /// then work in progress with its way out, then a status — and the legend otherwise.
+    /// </para>
+    /// <para>
+    /// A warning or an error holds the row until the reader's next key or tap, since it may
+    /// be the one thing they need to read. Anything routine — "Copied.", a count of what
+    /// loaded — gives it back after a few seconds, or the legend would be hidden behind a
+    /// message nobody needs to reread.
+    /// </para>
+    /// </remarks>
+    /// <param name="context">Layout context.</param>
+    /// <param name="hints">The legend's hints.</param>
+    /// <returns>Markup for the row, fitted to the width.</returns>
+    private string PhoneFooterLine(RenderContext context, IReadOnlyList<KeyHint> hints)
+    {
+        var theme = context.Theme;
+        var width = context.Width;
+
+        if (_banner is not null)
+        {
+            return $"[{theme.Error.ToMarkup()}]{Markup.Escape(Fit(_banner, width))}[/]";
+        }
+
+        if (_busyLabel.Length > 0)
+        {
+            var frames = new[] { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
+            const string Stop = "  Esc stops";
+            var label = Fit(_busyLabel + "…", Math.Max(1, width - 2 - Cells(Stop)));
+
+            return $"[{theme.Accent.ToMarkup()}]{frames[_spinnerFrame % frames.Length]}[/] "
+                   + $"[{theme.Text.ToMarkup()}]{Markup.Escape(label)}[/]"
+                   + $"[{theme.Muted.ToMarkup()}]{Stop}[/]";
+        }
+
+        var holding = _statusKind is StatusKind.Warning or StatusKind.Error
+            ? !_inputSinceStatus
+            : Environment.TickCount64 - _statusAtMs < RoutineStatusMs;
+
+        if (_status.Length > 0 && holding)
+        {
+            var style = _statusKind switch
+            {
+                StatusKind.Success => theme.Success,
+                StatusKind.Warning => theme.Warning,
+                StatusKind.Error => theme.Error,
+                _ => theme.Muted,
+            };
+
+            return $"[{style.ToMarkup()}]{Markup.Escape(Fit(_status, width))}[/]";
+        }
+
+        return Legend(hints, width, theme);
+    }
+
     private IRenderable BuildFooter(RenderContext context)
     {
         var theme = context.Theme;
@@ -864,7 +994,13 @@ internal sealed class Shell
         // conversation's footer carries thirteen of these, and thirteen would be a barcode.
         var hints = Current.KeyHints.Count > 0 ? Current.KeyHints : DefaultHints;
 
-        rows.Add(new Markup(Legend(hints, SafeWidth(), theme)) { Overflow = Overflow.Ellipsis });
+        if (context.Narrow)
+        {
+            rows.Add(new Markup(PhoneFooterLine(context, hints)));
+            return new Rows(rows);
+        }
+
+        rows.Add(new Markup(Legend(hints, context.Width, theme)) { Overflow = Overflow.Ellipsis });
 
         if (_banner is not null)
         {
