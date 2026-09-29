@@ -995,6 +995,24 @@ seen, and a turn written into the wrong story is permanent and billed.
 Janitor sends its own truncated history; the proxy **discards it** and builds the prompt from
 your store. Only your newest message is taken from the request.
 
+Janitor puts your persona's name in front of each of your messages — `Allan: …`. The proxy takes
+it off before anything else, so it is not stored as part of your turn and does not hide a
+command.
+
+### Commands in Janitor
+
+Janitor's window shows only what was said in it, so a story you have been playing in the
+terminal arrives there looking empty. The replies are built from the whole story regardless,
+and **`/recap`** shows it: the latest summary, then the last four turns word for word — `/recap 10`
+for ten. It is answered by the proxy from what is on disk, so it costs nothing and is stored
+nowhere.
+
+The composer's commands that steer a turn work here too, with the same meaning: `/do <direction>`,
+`/focus <who>`, and `/ask <question>`, whose answer is shown and never stored. `/help` lists
+them. Anything else that starts with a slash — a typo, or a command only the terminal can
+show — is refused with an error and stored nowhere, so a mistyped command never becomes a turn
+the character has to answer. To send prose that genuinely begins with a slash, double it.
+
 **Not yet understood by the proxy:** Janitor's reroll resends your last message, and the proxy
 stores it as a new turn — your message twice, answered twice. Regenerate in airp instead. Edits
 and deletions made in Janitor do not reach the store either.
