@@ -292,6 +292,9 @@ internal sealed class Shell
                     .ConfigureAwait(false);
             }
 
+            case MouseEventKind.Ignored:
+                return ViewAction.None;
+
             default:
                 return Current is IMouseAware aware
                     ? aware.OnClick(mouse.Row - HeaderHeight - 1, context)
