@@ -986,11 +986,46 @@ that address followed by `/v1/chat/completions`, with the token as the API key. 
 would work too, and would put a database of all your conversations on the internet behind that
 one token.
 
-**Every chat needs `[[rp:<id>]]` in its Custom Prompt**, with the id of the story it plays —
-`airp audit <chat>` prints it under the name. A chat without one writes nothing: the proxy
-refuses it and says why. It never works out a story from a character's name or how a chat
+**A tag in Janitor's Custom Prompt says which story** — `[[rp:<id>]]`, with the id that
+`airp audit <chat>` prints under the story's name. A request without one writes nothing: the
+proxy refuses it and says why. It never works out a story from a character's name or how a chat
 opens, because a match among your stories is still a guess about a Janitor chat they have never
 seen, and a turn written into the wrong story is permanent and billed.
+
+### Setting it up in Janitor
+
+As Janitor's settings looked on 2026-09-29, on Android. They are Janitor's screens, not ours,
+and can change.
+
+1. **Model settings → Provider: Proxy**, then add a configuration under Proxy Configurations
+   (or edit one with the pencil). The configuration name is yours to choose; the model name can
+   be anything, since the proxy uses airp's model; the proxy URL is your address followed by
+   `/v1/chat/completions`; the API key is the proxy's token.
+2. **Make a prompt holding the tag, on one line** — `[[rp:<id>]]`, and nothing else is needed in
+   it. Name it after the story. A line break between the two closing brackets and it is no
+   longer a tag.
+3. **Select that prompt in both places Janitor has one**: the configuration's own *Prompt
+   (optional)*, and *Instructions → Custom prompt*. Which of the two reaches a proxy has not
+   been pinned down; with the prompt in both, the tag arrives.
+4. **Tick each panel, then Save** at the top of Model settings.
+
+The first attempt here failed with the proxy's "no tag" refusal, and the tag arrived once the
+prompt was on one line, in both fields and saved — three changes at once, so which one mattered
+is not known. The proxy's log says which case you are in: `Request tagged for <id>` when it
+worked, `carries no [[rp:…]] tag` when the tag never arrived.
+
+**The Custom prompt belongs to the model settings, not to a chat.** It applies to every Janitor
+chat that uses that proxy configuration, so while it names a story, whatever you write through
+the proxy — with any bot — goes into that story. The way to live with that:
+
+- **One named prompt per story**, and pick the right one before you play.
+- **One Janitor chat per story**, and come back to it. Its window shows only what was said in
+  Janitor; every reply is built from the whole story, including everything played in the
+  terminal.
+- **The bot does not change the replies** — the proxy uses airp's card, persona and dials — but
+  the matching one keeps the name and picture right.
+- **A new story starts in airp** — `N` in the chat list, or `airp new`. The proxy only writes to
+  a story that already exists.
 
 Janitor sends its own truncated history; the proxy **discards it** and builds the prompt from
 your store. Only your newest message is taken from the request.
