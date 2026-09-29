@@ -19,8 +19,9 @@ console's defaults break several of them; where that happens this page says so.
 4. [First login](#first-login)
 5. [Reaching it with Tailscale](#reaching-it-with-tailscale)
 6. [Install and run airp](#install-and-run-airp)
-7. [Check that it is free](#check-that-it-is-free)
-8. [A safety net](#a-safety-net)
+7. [Keeping it up to date](#keeping-it-up-to-date)
+8. [Check that it is free](#check-that-it-is-free)
+9. [A safety net](#a-safety-net)
 
 ---
 
@@ -222,6 +223,137 @@ is [PORTABLE.md](PORTABLE.md#moving-the-data).
 **What is on that disk.** The database holds the whole history in the clear, and the key is
 in a text file. Google encrypts the disk at rest, but it is still someone else's machine.
 Decide that before moving a real story there.
+
+---
+
+## Keeping it up to date
+
+The VM can install each new release by itself. It **pulls**: a timer on the machine asks
+GitHub for the latest release every hour and installs it if it is newer. Nothing reaches in
+from outside — no deploy job, no key to the machine sitting in anyone's CI — which matters
+all the more because the repository is public.
+
+A release is installed only if its download matches the `SHA256SUMS` file published with it;
+a release without one is refused rather than installed unchecked. Releases after v1.2.0
+publish it. The script never downgrades and never touches your data, and it replaces the
+binary by renaming a new one over it, so a session left open keeps running on the version it
+started with and the next one gets the new version.
+
+The script, as `/usr/local/sbin/airp-update` — a fork changes `repo` to its own:
+
+```sh
+#!/bin/sh
+# Installs the newest airp release when it is newer than the one installed,
+# and only once the download matches the release's own SHA256SUMS.
+set -eu
+
+repo=argamboad/custom-airp
+asset=airp-linux-x64.tar.gz
+target=/usr/local/bin/airp
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# The binary unpacks part of itself on first run; give it somewhere to do that
+# that exists under systemd, where root may have no HOME.
+export DOTNET_BUNDLE_EXTRACT_BASE_DIR="$work/.bundle"
+
+latest=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+  | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)
+installed=$("$target" version 2>/dev/null | awk '{print $2}' | cut -d+ -f1)
+
+if [ -z "$latest" ]; then
+  echo "airp-update: could not read the latest release" >&2
+  exit 1
+fi
+
+newest=$(printf '%s\n%s\n' "$installed" "$latest" | sort -V | tail -n 1)
+if [ "$installed" = "$latest" ] || [ "$newest" != "$latest" ]; then
+  exit 0
+fi
+
+cd "$work"
+base="https://github.com/$repo/releases/download/v$latest"
+
+if ! curl -fsSL -o SHA256SUMS "$base/SHA256SUMS"; then
+  echo "airp-update: v$latest publishes no SHA256SUMS; not installing it" >&2
+  exit 1
+fi
+
+curl -fsSL -o "$asset" "$base/$asset"
+
+if ! grep -E " [ *]$asset\$" SHA256SUMS | sha256sum -c - >/dev/null; then
+  echo "airp-update: the v$latest download does not match its checksum; not installing it" >&2
+  exit 1
+fi
+
+tar xzf "$asset"
+
+if ! ./airp version | grep -Eq "^airp $latest([+ ]|\$)"; then
+  echo "airp-update: the v$latest download reports another version; not installing it" >&2
+  exit 1
+fi
+
+# Beside the old one and then renamed over it: a session that is open keeps the
+# binary it started with, and the next one gets this.
+install -m 755 airp "$target.new"
+mv -f "$target.new" "$target"
+echo "airp-update: $installed -> $latest"
+```
+
+Make it executable:
+
+```bash
+sudo chmod 755 /usr/local/sbin/airp-update
+```
+
+A service that runs it, as `/etc/systemd/system/airp-update.service`:
+
+```ini
+[Unit]
+Description=Install the newest airp release
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/airp-update
+```
+
+And a timer that runs the service every hour, as `/etc/systemd/system/airp-update.timer`:
+
+```ini
+[Unit]
+Description=Look for a new airp release every hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Switch it on:
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now airp-update.timer
+```
+
+When it last ran, when it runs next, and what it said:
+
+```bash
+systemctl list-timers airp-update.timer
+```
+
+```bash
+journalctl -u airp-update.service -n 20
+```
+
+An hourly check is one small request to GitHub's API, well inside the sixty an hour it allows
+without a login; the download, about 45 MB, happens only when there is something new.
 
 ---
 
