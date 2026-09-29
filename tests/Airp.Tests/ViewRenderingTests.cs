@@ -452,6 +452,46 @@ public class ViewRenderingTests
         text.ShouldNotContain("character");
     }
 
+    [Fact]
+    public void ChatListView_OnAPhone_IsOneColumnOfTwoRowsAChat()
+    {
+        // At 38 columns the desk's split left eighteen for the names — "Cadgwit…" — and a
+        // preview too narrow to read. On a phone the preview comes into the list as one line.
+        using var services = BuildServices(
+            Reply("*She closes the lid.* \"You are late.\"", "a") with { Name = "Cadgwith Point" },
+            Chat("Captain", "b"));
+        var view = ActivatorUtilities.CreateInstance<ChatListView>(services);
+
+        var lines = RenderToText(view.Render(Context(38, 30)), 38, 30)
+            .TrimEnd('\r', '\n').Split('\n').Select(static l => l.TrimEnd('\r')).ToArray();
+
+        lines.Length.ShouldBe(4);
+        lines.ShouldAllBe(static l => l.Length <= 38);
+        lines.ShouldNotContain(static l => l.Contains('│'));
+
+        lines[0].ShouldContain("Cadgwith Point");
+        lines[1].ShouldContain("She closes the lid. You are late.");
+        lines[2].ShouldContain("Captain");
+        lines[3].ShouldContain("I settle into my office");
+
+        view.Summary.ShouldBe("2 chats");
+    }
+
+    [Fact]
+    public void ChatListView_OnAPhone_OneTapOpensTheChatUnderIt()
+    {
+        // Either of a chat's two rows is the chat. On the desk the first tap only selects.
+        using var services = BuildServices(Chat("Professor", "a"), Chat("Captain", "b"));
+        var view = ActivatorUtilities.CreateInstance<ChatListView>(services);
+        view.Render(Context(38, 30));
+
+        view.OnClick(3, Context(38, 30)).ShouldBeOfType<ViewAction.PushAction>().View.Title.ShouldBe("Captain");
+        view.OnClick(0, Context(38, 30)).ShouldBeOfType<ViewAction.PushAction>().View.Title.ShouldBe("Professor");
+        view.OnClick(9, Context(38, 30)).ShouldBe(ViewAction.None);
+
+        view.OnClick(3, Context()).ShouldBe(ViewAction.None);
+    }
+
     /// <summary>A chat whose latest message is written the way a real reply is.</summary>
     private static Chat Reply(string text, string id = "r") => new()
     {

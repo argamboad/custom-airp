@@ -49,6 +49,12 @@ internal sealed class ChatListView : ViewBase, IMouseAware
     /// <inheritdoc />
     public override string Title => "Chats";
 
+    /// <inheritdoc />
+    /// <remarks>The count the desk draws at the top of the list, which a phone has no row for.</remarks>
+    public override string Summary => _filter.IsEmpty
+        ? Count(_visible.Count)
+        : $"{_visible.Count} of {_chats.Cached.Count}";
+
     /// <summary>Counts rows with a plural that reads like English.</summary>
     /// <param name="count">How many.</param>
     /// <returns>Text such as "1 chat" or "6 chats".</returns>
@@ -122,6 +128,11 @@ internal sealed class ChatListView : ViewBase, IMouseAware
     /// <inheritdoc />
     public override IRenderable Render(RenderContext context)
     {
+        if (context.Narrow)
+        {
+            return RenderPhone(context);
+        }
+
         var theme = context.Theme;
         // Three tenths to the list and the rest to the preview. The list holds names and an
         // age, both short; the preview holds a reply, which is prose and needs the width to be
@@ -213,12 +224,13 @@ internal sealed class ChatListView : ViewBase, IMouseAware
                 _list.Move(1);
                 return ValueTask.FromResult(ViewAction.None);
 
+            // A page is a screenful of chats, and on a phone each chat is two rows.
             case AppCommand.PageUp:
-                _list.Move(-Math.Max(1, context.Height - 3));
+                _list.Move(-Math.Max(1, context.Narrow ? PhoneViewport(context) - 1 : context.Height - 3));
                 return ValueTask.FromResult(ViewAction.None);
 
             case AppCommand.PageDown:
-                _list.Move(Math.Max(1, context.Height - 3));
+                _list.Move(Math.Max(1, context.Narrow ? PhoneViewport(context) - 1 : context.Height - 3));
                 return ValueTask.FromResult(ViewAction.None);
 
             case AppCommand.Home:
@@ -288,6 +300,16 @@ internal sealed class ChatListView : ViewBase, IMouseAware
     /// <inheritdoc />
     public ViewAction OnClick(int row, RenderContext context)
     {
+        // On a phone one tap opens: the list is not beside a preview there, so selecting a
+        // row without opening it shows nothing a thumb could want.
+        if (context.Narrow)
+        {
+            var tapped = _list.IndexAtRow((row - PhonePromptRows) / PhoneRowsPerChat, PhoneViewport(context));
+            return tapped >= 0 && row >= PhonePromptRows
+                ? ViewAction.Push(Detail(_visible[tapped]))
+                : ViewAction.None;
+        }
+
         // Two rows of chrome sit above the list inside this view's own body.
         var index = _list.IndexAtRow(row - 2, Math.Max(1, context.Height - 2));
         if (index < 0)
@@ -457,6 +479,109 @@ internal sealed class ChatListView : ViewBase, IMouseAware
         return _filter.IsEmpty
             ? Draw.Literal(line, style)
             : Draw.Highlight(line, _filter.Value, style, theme.Highlight);
+    }
+
+    /// <summary>Rows a chat takes on a phone: its name and age, and a line of its latest message.</summary>
+    private const int PhoneRowsPerChat = 2;
+
+    /// <summary>The prompt row above a phone's list, present only while there is one to show.</summary>
+    private int PhonePromptRows => _renaming || _filtering || !_filter.IsEmpty ? 1 : 0;
+
+    /// <summary>How many chats fit a phone's screen.</summary>
+    private int PhoneViewport(RenderContext context)
+        => Math.Max(1, (context.Height - PhonePromptRows) / PhoneRowsPerChat);
+
+    /// <summary>The list on a phone: one column, each chat in two rows, the preview gone.</summary>
+    /// <remarks>
+    /// <para>
+    /// The desk's list is a narrow column beside a preview of the latest reply, and at 38
+    /// columns the split left eighteen for the names — <c>Cadgwit…</c> — and nineteen for
+    /// the preview. So the preview goes, and what it was for comes into the list: the first
+    /// line of each chat's latest message, dimmed, under its name. It is for recognising a
+    /// chat, which one line does; reading it is what opening it is for.
+    /// </para>
+    /// <para>
+    /// The count is the header row's (<see cref="Summary"/>), so there is no count and no rule
+    /// here: the list starts under the shell's rule, and the filter or the rename being typed
+    /// gets a row only while it exists.
+    /// </para>
+    /// </remarks>
+    /// <param name="context">Layout context.</param>
+    /// <returns>The list.</returns>
+    private IRenderable RenderPhone(RenderContext context)
+    {
+        var theme = context.Theme;
+        var width = context.Width;
+        var rows = new List<IRenderable>();
+
+        if (_renaming)
+        {
+            rows.Add(new Markup(Draw.Literal("Rename: ", theme.Accent) + _rename.ToMarkup(theme)));
+        }
+        else if (_filtering)
+        {
+            rows.Add(new Markup(Draw.Literal("Filter: ", theme.Accent) + _filter.ToMarkup(theme)));
+        }
+        else if (!_filter.IsEmpty)
+        {
+            rows.Add(new Markup(Draw.Literal(Draw.Fit($"matching \"{_filter.Value}\"", width), theme.Muted)));
+        }
+
+        if (_visible.Count == 0)
+        {
+            rows.Add(new Markup(Draw.Literal(
+                _chats.Cached.Count == 0 ? "No chats yet." : "Nothing matches this filter.",
+                theme.Muted)));
+
+            return new Rows(rows);
+        }
+
+        var (start, length) = _list.Viewport(PhoneViewport(context));
+
+        for (var i = start; i < Math.Min(_visible.Count, start + length); i++)
+        {
+            var (name, preview) = RenderPhoneRows(_visible[i], i == _list.Selected, width, theme);
+            rows.Add(new Markup(name));
+            rows.Add(new Markup(preview));
+        }
+
+        return new Rows(rows);
+    }
+
+    /// <summary>A chat's two rows on a phone, each exactly the width.</summary>
+    /// <param name="chat">The chat.</param>
+    /// <param name="selected">Whether the cursor is on it.</param>
+    /// <param name="width">Columns available.</param>
+    /// <param name="theme">Active palette.</param>
+    /// <returns>The name row and the preview row, as markup.</returns>
+    private (string Name, string Preview) RenderPhoneRows(Chat chat, bool selected, int width, Theme theme)
+    {
+        var marker = selected ? "▌" : " ";
+        var unread = chat.IsUnread ? "●" : " ";
+        var age = Draw.Age(chat.LastMessageAtUtc);
+        var name = Draw.Pad(chat.Name, Math.Max(1, width - 3 - Draw.Width(age) - 1));
+
+        // The first line that says anything, with the markers the transcript never shows
+        // taken out, so the preview reads as the reply does when it is opened.
+        var latest = (chat.LatestMessage ?? string.Empty)
+            .Split('\n')
+            .Select(static line => Application.Text.ProseFormat.Format(line).Text.Trim())
+            .FirstOrDefault(static line => line.Length > 0) ?? "Nothing said yet.";
+
+        var markerStyle = selected ? theme.Accent : theme.Border;
+        var nameStyle = chat.IsUnread ? theme.Accent : theme.Text;
+
+        var nameRow = Draw.Literal(marker, markerStyle)
+                      + Draw.Literal(unread + " ", theme.Accent)
+                      + (_filter.IsEmpty
+                          ? Draw.Literal(name, nameStyle)
+                          : Draw.Highlight(name, _filter.Value, nameStyle, theme.Highlight))
+                      + Draw.Literal(" " + age, theme.Muted);
+
+        var previewRow = Draw.Literal(marker, markerStyle)
+                         + Draw.Literal("  " + Draw.Fit(latest, Math.Max(1, width - 3)), theme.Muted);
+
+        return (nameRow, previewRow);
     }
 
     private IRenderable RenderPreview(RenderContext context, int width)
