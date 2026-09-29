@@ -163,21 +163,29 @@ app.MapPost("/v1/chat/completions", async (HttpContext context, CancellationToke
     log.LogInformation("Request tagged for {Conversation}.", resolved.ConversationId);
 
     // The newest user turn is the only thing taken from the request. Everything else the front
-    // end sent — its truncated history, its own framing — is what this exists to replace.
-    var said = userTurns[^1];
+    // end sent — its truncated history, its own framing — is what this exists to replace. The
+    // label the front end puts in front of it goes too, before anything looks for a command.
+    var said = FrontEnd.Unlabel(userTurns);
+    var chat = chats.First(c => c.Id == resolved.ConversationId);
 
     try
     {
-        var added = await conversations
-            .SendAsync(resolved.ConversationId, said, instruction: null, progress: null, cancellationToken)
-            .ConfigureAwait(false);
+        var outcome = await ProxyTurn.RunAsync(conversations, chat, said, cancellationToken).ConfigureAwait(false);
 
-        var replyText = added.LastOrDefault()?.Text ?? string.Empty;
+        if (outcome.Refused)
+        {
+            log.LogInformation("Refused a message; nothing stored.");
+
+            return Results.Json(
+                new { error = new { message = outcome.Text, code = 400 } },
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
         var wantsStream = body?["stream"]?.GetValue<bool>() ?? false;
 
         return wantsStream
-            ? Results.Extensions.Sse(replyText, options.CurrentValue.Model.Name)
-            : Results.Json(Completions.Whole(replyText, options.CurrentValue.Model.Name));
+            ? Results.Extensions.Sse(outcome.Text, options.CurrentValue.Model.Name)
+            : Results.Json(Completions.Whole(outcome.Text, options.CurrentValue.Model.Name));
     }
     catch (ReplyMissingException ex)
     {
