@@ -1,0 +1,32 @@
+@page "/story/{id}"
+@model StoryModel
+
+@section Header {
+    <a class="back" href="/" aria-label="Stories">‹</a>
+    <h1>@Model.Chat!.Name</h1>
+}
+
+@if (Model.Hidden > 0)
+{
+    <p class="earlier">
+        <a href="?all=true">@Model.Hidden earlier @(Model.Hidden == 1 ? "turn" : "turns")</a>
+    </p>
+}
+
+@if (Model.Shown.Count == 0)
+{
+    <p class="empty">Nothing has been said yet.</p>
+}
+
+<ol class="turns">
+    @foreach (var turn in Model.Shown)
+    {
+        var mine = turn.Role == ChatRole.User;
+        <li class="@(mine ? "turn you" : "turn reply")">
+            <span class="who">@(mine ? "You" : Model.Speaker)</span>
+            @ProseHtml.Render(turn.Text)
+        </li>
+    }
+</ol>
+
+<span id="end"></span>

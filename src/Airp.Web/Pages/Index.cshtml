@@ -1,0 +1,28 @@
+@page
+@model IndexModel
+
+@section Header {
+    <h1>Stories</h1>
+    <span class="aside">@Model.Chats.Count</span>
+}
+
+@if (Model.Chats.Count == 0)
+{
+    <p class="empty">No stories yet.</p>
+}
+else
+{
+    <ul class="stories">
+        @foreach (var chat in Model.Chats)
+        {
+            @* Straight to the end of the story, which is where a reader picks it up. *@
+            <li>
+                <a href="/story/@Uri.EscapeDataString(chat.Id)#end">
+                    <span class="name">@chat.Name</span>
+                    <span class="age">@Ages.Describe(chat.LastMessageAtUtc, Model.Now)</span>
+                    <span class="latest">@IndexModel.Preview(chat.LatestMessage)</span>
+                </a>
+            </li>
+        }
+    </ul>
+}

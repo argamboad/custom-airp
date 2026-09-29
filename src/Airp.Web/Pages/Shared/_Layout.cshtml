@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+@* The tab says "Stories" and nothing else, on every page. A phone shows tab titles on its
+   recent-apps screen, and the terminal stopped naming the application and the chat in its
+   window title for the same reason: this is a private thing. *@
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
+    <meta name="color-scheme" content="dark">
+    <title>Stories</title>
+    <link rel="stylesheet" href="~/site.css" asp-append-version="true">
+</head>
+<body>
+    <header class="bar">
+        @RenderSection("Header", required: false)
+    </header>
+    <main>
+        @RenderBody()
+    </main>
+</body>
+</html>
