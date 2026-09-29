@@ -171,6 +171,9 @@ public class PhoneBarTests
         {
             Ansi = AnsiSupport.No,
             ColorSystem = ColorSystemSupport.NoColors,
+            // Spectre's CI enrichers turn ANSI back on under GITHUB_ACTIONS, and the caret's
+            // row then comes back wrapped in escapes that no plain "b" can equal.
+            Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
             Out = new AnsiConsoleOutput(new StringWriter()),
         });
         var writer = new StringWriter();
