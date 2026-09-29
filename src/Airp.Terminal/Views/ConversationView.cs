@@ -1781,12 +1781,17 @@ internal sealed partial class ConversationView : ViewBase
     /// <param name="Width">The measure they were wrapped to.</param>
     /// <param name="Theme">The palette's name.</param>
     /// <param name="Query">The search term painted through them.</param>
+    /// <param name="Narrow">
+    /// Whether they were laid out for a phone. Not implied by the width: a phone of 56 columns
+    /// and a desk of 94 both wrap prose to 52, and the two lay a turn out differently.
+    /// </param>
     private readonly record struct DisplayKey(
         IReadOnlyList<ChatMessage> Messages,
         bool ShowData,
         int Width,
         string Theme,
-        string Query);
+        string Query,
+        bool Narrow);
 
     private DisplayKey _displayKey;
     private List<DisplayRow>? _display;
@@ -1830,7 +1835,7 @@ internal sealed partial class ConversationView : ViewBase
     {
         var theme = context.Theme;
         var width = Measure(context);
-        var key = new DisplayKey(_messages, _showData, width, theme.Name, _activeQuery);
+        var key = new DisplayKey(_messages, _showData, width, theme.Name, _activeQuery, context.Narrow);
 
         if (_display is not null && _displayKey == key)
         {
@@ -1870,12 +1875,20 @@ internal sealed partial class ConversationView : ViewBase
                 1,
                 width - Draw.Width(chip) - Draw.Width(flag) - Draw.Width(stamp));
 
+            // On a phone the name alone, in its colour: no chip, no time. A screen of thirty-
+            // eight columns reads a turn at a time, and a time at the end of every speaker line
+            // is a column of figures beside the prose that nobody is reading. A flag stays —
+            // it is the one thing on this line that is news. The leading space is the one the
+            // chip carried: a speaker line's marker has no space of its own after it, and
+            // without it the name sat a column left of the text it introduces.
             rows.Add(new DisplayRow(
                 i,
                 MarkerKind.Speaker,
-                Draw.Literal(chip, style.Combine(theme.Surface))
-                + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
-                + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
+                context.Narrow
+                    ? Draw.Literal(Draw.Fit(" " + label + flag, width), style)
+                    : Draw.Literal(chip, style.Combine(theme.Surface))
+                      + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
+                      + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
 
             foreach (var line in message.Text.Split('\n'))
             {
@@ -1896,7 +1909,10 @@ internal sealed partial class ConversationView : ViewBase
             // empty string becomes an empty Markup, which occupies no row at all.
             rows.Add(new DisplayRow(i, MarkerKind.None, " "));
 
-            if (i < visible.Count - 1)
+            // The blank alone separates turns on a phone. The hairline is there so a wall of
+            // prose on a wide screen scans as a sequence of turns; on a narrow one the speaker's
+            // name in its colour already does that, and the rule was a row per turn of nothing.
+            if (i < visible.Count - 1 && !context.Narrow)
             {
                 rows.Add(new DisplayRow(
                     i,
