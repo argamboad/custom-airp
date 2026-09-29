@@ -131,6 +131,12 @@ internal interface IView
     /// <summary>Shown in the header's breadcrumb.</summary>
     string Title { get; }
 
+    /// <summary>
+    /// A few words about where the reader is, for the right-hand end of a phone's one header
+    /// row — a conversation's position and cost. Empty when the view has nothing to add.
+    /// </summary>
+    string Summary { get; }
+
     /// <summary>Shown in the footer legend.</summary>
     IReadOnlyList<KeyHint> KeyHints { get; }
 
@@ -172,6 +178,9 @@ internal abstract class ViewBase : IView
 {
     /// <inheritdoc />
     public abstract string Title { get; }
+
+    /// <inheritdoc />
+    public virtual string Summary => string.Empty;
 
     /// <inheritdoc />
     public virtual IReadOnlyList<KeyHint> KeyHints => [];

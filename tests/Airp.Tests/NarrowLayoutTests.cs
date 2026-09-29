@@ -11,25 +11,34 @@ using Spectre.Console.Rendering;
 namespace Airp.Tests;
 
 /// <summary>
-/// The conversation on a phone: 54 columns, which is what a terminal on one reports.
+/// The conversation on a phone: 38 columns, which is what a terminal on one reports at a font
+/// size that can be read.
 /// </summary>
 /// <remarks>
-/// The desk layout at that width clamped the reading column to forty and centred it, so a
-/// quarter of the screen was margin, and two captions written to fit a wide window each
-/// wrapped onto a second row. Every assertion here is made at the phone's width and again at
-/// a desk's, because the point is that one changes and the other does not.
+/// The desk layout at that width spent ten of thirty-eight rows on chrome, and every header
+/// line that wrapped was a row the transcript was not told about, taken back from the bottom
+/// of the screen — the last lines of the last reply could not be reached. Most assertions are
+/// made at the phone's width and again at a desk's, because the point is that one changes and
+/// the other does not.
 /// </remarks>
 public class NarrowLayoutTests
 {
-    private const int Phone = 54;
+    private const int Phone = 38;
     private const int Desk = 100;
+    private const int Height = 30;
 
     private static RenderContext Context(int width)
-        => new(width, 24, Theme.For(ThemeName.Dark), new AirpOptions());
+        => new(width, Height, Theme.For(ThemeName.Dark), new AirpOptions());
 
     private static KeyStroke Nav(char c)
         => KeyMap.Resolve(
             new ConsoleKeyInfo(c, default, false, false, false),
+            KeyboardMode.Standard,
+            KeyContext.Navigation);
+
+    private static KeyStroke Down()
+        => KeyMap.Resolve(
+            new ConsoleKeyInfo('\0', ConsoleKey.DownArrow, false, false, false),
             KeyboardMode.Standard,
             KeyContext.Navigation);
 
@@ -45,23 +54,23 @@ public class NarrowLayoutTests
         });
 
         console.Profile.Width = width;
-        console.Profile.Height = 24;
+        console.Profile.Height = 60;
         console.Write(renderable);
 
         return writer.ToString();
     }
 
     private static string[] Lines(string rendered)
-        => rendered.Split('\n').Select(static line => line.TrimEnd('\r')).ToArray();
+        => rendered.TrimEnd('\r', '\n').Split('\n').Select(static line => line.TrimEnd('\r')).ToArray();
 
-    private static async Task<ConversationView> ViewAsync()
+    private static async Task<ConversationView> ViewAsync(string reply = "the reply")
     {
         var conversations = Substitute.For<IConversationService>();
         conversations.GetMessagesAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(_ =>
             [
                 new() { Id = "1", ConversationId = "c", Role = ChatRole.User, Text = "what I asked" },
-                new() { Id = "2", ConversationId = "c", Role = ChatRole.Assistant, Text = "the reply" },
+                new() { Id = "2", ConversationId = "c", Role = ChatRole.Assistant, Text = reply },
             ]);
 
         var view = new ConversationView(
@@ -82,6 +91,7 @@ public class NarrowLayoutTests
     public void Sixty_columns_is_where_narrow_begins()
     {
         Context(Phone).Narrow.ShouldBeTrue();
+        Context(54).Narrow.ShouldBeTrue();
         Context(RenderContext.NarrowWidth - 1).Narrow.ShouldBeTrue();
         Context(RenderContext.NarrowWidth).Narrow.ShouldBeFalse();
         Context(Desk).Narrow.ShouldBeFalse();
@@ -92,30 +102,45 @@ public class NarrowLayoutTests
     {
         var view = await ViewAsync();
 
-        // The counts line is the first thing the view draws, so where it starts is where the
-        // column starts. On a desk the sixty-percent column has a margin before it.
-        var phone = Lines(Render(view.Render(Context(Phone)), Phone)).First(static l => l.Contains("message 2/2"));
-        var desk = Lines(Render(view.Render(Context(Desk)), Desk)).First(static l => l.Contains("message 2/2"));
+        // The speaker's chip opens each turn. On a phone it sits against the left edge, after
+        // the marker's columns; on a desk the sixty-percent column is centred with a margin.
+        var phone = Lines(Render(view.Render(Context(Phone)), Phone)).First(static l => l.Contains("Blake"));
+        var desk = Lines(Render(view.Render(Context(Desk)), Desk)).First(static l => l.Contains("Blake"));
 
-        phone.ShouldStartWith("message");
-        desk.ShouldStartWith(" ");
+        phone.IndexOf("Blake", StringComparison.Ordinal).ShouldBeLessThan(4);
+        desk.IndexOf("Blake", StringComparison.Ordinal).ShouldBeGreaterThan(10);
     }
 
     [Fact]
-    public async Task On_a_phone_the_counts_fit_one_row_and_lose_the_word_count()
+    public async Task On_a_phone_the_counts_move_to_the_header_row()
     {
         var view = await ViewAsync();
 
-        var phone = Lines(Render(view.Render(Context(Phone)), Phone));
+        var phone = Render(view.Render(Context(Phone)), Phone);
         var desk = Render(view.Render(Context(Desk)), Desk);
 
-        // The cursor opens on the latest turn, so the position reads 2/2.
-        phone.ShouldContain(static l => l.Contains("message 2/2") && l.Contains("1 yours") && l.Contains("1 replies"));
-        phone.ShouldNotContain(static l => l.Contains("words in this one"));
+        // The view's own header is empty on a phone; the position is what the shell's one row
+        // shows beside the story's name. The cursor opens on the latest turn.
+        phone.ShouldNotContain("message 2/2");
+        phone.ShouldNotContain("yours");
+        view.Summary.ShouldBe("2/2");
 
-        // Collapsed, because at a desk's default sixty-percent column this line already folds
-        // once; the phrase across the fold is still the phrase.
-        System.Text.RegularExpressions.Regex.Replace(desk, @"\s+", " ").ShouldContain("words in this one");
+        desk.ShouldContain("message 2/2");
+    }
+
+    [Fact]
+    public async Task On_a_phone_the_transcript_is_never_taller_than_its_height()
+    {
+        // The bug this whole change began from: a header line that wrapped pushed the bottom
+        // of the transcript off the screen. Whatever the view draws has to fit what it was given.
+        var view = await ViewAsync(string.Join(' ', Enumerable.Repeat("prose", 600)));
+
+        for (var i = 0; i < 200; i++)
+        {
+            await view.HandleKeyAsync(Down(), Context(Phone), CancellationToken.None);
+        }
+
+        Lines(Render(view.Render(Context(Phone)), Phone)).Length.ShouldBeLessThanOrEqualTo(Height);
     }
 
     [Fact]
@@ -132,5 +157,34 @@ public class NarrowLayoutTests
         phone.ShouldContain(static l => l.StartsWith("You", StringComparison.Ordinal) && l.Contains("0 words"));
         phone.ShouldNotContain(static l => l.Contains("Enter sends"));
         desk.ShouldContain("Enter sends");
+    }
+
+    [Fact]
+    public void The_phone_header_is_one_row_and_its_rule_whatever_the_title()
+    {
+        var header = Lines(Render(
+            Shell.BuildPhoneHeader(
+                Theme.For(ThemeName.Dark),
+                title: "BJU - Student - Soccer, the long version of the name",
+                summary: "112/240 · $0.1313",
+                width: Phone),
+            Phone));
+
+        header.Length.ShouldBe(2);
+        header[0].Length.ShouldBeLessThanOrEqualTo(Phone);
+        header[0].ShouldStartWith("BJU - Student");
+        header[0].ShouldContain("…");
+        header[0].ShouldEndWith("112/240 · $0.1313");
+    }
+
+    [Fact]
+    public void The_phone_header_gives_the_whole_row_to_a_title_with_no_summary()
+    {
+        var header = Lines(Render(
+            Shell.BuildPhoneHeader(Theme.For(ThemeName.Dark), title: "Chats", summary: string.Empty, width: Phone),
+            Phone));
+
+        header.Length.ShouldBe(2);
+        header[0].TrimEnd().ShouldBe("Chats");
     }
 }
