@@ -184,6 +184,106 @@ public class TranscriptScrollingTests
         Render(view.Render(Context())).ShouldContain("message 2/2");
     }
 
+    // The arrows, which is what a swipe on a phone arrives as. The conversation opens on the
+    // newest reply at its first line, and ↓ used to mean only "the next message": with none to
+    // move to, a swipe did nothing, and a long reply could not be read past its first screen.
+
+    [Fact]
+    public async Task ArrowDown_ReadsOnThroughALongReply()
+    {
+        var view = await BuildAsync(Message("m1", ChatRole.Assistant, LongReply(60), 0));
+        Render(view.Render(Context()));
+
+        await view.HandleKeyAsync(Key(ConsoleKey.DownArrow), Context(), CancellationToken.None);
+        var after = Render(view.Render(Context()));
+
+        // Rows are the speaker, then line00, line01, line02: three rows down starts at line02.
+        after.ShouldNotContain("line01");
+        after.ShouldContain("line02");
+    }
+
+    [Fact]
+    public async Task ArrowDown_ReachesTheEndOfTheNewestReply()
+    {
+        var view = await BuildAsync(
+            Message("m1", ChatRole.User, "a question", 0),
+            Message("m2", ChatRole.Assistant, LongReply(60), 1));
+        Render(view.Render(Context()));
+
+        for (var i = 0; i < 30; i++)
+        {
+            await view.HandleKeyAsync(Key(ConsoleKey.DownArrow), Context(), CancellationToken.None);
+            Render(view.Render(Context()));
+        }
+
+        var text = Render(view.Render(Context()));
+        text.ShouldContain("line59");
+        text.ShouldContain("message 2/2");
+    }
+
+    [Fact]
+    public async Task ArrowUp_ReadsBackToTheStartOfALongReply()
+    {
+        var view = await BuildAsync(Message("m1", ChatRole.Assistant, LongReply(60), 0));
+        Render(view.Render(Context()));
+
+        for (var i = 0; i < 30; i++)
+        {
+            await view.HandleKeyAsync(Key(ConsoleKey.DownArrow), Context(), CancellationToken.None);
+            Render(view.Render(Context()));
+        }
+
+        for (var i = 0; i < 30; i++)
+        {
+            await view.HandleKeyAsync(Key(ConsoleKey.UpArrow), Context(), CancellationToken.None);
+            Render(view.Render(Context()));
+        }
+
+        Render(view.Render(Context())).ShouldContain("line00");
+    }
+
+    [Fact]
+    public async Task ArrowDown_LeavesALongReplyOnlyOnceItsEndIsOnScreen()
+    {
+        var view = await BuildAsync(
+            Message("m1", ChatRole.Assistant, LongReply(60), 0),
+            Message("m2", ChatRole.User, "what I said next", 1));
+
+        await view.HandleKeyAsync(Key(ConsoleKey.Home), Context(), CancellationToken.None);
+        Render(view.Render(Context()));
+
+        await view.HandleKeyAsync(Key(ConsoleKey.DownArrow), Context(), CancellationToken.None);
+        Render(view.Render(Context())).ShouldContain("message 1/2");
+
+        for (var i = 0; i < 30; i++)
+        {
+            await view.HandleKeyAsync(Key(ConsoleKey.DownArrow), Context(), CancellationToken.None);
+            Render(view.Render(Context()));
+        }
+
+        var text = Render(view.Render(Context()));
+        text.ShouldContain("message 2/2");
+        text.ShouldContain("what I said next");
+    }
+
+    [Fact]
+    public async Task ArrowUp_EntersTheLongReplyBeforeAtItsEnd()
+    {
+        // Reading backwards meets the previous turn at its last line, not its first — jumping to
+        // its first would skip the whole of it on the way up.
+        var view = await BuildAsync(
+            Message("m1", ChatRole.Assistant, LongReply(60), 0),
+            Message("m2", ChatRole.User, "what I said next", 1));
+        Render(view.Render(Context()));
+
+        await view.HandleKeyAsync(Key(ConsoleKey.UpArrow), Context(), CancellationToken.None);
+        var text = Render(view.Render(Context()));
+
+        text.ShouldContain("message 1/2");
+        text.ShouldContain("line59");
+        text.ShouldNotContain("line00");
+    }
+
     [Fact]
     public async Task AShortTranscript_DoesNotScrollPastItself()
     {
