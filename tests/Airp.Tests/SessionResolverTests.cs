@@ -9,8 +9,8 @@ namespace Airp.Tests;
 /// </summary>
 /// <remarks>
 /// Getting this wrong writes a turn into somebody else's conversation, and the store is
-/// append-only, so it stays wrong. Every case here is therefore about refusing rather than
-/// guessing.
+/// append-only, so it stays wrong — and the turn is billed. Only a tag the reader wrote says where
+/// a request goes (ADR 0017); every case without one is a refusal.
 /// </remarks>
 public class SessionResolverTests
 {
@@ -27,24 +27,13 @@ public class SessionResolverTests
         Chat("bbb222", "Harbor", "Blake"),
     ];
 
-    private static readonly IReadOnlyDictionary<string, string> Openings =
-        new Dictionary<string, string>
-        {
-            ["aaa111"] = "No esperaba encontrar a alguien en la playa a esta hora.",
-            ["bbb222"] = "So what happened out there today?",
-        };
-
     [Fact]
     public void A_tag_names_the_conversation_outright()
     {
-        var resolved = SessionResolver.Resolve(
-            "You are a character. [[rp:bbb222]] Stay in scene.",
-            "anything at all",
-            Two,
-            Openings);
+        var resolved = SessionResolver.Resolve("You are a character. [[rp:bbb222]] Stay in scene.", Two);
 
         resolved.ConversationId.ShouldBe("bbb222");
-        resolved.How.ShouldBe(SessionMatch.Tag);
+        resolved.Tagged.ShouldBeTrue();
     }
 
     [Theory]
@@ -52,97 +41,43 @@ public class SessionResolverTests
     [InlineData("[[ rp : aaa111 ]]")]
     [InlineData("[[RP:aaa111]]")]
     public void The_tag_is_read_loosely_enough_to_survive_being_typed_by_hand(string tag)
-        => SessionResolver.Resolve(tag, null, Two, Openings).ConversationId.ShouldBe("aaa111");
+        => SessionResolver.Resolve(tag, Two).ConversationId.ShouldBe("aaa111");
 
     [Fact]
-    public void A_tag_naming_nothing_fails_rather_than_falling_back()
+    public void A_tag_naming_nothing_fails_and_says_it_was_a_tag()
     {
-        // Falling through here would write into whichever conversation the other strategies
-        // liked, which is the opposite of what someone who typed an explicit id wanted.
-        var resolved = SessionResolver.Resolve(
-            "[[rp:zzz999]] Elena is here.",
-            "No esperaba encontrar a alguien en la playa a esta hora.",
-            Two,
-            Openings);
+        // Two different fixes: a missing tag is added, a wrong one is corrected. The refusal
+        // says which, and neither falls back to writing somewhere else.
+        var resolved = SessionResolver.Resolve("[[rp:zzz999]] Elena is here.", Two);
 
         resolved.ConversationId.ShouldBeNull();
+        resolved.Tagged.ShouldBeTrue();
     }
 
     [Fact]
-    public void A_character_name_resolves_when_only_one_conversation_has_it()
+    public void A_character_name_alone_is_not_enough()
     {
-        var resolved = SessionResolver.Resolve(
-            "You are Elena, a mercenary in Vardhal.",
-            "anything",
-            Two,
-            Openings);
-
-        resolved.ConversationId.ShouldBe("aaa111");
-        resolved.How.ShouldBe(SessionMatch.Speaker);
-    }
-
-    [Fact]
-    public void Two_conversations_with_the_same_character_are_ambiguous_not_a_coin_toss()
-    {
-        IReadOnlyList<Chat> both = [Chat("aaa111", "One", "Elena"), Chat("ccc333", "Two", "Elena")];
-
-        var resolved = SessionResolver.Resolve("You are Elena.", null, both, Openings);
+        // This used to resolve, because only one conversation had Elena. A test chat in the
+        // front end that mentioned her would then have written a billed turn into that story.
+        var resolved = SessionResolver.Resolve("You are Elena, a mercenary in Vardhal.", Two);
 
         resolved.ConversationId.ShouldBeNull();
-        resolved.Ambiguous.ShouldBeTrue();
+        resolved.Tagged.ShouldBeFalse();
     }
 
     [Fact]
-    public void The_opening_turn_identifies_a_transcript_when_nothing_else_does()
-    {
-        // A front end that truncates keeps the start of a scene long after the middle is gone.
-        var resolved = SessionResolver.Resolve(
-            "Some framing with no character name in it.",
-            "No esperaba encontrar a alguien en la playa a esta hora.",
-            Two,
-            Openings);
-
-        resolved.ConversationId.ShouldBe("aaa111");
-        resolved.How.ShouldBe(SessionMatch.Opening);
-    }
-
-    [Fact]
-    public void An_opening_survives_being_reformatted_in_transit()
-    {
-        // Re-wrapped lines and swapped punctuation do not make it a different message.
-        var resolved = SessionResolver.Resolve(
-            "no character name here",
-            "No esperaba encontrar\na alguien en la playa, a esta hora...",
-            Two,
-            Openings);
-
-        resolved.ConversationId.ShouldBe("aaa111");
-    }
-
-    [Fact]
-    public void Nothing_recognisable_resolves_to_nothing()
-    {
-        var resolved = SessionResolver.Resolve("Hello there.", "Hello there.", Two, Openings);
-
-        resolved.ConversationId.ShouldBeNull();
-        resolved.How.ShouldBe(SessionMatch.None);
-        resolved.Ambiguous.ShouldBeFalse();
-    }
+    public void An_opening_that_matches_a_story_is_not_enough_either()
+        => SessionResolver.Resolve("So what happened out there today?", Two).ConversationId.ShouldBeNull();
 
     [Fact]
     public void An_empty_store_resolves_to_nothing_rather_than_throwing()
-        => SessionResolver.Resolve("[[rp:aaa111]]", "x", [], new Dictionary<string, string>())
-            .ConversationId.ShouldBeNull();
+        => SessionResolver.Resolve("[[rp:aaa111]]", []).ConversationId.ShouldBeNull();
 
     [Fact]
     public void The_tag_wins_over_a_character_name_that_points_elsewhere()
     {
-        // The reader said which one. Inference does not get to overrule that.
-        var resolved = SessionResolver.Resolve(
-            "You are Blake. [[rp:aaa111]]",
-            null,
-            Two,
-            Openings);
+        // The reader said which one; a name in the text does not get to overrule that.
+        var resolved = SessionResolver.Resolve("You are Blake. [[rp:aaa111]]", Two);
 
         resolved.ConversationId.ShouldBe("aaa111");
     }

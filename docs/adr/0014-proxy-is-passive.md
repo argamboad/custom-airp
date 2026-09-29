@@ -19,7 +19,9 @@ our store through the same compose path the terminal uses.
 
 - `SessionResolver` must map an anonymous request to a conversation — by explicit `[[rp:id]]`
   tag, unique speaker, or opening prefix — and **refuses rather than guesses**, because a turn
-  written into the wrong conversation is permanent (ADR 0003).
+  written into the wrong conversation is permanent (ADR 0003). *Narrowed by
+  [ADR 0017](0017-proxy-writes-only-where-tagged.md): the tag alone, since a unique match among
+  stored stories is still a guess about a chat the store has never seen.*
 - `stream: true` is honoured by chunking the finished reply as SSE; true streaming would
   change the storage contract (a partially-arrived reply is not a turn) and waits on that
   decision.
