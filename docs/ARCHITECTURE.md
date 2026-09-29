@@ -583,10 +583,10 @@ front end's site.
 - **Bearer token always**, compared in constant time; the process refuses to start without one
   ([Program.cs](../src/Airp.Proxy/Program.cs)). It is a different secret from the model key: this
   one gets typed into a third party's settings.
-- `SessionResolver` maps the incoming request to a stored conversation by three strategies in
-  trust order — explicit `[[rp:<id>]]` tag, unique speaker name, opening-text prefix — and
-  **refuses rather than guesses** when none is unambiguous, because a turn written into the
-  wrong conversation is permanent.
+- `SessionResolver` maps the incoming request to the stored conversation its `[[rp:<id>]]` tag
+  names, and to nothing else: a request without a tag, or with one naming no conversation, is
+  refused and writes nothing, because a turn written into the wrong conversation is permanent
+  and billed ([ADR 0017](adr/0017-proxy-writes-only-where-tagged.md)).
 - Only the newest user turn is taken from the request; the front end's truncated history is
   discarded and the prompt is rebuilt from the store by the same `ComposeAsync` the terminal
   uses.

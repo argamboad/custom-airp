@@ -132,46 +132,35 @@ app.MapPost("/v1/chat/completions", async (HttpContext context, CancellationToke
     }
 
     var chats = await conversations.ListAsync(cancellationToken).ConfigureAwait(false);
-    var openings = new Dictionary<string, string>(StringComparer.Ordinal);
-
-    foreach (var chat in chats)
-    {
-        var stored = await conversations.GetMessagesAsync(chat.Id, cancellationToken).ConfigureAwait(false);
-        var first = stored.FirstOrDefault(static m => m.Role == Airp.Domain.Conversations.ChatRole.User);
-
-        if (first is not null)
-        {
-            openings[chat.Id] = first.Text;
-        }
-    }
-
-    var resolved = SessionResolver.Resolve(everything, userTurns[0], chats, openings);
+    var resolved = SessionResolver.Resolve(everything, chats);
 
     if (resolved.ConversationId is null)
     {
-        // Writing a turn into the wrong conversation is permanent here, so an unidentified
-        // request is refused rather than guessed at. The message says how to fix it, because
+        // Only a tag says where a turn goes (ADR 0017), and writing one into the wrong story is
+        // permanent and billed, so nothing is written. The message says how to fix it, because
         // the reader is looking at a chat window and not at this log.
-        log.LogWarning("Could not identify a conversation. Ambiguous: {Ambiguous}.", resolved.Ambiguous);
+        log.LogWarning(resolved.Tagged
+            ? "The request's [[rp:…]] tag names no stored conversation; nothing written."
+            : "The request carries no [[rp:…]] tag; nothing written.");
 
         return Results.Json(
             new
             {
                 error = new
                 {
-                    message = resolved.Ambiguous
-                        ? "More than one stored conversation fits this chat. Add [[rp:<id>]] to the "
-                          + "custom prompt to say which one. 'airp audit' lists the ids."
-                        : "No stored conversation matches this chat. Add [[rp:<id>]] to the custom "
-                          + "prompt, or start one with 'airp new'.",
+                    message = resolved.Tagged
+                        ? "The [[rp:…]] tag in this chat names no stored conversation, so nothing was "
+                          + "written. 'airp audit <chat>' prints a conversation's id."
+                        : "This chat has no [[rp:<id>]] tag, so nothing was written. Put one in its "
+                          + "custom prompt with the id of the story it plays — 'airp audit <chat>' "
+                          + "prints it.",
                     code = 404,
                 },
             },
             statusCode: StatusCodes.Status404NotFound);
     }
 
-    log.LogInformation(
-        "Request resolved to {Conversation} by {How}.", resolved.ConversationId, resolved.How);
+    log.LogInformation("Request tagged for {Conversation}.", resolved.ConversationId);
 
     // The newest user turn is the only thing taken from the request. Everything else the front
     // end sent — its truncated history, its own framing — is what this exists to replace.

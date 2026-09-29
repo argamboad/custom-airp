@@ -234,11 +234,11 @@ sequenceDiagram
 
     J->>PX: POST /v1/chat/completions + Bearer
     PX->>PX: constant-time token check — 401 on mismatch
-    PX->>P: ListAsync + first stored user turn per chat
-    PX->>SR: Resolve(full prompt, first user turn, chats, openings)
-    Note over SR: 1. [[rp:id]] tag — exact<br/>2. speaker name — unique or ambiguous<br/>3. opening prefix — normalised first 80 chars
-    alt no unambiguous match
-        PX-->>J: 404 with instructions (never guesses —<br/>a wrong write is permanent)
+    PX->>P: ListAsync
+    PX->>SR: Resolve(full prompt, chats)
+    Note over SR: the [[rp:id]] tag, and nothing else —<br/>no names, no openings (ADR 0017)
+    alt no tag, or a tag naming nothing
+        PX-->>J: 404 saying which, and how to fix it<br/>(nothing written — a wrong write is permanent)
     else resolved
         PX->>P: SendAsync(id, newest user turn only)
         Note over P: flows 1–3 run exactly as from the terminal —<br/>the front end's truncated history is discarded

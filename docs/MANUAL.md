@@ -964,24 +964,40 @@ repository. This one only ever reads the files.
 Optional. It is for playing **your local conversations** from your phone, with Janitor's
 interface but your memory and your model.
 
+The proxy needs a token of its own, different from the model key — it is what you type into
+Janitor. On Windows, `airp secret set AIRP_PROXY_TOKEN`; on Linux and macOS, where that command
+refuses, an environment variable of the same name, exactly as for the model key. Then:
+
 ```bash
-airp secret set AIRP_PROXY_TOKEN     # your own token, different from the model key
-dotnet run --project src/Airp.Proxy --urls http://localhost:5290
+dotnet run --project src/Airp.Proxy --urls http://127.0.0.1:5290
 ```
 
-Then a TLS tunnel — `cloudflared tunnel --url http://localhost:5290` — and in Janitor you
-point the Proxy URL at `https://whatever/v1/chat/completions`, with that token as the API key.
+**Janitor has to be able to reach it, and that can stay private.** Tried against Janitor on a
+phone: the request came from the phone itself, not from Janitor's servers — so a private network
+the phone is on is enough, and nothing needs to face the internet. With Tailscale, on the machine
+running the proxy:
 
-In the Custom Prompt put `[[rp:<id>]]` with the conversation's id, which `airp audit` prints
-under the conversation's name. Without it the proxy tries to recognise the conversation by its
-character or by how the transcript opens, and **if it cannot, it returns an error rather than
-guessing** — writing a turn into the wrong conversation is permanent.
+```bash
+sudo tailscale serve --bg http://127.0.0.1:5290
+```
 
-The proxy does not start without a token configured. Behind it is a database with all your
-conversations in the clear, reachable from wherever the tunnel reaches.
+gives it an HTTPS address only your own devices can reach. In Janitor, point the Proxy URL at
+that address followed by `/v1/chat/completions`, with the token as the API key. A public tunnel
+would work too, and would put a database of all your conversations on the internet behind that
+one token.
+
+**Every chat needs `[[rp:<id>]]` in its Custom Prompt**, with the id of the story it plays —
+`airp audit <chat>` prints it under the name. A chat without one writes nothing: the proxy
+refuses it and says why. It never works out a story from a character's name or how a chat
+opens, because a match among your stories is still a guess about a Janitor chat they have never
+seen, and a turn written into the wrong story is permanent and billed.
 
 Janitor sends its own truncated history; the proxy **discards it** and builds the prompt from
-your store.
+your store. Only your newest message is taken from the request.
+
+**Not yet understood by the proxy:** Janitor's reroll resends your last message, and the proxy
+stores it as a new turn — your message twice, answered twice. Regenerate in airp instead. Edits
+and deletions made in Janitor do not reach the store either.
 
 ---
 
