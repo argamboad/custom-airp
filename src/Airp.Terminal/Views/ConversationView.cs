@@ -182,6 +182,25 @@ internal sealed partial class ConversationView : ViewBase
                 new("Esc", "Back"),
             ];
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Reroll presses Ctrl+G rather than G: in the vim dialect a bare G is the end of the
+    /// transcript, and a button has to mean the same thing whichever dialect is configured.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => _searching
+        ? [Button.Enter("Find"), Button.Escape("Cancel")]
+        : _branching
+        ? [Button.Enter("Branch"), Button.Escape("Cancel")]
+        : _composing
+        ? [Button.Enter("Send"), Button.Escape("Close")]
+        :
+        [
+            Button.Back,
+            Button.Press("Write", 'i'),
+            Button.Press("Reroll", ConsoleKey.G, control: true),
+            Button.Press("Carry on", '>'),
+        ];
+
     /// <summary>The message under the cursor.</summary>
     private ChatMessage? Selected =>
         _selected >= 0 && _selected < Visible.Count ? Visible[_selected] : null;

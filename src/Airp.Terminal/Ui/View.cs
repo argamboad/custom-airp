@@ -33,6 +33,49 @@ internal readonly record struct RenderContext(int Width, int Height, Theme Theme
 /// <param name="Label">What it does.</param>
 internal readonly record struct KeyHint(string Key, string Label);
 
+/// <summary>One button on a phone's bottom bar: what it says, and the key a tap on it presses.</summary>
+/// <remarks>
+/// A key rather than a command, and dispatched exactly as a real key press would be — through
+/// the <see cref="KeyMap"/>, into the view's own handler. A button is then only ever a
+/// shortcut to something the keyboard already does, and it cannot drift from it: a
+/// hand-built stroke once shipped a binding nobody could press, and a button that bypassed
+/// the map would be the same mistake with a better label.
+/// </remarks>
+/// <param name="Label">What the button says.</param>
+/// <param name="Key">The key a tap presses.</param>
+internal readonly record struct Button(string Label, ConsoleKeyInfo Key)
+{
+    /// <summary>A button that types a character, the way a shortcut letter is pressed.</summary>
+    /// <param name="label">What the button says.</param>
+    /// <param name="character">The character.</param>
+    /// <returns>The button.</returns>
+    public static Button Press(string label, char character)
+        => new(label, new ConsoleKeyInfo(character, default, false, false, false));
+
+    /// <summary>A button that presses a named key, with modifiers if it needs them.</summary>
+    /// <param name="label">What the button says.</param>
+    /// <param name="key">The key.</param>
+    /// <param name="character">The character the key carries, if any.</param>
+    /// <param name="alt">Whether Alt is held.</param>
+    /// <param name="control">Whether Ctrl is held.</param>
+    /// <returns>The button.</returns>
+    public static Button Press(string label, ConsoleKey key, char character = '\0', bool alt = false, bool control = false)
+        => new(label, new ConsoleKeyInfo(character, key, false, alt, control));
+
+    /// <summary>Back one screen: Escape, which a phone's keyboard does not have to hand.</summary>
+    public static Button Back { get; } = Press("‹", ConsoleKey.Escape, '\u001b');
+
+    /// <summary>Confirms: Enter.</summary>
+    /// <param name="label">What confirming does here.</param>
+    /// <returns>The button.</returns>
+    public static Button Enter(string label) => Press(label, ConsoleKey.Enter, '\r');
+
+    /// <summary>Gives up on what is being typed: Escape.</summary>
+    /// <param name="label">What giving up does here.</param>
+    /// <returns>The button.</returns>
+    public static Button Escape(string label) => Press(label, ConsoleKey.Escape, '\u001b');
+}
+
 /// <summary>What a view wants the shell to do after handling a key.</summary>
 internal abstract record ViewAction
 {
@@ -140,6 +183,12 @@ internal interface IView
     /// <summary>Shown in the footer legend.</summary>
     IReadOnlyList<KeyHint> KeyHints { get; }
 
+    /// <summary>
+    /// The phone's bottom bar, most useful first. The shell adds <c>⋯</c> for the command
+    /// list at the end and drops from the right whatever does not fit.
+    /// </summary>
+    IReadOnlyList<Button> Buttons { get; }
+
     /// <summary>Whether letters typed here are literal text rather than shortcuts.</summary>
     KeyContext KeyContext { get; }
 
@@ -184,6 +233,10 @@ internal abstract class ViewBase : IView
 
     /// <inheritdoc />
     public virtual IReadOnlyList<KeyHint> KeyHints => [];
+
+    /// <inheritdoc />
+    /// <remarks>Back, unless the view says otherwise: every screen but the first can be left.</remarks>
+    public virtual IReadOnlyList<Button> Buttons => [Button.Back];
 
     /// <inheritdoc />
     public virtual KeyContext KeyContext => KeyContext.Navigation;

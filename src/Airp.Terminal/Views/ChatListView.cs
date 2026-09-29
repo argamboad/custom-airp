@@ -55,6 +55,18 @@ internal sealed class ChatListView : ViewBase, IMouseAware
     private static string Count(int count) => $"{count} chat{(count == 1 ? string.Empty : "s")}";
 
     /// <inheritdoc />
+    /// <remarks>
+    /// No Back: this is the first screen, and Back from here is Quit, which is not a thing to
+    /// put under a thumb. New presses a lower-case n, because the vim dialect reads a capital
+    /// N as the previous search match and the list would never see it.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => _filtering
+        ? [Button.Enter("Apply"), Button.Escape("Clear")]
+        : _renaming
+        ? [Button.Enter("Rename"), Button.Escape("Cancel")]
+        : [Button.Enter("Open"), Button.Press("New", 'n'), Button.Press("Library", 'm')];
+
+    /// <inheritdoc />
     public override IReadOnlyList<KeyHint> KeyHints => _filtering
         ?
         [
