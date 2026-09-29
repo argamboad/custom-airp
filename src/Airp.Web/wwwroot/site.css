@@ -122,3 +122,89 @@ main {
 
 /* What was between asterisks: italic and a little dimmer, as the terminal draws it. */
 .turn em { color: var(--action); }
+
+/* ── Writing ─────────────────────────────────────────────────────────────────────────── */
+
+/* The newest turn's anchor clears the sticky bar when a page returns to it. */
+.turn { scroll-margin-top: 3.5rem; }
+
+textarea, select, button {
+    font: inherit;
+    color: inherit;
+}
+
+textarea, select {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 0.5rem;
+}
+
+textarea { resize: vertical; }
+
+button {
+    min-height: 2.75rem;
+    padding: 0.5rem 1.25rem;
+    background: var(--accent);
+    color: var(--ground);
+    border: 0;
+    border-radius: 0.5rem;
+    font-weight: 600;
+}
+
+.composer {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+}
+
+.composer button { justify-self: end; }
+
+.error {
+    margin: 1rem 0 0;
+    padding: 0.75rem;
+    border-left: 3px solid #e0787a;
+    background: var(--surface);
+}
+
+/* An answer that is not a turn: set apart, so it never reads as part of the story. */
+.aside-answer {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px dashed var(--rule);
+    border-radius: 0.5rem;
+}
+
+.aside-answer p { margin: 0 0 0.75rem; }
+
+.aside-answer p:last-child { margin-bottom: 0; }
+
+.reroll { margin-top: 0.75rem; }
+
+.reroll summary {
+    display: inline-block;
+    padding: 0.5rem 0;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.reroll form {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.reroll label {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+}
+
+.reroll .cost {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+}

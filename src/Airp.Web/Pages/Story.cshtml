@@ -19,14 +19,57 @@
 }
 
 <ol class="turns">
-    @foreach (var turn in Model.Shown)
+    @for (var i = 0; i < Model.Shown.Count; i++)
     {
+        var turn = Model.Shown[i];
         var mine = turn.Role == ChatRole.User;
-        <li class="@(mine ? "turn you" : "turn reply")">
+        var latest = i == Model.Shown.Count - 1;
+
+        @* The newest turn carries the anchor a page returns to: a turn is read from its start. *@
+        <li class="@(mine ? "turn you" : "turn reply")" id="@(latest ? "latest" : null)">
             <span class="who">@(mine ? "You" : Model.Speaker)</span>
             @ProseHtml.Render(turn.Text)
+
+            @if (latest && Model.CanReroll)
+            {
+                <details class="reroll">
+                    <summary>Reroll</summary>
+                    <form method="post" asp-page-handler="Reroll">
+                        <label>
+                            What was wrong with it
+                            <select name="reason">
+                                @foreach (var reason in RegenerateReasons.All)
+                                {
+                                    <option value="@reason" selected="@(reason == RegenerateReason.Steer)">@RegenerateReasons.Label(reason)</option>
+                                }
+                            </select>
+                        </label>
+                        <label>
+                            What should be different <span class="aside">optional</span>
+                            <textarea name="instructions" rows="2"></textarea>
+                        </label>
+                        <button type="submit">Replace this reply</button>
+                        <p class="cost">Costs credits, and this wording is not kept.</p>
+                    </form>
+                </details>
+            }
         </li>
     }
 </ol>
 
-<span id="end"></span>
+@if (Model.Aside is not null)
+{
+    <section class="aside-answer">
+        @ProseHtml.Render(Model.Aside)
+    </section>
+}
+
+@if (Model.Error is not null)
+{
+    <p class="error" role="alert">@Model.Error</p>
+}
+
+<form method="post" asp-page-handler="Send" class="composer">
+    <textarea name="Draft" rows="4" placeholder="Your turn. /help for commands.">@Model.Draft</textarea>
+    <button type="submit">Send</button>
+</form>
