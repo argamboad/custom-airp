@@ -69,8 +69,16 @@ public class NarrowLayoutTests
         conversations.GetMessagesAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns<IReadOnlyList<ChatMessage>>(_ =>
             [
-                new() { Id = "1", ConversationId = "c", Role = ChatRole.User, Text = "what I asked" },
-                new() { Id = "2", ConversationId = "c", Role = ChatRole.Assistant, Text = reply },
+                new()
+                {
+                    Id = "1", ConversationId = "c", Role = ChatRole.User, Text = "what I asked",
+                    SentAtUtc = new DateTimeOffset(2026, 9, 29, 12, 1, 0, TimeSpan.Zero),
+                },
+                new()
+                {
+                    Id = "2", ConversationId = "c", Role = ChatRole.Assistant, Text = reply,
+                    SentAtUtc = new DateTimeOffset(2026, 9, 29, 12, 2, 0, TimeSpan.Zero),
+                },
             ]);
 
         var view = new ConversationView(
@@ -126,6 +134,37 @@ public class NarrowLayoutTests
         view.Summary.ShouldBe("2/2");
 
         desk.ShouldContain("message 2/2");
+    }
+
+    [Fact]
+    public async Task On_a_phone_a_turn_is_its_speaker_its_text_and_a_blank_line()
+    {
+        var view = await ViewAsync();
+        await view.HandleKeyAsync(
+            KeyMap.Resolve(new ConsoleKeyInfo('\0', ConsoleKey.Home, false, false, false), KeyboardMode.Standard, KeyContext.Navigation),
+            Context(Phone),
+            CancellationToken.None);
+
+        var phone = Lines(Render(view.Render(Context(Phone)), Phone));
+        var desk = Lines(Render(view.Render(Context(Desk)), Desk));
+
+        // The time a turn was sent, and the hairline between turns, are the desk's.
+        var stamp = new DateTimeOffset(2026, 9, 29, 12, 2, 0, TimeSpan.Zero).LocalDateTime.ToString("HH:mm");
+        phone.ShouldNotContain(l => l.Contains(stamp));
+        phone.ShouldNotContain(static l => l.Contains('─'));
+        desk.ShouldContain(l => l.Contains(stamp));
+        desk.ShouldContain(static l => l.Contains("───"));
+
+        // What is left: You, what was asked, a blank, Blake, the reply.
+        var you = Array.FindIndex(phone, static l => l.Contains("You"));
+        phone[you + 1].ShouldContain("what I asked");
+
+        // The name starts in the same column as the text under it.
+        phone[you].IndexOf("You", StringComparison.Ordinal)
+            .ShouldBe(phone[you + 1].IndexOf("what", StringComparison.Ordinal));
+        phone[you + 2].Trim().ShouldBeEmpty();
+        phone[you + 3].ShouldContain("Blake");
+        phone[you + 4].ShouldContain("the reply");
     }
 
     [Fact]

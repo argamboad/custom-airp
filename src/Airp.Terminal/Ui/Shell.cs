@@ -44,6 +44,7 @@ internal sealed class Shell
     private StatusKind _statusKind = StatusKind.Info;
     private long _statusAtMs;
     private bool _inputSinceStatus;
+    private IReadOnlyList<ButtonHit> _bar = [];
     private string? _banner;
     private string? _bannerHint;
     private bool _running = true;
@@ -259,7 +260,7 @@ internal sealed class Shell
                     : ViewAction.Push(new HelpView(options.Keyboard));
 
             case AppCommand.CommandPalette when Current is not CommandPaletteView:
-                return ViewAction.Push(new CommandPaletteView(BuildPalette()));
+                return ViewAction.Push(new CommandPaletteView(PaletteFor(Current, BuildPalette())));
 
             case AppCommand.GlobalSearch when !Current.Reserves(AppCommand.GlobalSearch):
                 return Current is SearchView
@@ -299,6 +300,20 @@ internal sealed class Shell
             case MouseEventKind.Ignored:
                 return ViewAction.None;
 
+            // The last row of a phone's screen is the bar. A tap there is the button's key,
+            // pressed through the same path as the keyboard; a tap on a message holding the
+            // row dismisses it, which is what a thumb reaching for a button expects.
+            case MouseEventKind.LeftClick when context.Narrow && mouse.Row >= SafeHeight():
+                if (_bar.Count == 0)
+                {
+                    _status = string.Empty;
+                    return ViewAction.None;
+                }
+
+                return Hit(_bar, mouse.Column) is { } key
+                    ? await DispatchAsync(key, cancellationToken).ConfigureAwait(false)
+                    : ViewAction.None;
+
             default:
                 return Current is IMouseAware aware
                     ? aware.OnClick(mouse.Row - HeaderRows(context.Narrow) - 1, context)
@@ -322,6 +337,22 @@ internal sealed class Shell
                 _statusKind = status.Kind;
                 _statusAtMs = Environment.TickCount64;
                 _inputSinceStatus = false;
+                break;
+
+            // Dispatched exactly as the key would be, and failing the way a key's handler does:
+            // this runs outside the input loop's own guard, so a throw is caught here.
+            case ViewAction.PressAction press:
+                ViewAction pressed;
+                try
+                {
+                    pressed = await DispatchAsync(press.Key, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    pressed = ShowError(ex);
+                }
+
+                await ApplyAsync(pressed, cancellationToken).ConfigureAwait(false);
                 break;
 
             case ViewAction.PushAction push:
@@ -731,9 +762,9 @@ internal sealed class Shell
                               + $"{Markup.Escape(ex.Message)}[/]");
         }
 
-        var header = context.Narrow
-            ? BuildPhoneHeader(context.Theme, Current.Title, Current.Summary, context.Width)
-            : BuildHeader(context);
+        var header = !context.Narrow ? BuildHeader(context)
+            : RoutineStatusShowing ? BuildPhoneNotice(context.Theme, _status, _statusKind, context.Width)
+            : BuildPhoneHeader(context.Theme, Current.Title, Current.Summary, context.Width);
 
         var layout = new Layout("root").SplitRows(
             new Layout("header").Update(header).Size(HeaderRows(context.Narrow)),
@@ -859,6 +890,19 @@ internal sealed class Shell
     /// <summary>Columns a string occupies, named around this class's own <c>Draw</c> method.</summary>
     private static int Cells(string text) => Airp.Terminal.Ui.Draw.Width(text);
 
+    /// <summary>A routine message standing in a phone's header row, fitted, over its rule.</summary>
+    /// <param name="theme">The palette in force.</param>
+    /// <param name="text">The message.</param>
+    /// <param name="kind">Info or success.</param>
+    /// <param name="width">Columns the row has.</param>
+    /// <returns>The header.</returns>
+    internal static IRenderable BuildPhoneNotice(Theme theme, string text, StatusKind kind, int width)
+        => new Rows(
+            new Markup(
+                $"[{(kind == StatusKind.Success ? theme.Success : theme.Muted).ToMarkup()}]"
+                + $"{Markup.Escape(Fit(text, width))}[/]"),
+            new Rule { Style = theme.Border });
+
     /// <summary>Text cut to a column budget, named around this class's own <c>Draw</c> method.</summary>
     private static string Fit(string text, int width) => Airp.Terminal.Ui.Draw.Fit(text, width);
 
@@ -920,24 +964,127 @@ internal sealed class Shell
                 + $"[{theme.Muted.ToMarkup()}]{Markup.Escape(h.Label)}[/]"));
     }
 
-    /// <summary>How long a routine status keeps the phone's one footer row from the legend.</summary>
+    /// <summary>How long a routine status stands in the phone's header row.</summary>
     private const long RoutineStatusMs = 4000;
 
+    /// <summary>Whether a routine status is new enough to stand in the phone's header row.</summary>
+    /// <remarks>
+    /// Where a routine message goes on a phone: over the title for a few seconds, and then the
+    /// title comes back. The bar below stays tappable the whole time, which is the point — the
+    /// thumb is on its way to a button when the message appears.
+    /// </remarks>
+    private bool RoutineStatusShowing
+        => _status.Length > 0
+           && _statusKind is StatusKind.Info or StatusKind.Success
+           && Environment.TickCount64 - _statusAtMs < RoutineStatusMs;
+
+    /// <summary>Where a drawn button landed: its columns, one-based and inclusive, and its key.</summary>
+    /// <param name="From">First column.</param>
+    /// <param name="To">Last column.</param>
+    /// <param name="Key">The key a tap on it presses.</param>
+    internal readonly record struct ButtonHit(int From, int To, ConsoleKeyInfo Key);
+
+    /// <summary>The command list, which every phone bar ends with.</summary>
+    private static Button More { get; } = Button.Press("⋯", ConsoleKey.P, '\u0010', control: true);
+
+    /// <summary>Lays out a phone's bottom bar and records where each button landed.</summary>
+    /// <remarks>
+    /// <para>
+    /// The view's buttons in its order, then <c>⋯</c> for everything else. What does not fit is
+    /// dropped from the right rather than wrapped, and room for <c>⋯</c> is always kept, since
+    /// it is how every dropped button stays reachable.
+    /// </para>
+    /// <para>
+    /// The positions are recorded as the bar is drawn, not worked out again when a tap
+    /// arrives: the two agreeing is the whole of hit-testing, and one piece of arithmetic
+    /// cannot disagree with itself.
+    /// </para>
+    /// <para>Internal so the fit and the positions can be asserted.</para>
+    /// </remarks>
+    /// <param name="buttons">The view's buttons, most useful first.</param>
+    /// <param name="width">Columns the bar has.</param>
+    /// <param name="theme">The palette in force.</param>
+    /// <returns>Markup for the bar and where each button sits.</returns>
+    internal static (string Markup, IReadOnlyList<ButtonHit> Hits) PhoneBar(
+        IReadOnlyList<Button> buttons,
+        int width,
+        Theme theme)
+    {
+        static int Cost(Button button) => Cells(button.Label) + 2;
+
+        var reserve = 1 + Cost(More);
+        var kept = new List<Button>();
+        var used = 0;
+
+        foreach (var button in buttons)
+        {
+            var cost = Cost(button) + (kept.Count > 0 ? 1 : 0);
+            if (used + cost + reserve > width)
+            {
+                break;
+            }
+
+            kept.Add(button);
+            used += cost;
+        }
+
+        kept.Add(More);
+
+        var markup = new System.Text.StringBuilder();
+        var hits = new List<ButtonHit>();
+        var column = 1;
+
+        foreach (var button in kept)
+        {
+            if (hits.Count > 0)
+            {
+                markup.Append(' ');
+                column++;
+            }
+
+            var cell = " " + button.Label + " ";
+            hits.Add(new ButtonHit(column, column + Cells(cell) - 1, button.Key));
+            markup.Append($"[{theme.Key.ToMarkup()}]{Markup.Escape(cell)}[/]");
+            column += Cells(cell);
+        }
+
+        return (markup.ToString(), hits);
+    }
+
+    /// <summary>The key of the button under a column, if a button is there at all.</summary>
+    /// <param name="hits">Where the buttons were drawn.</param>
+    /// <param name="column">The tapped column, one-based.</param>
+    /// <returns>The key, or <see langword="null"/> for a tap between buttons.</returns>
+    internal static ConsoleKeyInfo? Hit(IReadOnlyList<ButtonHit> hits, int column)
+    {
+        foreach (var hit in hits)
+        {
+            if (column >= hit.From && column <= hit.To)
+            {
+                return hit.Key;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>
-    /// The phone's one footer row: whatever needs saying, and the legend when nothing does.
+    /// The phone's one footer row: whatever needs saying, and the buttons when nothing does —
+    /// or the legend, where taps cannot arrive.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The desk has a row for the legend and a row for what just happened. A phone has room
     /// for one, and a row that came and went would move the whole transcript up and down by a
     /// line each time. So the row is shared, in order of how much it matters: an error banner,
-    /// then work in progress with its way out, then a status — and the legend otherwise.
+    /// then work in progress with its way out, then a warning — and the buttons otherwise.
     /// </para>
     /// <para>
     /// A warning or an error holds the row until the reader's next key or tap, since it may
-    /// be the one thing they need to read. Anything routine — "Copied.", a count of what
-    /// loaded — gives it back after a few seconds, or the legend would be hidden behind a
-    /// message nobody needs to reread.
+    /// be the one thing they need to read. Anything routine never takes it: nearly every
+    /// action leaves one — "Copied.", "Type your message." — and while it sat here the next
+    /// tap went to dismissing it rather than to the button the thumb was aimed at. Those go
+    /// to the header row instead (see <see cref="RoutineStatusShowing"/>).
     /// </para>
     /// </remarks>
     /// <param name="context">Layout context.</param>
@@ -947,6 +1094,9 @@ internal sealed class Shell
     {
         var theme = context.Theme;
         var width = context.Width;
+
+        // Only a row that is showing buttons can be tapped as one.
+        _bar = [];
 
         if (_banner is not null)
         {
@@ -964,24 +1114,22 @@ internal sealed class Shell
                    + $"[{theme.Muted.ToMarkup()}]{Stop}[/]";
         }
 
-        var holding = _statusKind is StatusKind.Warning or StatusKind.Error
-            ? !_inputSinceStatus
-            : Environment.TickCount64 - _statusAtMs < RoutineStatusMs;
-
-        if (_status.Length > 0 && holding)
+        if (_status.Length > 0 && _statusKind is StatusKind.Warning or StatusKind.Error && !_inputSinceStatus)
         {
-            var style = _statusKind switch
-            {
-                StatusKind.Success => theme.Success,
-                StatusKind.Warning => theme.Warning,
-                StatusKind.Error => theme.Error,
-                _ => theme.Muted,
-            };
-
+            var style = _statusKind == StatusKind.Error ? theme.Error : theme.Warning;
             return $"[{style.ToMarkup()}]{Markup.Escape(Fit(_status, width))}[/]";
         }
 
-        return Legend(hints, width, theme);
+        // Buttons only where a tap can reach them. Without mouse reporting a tap never arrives,
+        // and a row of buttons that cannot be pressed would hide the keys that can.
+        if (!_options.CurrentValue.MouseSupport)
+        {
+            return Legend(hints, width, theme);
+        }
+
+        var (bar, hits) = PhoneBar(Current.Buttons, width, theme);
+        _bar = hits;
+        return bar;
     }
 
     private IRenderable BuildFooter(RenderContext context)
@@ -1042,6 +1190,32 @@ internal sealed class Shell
 
         return new Rows(rows);
     }
+
+    /// <summary>The <c>⋯</c> list for a screen: what that screen does, then what works anywhere.</summary>
+    /// <remarks>
+    /// <para>
+    /// The list used to be the second half alone — refresh, the library, help, quit — so on a
+    /// phone, where the bar has room for four buttons, a conversation's settings, branching,
+    /// copying and exporting had no way to be reached by a thumb at all. The screen's own
+    /// come first because they are what the reader was in the middle of.
+    /// </para>
+    /// <para>
+    /// Choosing one closes the list and presses its key on the screen underneath, through the
+    /// same dispatch as the keyboard. Internal so the order and the wiring can be asserted.
+    /// </para>
+    /// </remarks>
+    /// <param name="view">The screen the list was opened from.</param>
+    /// <param name="general">The commands that work anywhere.</param>
+    /// <returns>The list.</returns>
+    internal static IReadOnlyList<PaletteCommand> PaletteFor(IView view, IReadOnlyList<PaletteCommand> general)
+        =>
+        [
+            .. view.Actions.Select(action => new PaletteCommand(
+                action.Label,
+                action.Description,
+                _ => Task.FromResult(ViewAction.Press(action.Key)))),
+            .. general,
+        ];
 
     private static IReadOnlyList<KeyHint> DefaultHints { get; } =
     [

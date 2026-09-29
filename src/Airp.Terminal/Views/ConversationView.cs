@@ -46,6 +46,10 @@ internal sealed partial class ConversationView : ViewBase
     private IReadOnlyList<ChatMessage> _messages = [];
     private int _selected;
     private int _scroll;
+
+    // Whether the last frame or key was on a phone. The legend and the buttons are properties
+    // with no layout to ask, and on a phone the composer's Enter and Send change places.
+    private bool _phone;
     private bool _searching;
     private bool _showData;
     private bool _composing;
@@ -156,6 +160,13 @@ internal sealed partial class ConversationView : ViewBase
             new("Enter", "Create the branch"),
             new("Esc", "Cancel"),
         ]
+        : _composing && _phone
+            ?
+            [
+                new("Alt+Enter", "Send"),
+                new("Enter", "New line"),
+                new("Esc", "Close"),
+            ]
         : _composing
             ?
             [
@@ -182,6 +193,45 @@ internal sealed partial class ConversationView : ViewBase
                 new("Esc", "Back"),
             ];
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Reroll presses Ctrl+G rather than G: in the vim dialect a bare G is the end of the
+    /// transcript, and a button has to mean the same thing whichever dialect is configured.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => _searching
+        ? [Button.Enter("Find"), Button.Escape("Cancel")]
+        : _branching
+        ? [Button.Enter("Branch"), Button.Escape("Cancel")]
+        : _composing
+        ? [_phone ? Button.Press("Send", ConsoleKey.Enter, '\r', alt: true) : Button.Enter("Send"), Button.Escape("Close")]
+        :
+        [
+            Button.Back,
+            Button.Press("Write", 'i'),
+            Button.Press("Reroll", ConsoleKey.G, control: true),
+            Button.Press("Carry on", '>'),
+        ];
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Everything the reading view does that the bar has no room for. Nothing while writing,
+    /// searching or naming a branch: each of those has its own two buttons and nothing else.
+    /// Delete is safe to list — it asks before it does anything.
+    /// </remarks>
+    public override IReadOnlyList<Button> Actions => _searching || _branching || _composing
+        ? []
+        :
+        [
+            Button.Press("Reply settings", 's').Doing("the dials: heat, length, creativity…"),
+            Button.Press("Search this chat", '/').Doing("find words in this conversation"),
+            Button.Press("Branch from here", 'b').Doing("copy the story to this turn into a new chat"),
+            Button.Press("Copy this message", 'c').Doing("the selected turn, to your clipboard"),
+            Button.Press("Export the transcript", 'x').Doing("Markdown, JSON or plain text"),
+            Button.Press("Delete from here", ConsoleKey.Delete).Doing("this turn and every one after it; asks first"),
+            Button.Press("First message", ConsoleKey.Home).Doing("the start of the story"),
+            Button.Press("Last message", ConsoleKey.End).Doing("the newest turn"),
+        ];
+
     /// <summary>The message under the cursor.</summary>
     private ChatMessage? Selected =>
         _selected >= 0 && _selected < Visible.Count ? Visible[_selected] : null;
@@ -203,6 +253,8 @@ internal sealed partial class ConversationView : ViewBase
     /// <inheritdoc />
     public override IRenderable Render(RenderContext context)
     {
+        _phone = context.Narrow;
+
         var theme = context.Theme;
         var visible = Visible;
 
@@ -298,7 +350,9 @@ internal sealed partial class ConversationView : ViewBase
     /// <returns>The strip as markup.</returns>
     private string BuildSuggestionStrip(RenderContext context)
     {
-        const string Hint = "   Tab inserts · ↑↓ chooses · Esc dismisses";
+        // Short on a phone: the long hint alone is wider than the screen, and a strip that
+        // wraps is a row the transcript was not told about.
+        var hint = context.Narrow ? "   Tab inserts" : "   Tab inserts · ↑↓ chooses · Esc dismisses";
 
         var theme = context.Theme;
         var parts = new List<string> { Draw.Literal("  ", theme.Muted) };
@@ -306,7 +360,7 @@ internal sealed partial class ConversationView : ViewBase
         // Entries are measured in columns as they are added and dropped once the row is full.
         // The hint keeps its space throughout: the list is discoverable only if the keys that
         // drive it stay on screen, so it is the suggestions that give way, not the legend.
-        var budget = Math.Max(0, Column(context) - 2 - Draw.Width(Hint));
+        var budget = Math.Max(0, Column(context) - 2 - Draw.Width(hint));
         var used = 0;
 
         for (var i = 0; i < _suggestions.Count; i++)
@@ -325,7 +379,7 @@ internal sealed partial class ConversationView : ViewBase
             parts.Add(Draw.Literal(label, i == _suggestion ? theme.Selection : theme.Muted));
         }
 
-        parts.Add(Draw.Literal(Hint, theme.Muted));
+        parts.Add(Draw.Literal(hint, theme.Muted));
         return string.Concat(parts);
     }
 
@@ -512,6 +566,8 @@ internal sealed partial class ConversationView : ViewBase
         RenderContext context,
         CancellationToken cancellationToken)
     {
+        _phone = context.Narrow;
+
         if (_searching)
         {
             return ValueTask.FromResult(HandleSearchKey(stroke));
@@ -539,7 +595,9 @@ internal sealed partial class ConversationView : ViewBase
             case AppCommand.Edit or AppCommand.Accept:
             case AppCommand.Character when stroke.Character is 'i' or 'I':
                 _composing = true;
-                return ValueTask.FromResult(ViewAction.Status("Type your message. Enter sends it."));
+                return ValueTask.FromResult(ViewAction.Status(context.Narrow
+                    ? "Enter is a new line; Send sends it."
+                    : "Type your message. Enter sends it."));
 
             case AppCommand.MoveDown:
                 Step(1, context, visible);
@@ -861,8 +919,16 @@ internal sealed partial class ConversationView : ViewBase
     /// Handles a key while the composer has focus.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Enter sends and Alt+Enter inserts a newline, which is the convention every chat
     /// client uses — the common case should be one keystroke.
+    /// </para>
+    /// <para>
+    /// On a phone the two change places. A touch keyboard's Enter is a new line in every text
+    /// box on the device, it sits where a thumb lands mid-paragraph, and a send is permanent
+    /// and billed; Alt is two taps away on Termux's extra keys. So there Enter breaks the line
+    /// and sending is the Send button, which presses Alt+Enter through the same path.
+    /// </para>
     /// </remarks>
     /// <param name="stroke">The resolved key.</param>
     /// <returns>What the shell should do next.</returns>
@@ -923,7 +989,7 @@ internal sealed partial class ConversationView : ViewBase
             // A line break that arrived inside pasted text is part of the message, not an
             // instruction to send it. Getting this wrong sends half of whatever was pasted,
             // which costs credits and cannot be taken back.
-            case AppCommand.NewLine or AppCommand.Accept when alt || stroke.Pasted:
+            case AppCommand.NewLine or AppCommand.Accept when stroke.Pasted || (context.Narrow ? !alt : alt):
                 _composer.InsertNewLine();
                 return ViewAction.None;
 
@@ -1781,12 +1847,17 @@ internal sealed partial class ConversationView : ViewBase
     /// <param name="Width">The measure they were wrapped to.</param>
     /// <param name="Theme">The palette's name.</param>
     /// <param name="Query">The search term painted through them.</param>
+    /// <param name="Narrow">
+    /// Whether they were laid out for a phone. Not implied by the width: a phone of 56 columns
+    /// and a desk of 94 both wrap prose to 52, and the two lay a turn out differently.
+    /// </param>
     private readonly record struct DisplayKey(
         IReadOnlyList<ChatMessage> Messages,
         bool ShowData,
         int Width,
         string Theme,
-        string Query);
+        string Query,
+        bool Narrow);
 
     private DisplayKey _displayKey;
     private List<DisplayRow>? _display;
@@ -1830,7 +1901,7 @@ internal sealed partial class ConversationView : ViewBase
     {
         var theme = context.Theme;
         var width = Measure(context);
-        var key = new DisplayKey(_messages, _showData, width, theme.Name, _activeQuery);
+        var key = new DisplayKey(_messages, _showData, width, theme.Name, _activeQuery, context.Narrow);
 
         if (_display is not null && _displayKey == key)
         {
@@ -1870,12 +1941,20 @@ internal sealed partial class ConversationView : ViewBase
                 1,
                 width - Draw.Width(chip) - Draw.Width(flag) - Draw.Width(stamp));
 
+            // On a phone the name alone, in its colour: no chip, no time. A screen of thirty-
+            // eight columns reads a turn at a time, and a time at the end of every speaker line
+            // is a column of figures beside the prose that nobody is reading. A flag stays —
+            // it is the one thing on this line that is news. The leading space is the one the
+            // chip carried: a speaker line's marker has no space of its own after it, and
+            // without it the name sat a column left of the text it introduces.
             rows.Add(new DisplayRow(
                 i,
                 MarkerKind.Speaker,
-                Draw.Literal(chip, style.Combine(theme.Surface))
-                + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
-                + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
+                context.Narrow
+                    ? Draw.Literal(Draw.Fit(" " + label + flag, width), style)
+                    : Draw.Literal(chip, style.Combine(theme.Surface))
+                      + (flag.Length == 0 ? string.Empty : Draw.Literal(flag, theme.Error))
+                      + Draw.Literal(new string(' ', gap) + stamp, theme.Muted)));
 
             foreach (var line in message.Text.Split('\n'))
             {
@@ -1896,7 +1975,10 @@ internal sealed partial class ConversationView : ViewBase
             // empty string becomes an empty Markup, which occupies no row at all.
             rows.Add(new DisplayRow(i, MarkerKind.None, " "));
 
-            if (i < visible.Count - 1)
+            // The blank alone separates turns on a phone. The hairline is there so a wall of
+            // prose on a wide screen scans as a sequence of turns; on a narrow one the speaker's
+            // name in its colour already does that, and the rule was a row per turn of nothing.
+            if (i < visible.Count - 1 && !context.Narrow)
             {
                 rows.Add(new DisplayRow(
                     i,

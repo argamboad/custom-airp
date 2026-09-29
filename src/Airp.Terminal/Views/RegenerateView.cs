@@ -19,7 +19,7 @@ namespace Airp.Terminal.Views;
 /// kept, so the reply about to be discarded is shown in full first.
 /// </para>
 /// </remarks>
-internal sealed class RegenerateView : ViewBase
+internal sealed class RegenerateView : ViewBase, IMouseAware
 {
     private readonly IConversationService _conversations;
     private readonly string _conversationId;
@@ -33,6 +33,10 @@ internal sealed class RegenerateView : ViewBase
 
     private int _selected = 1;
     private bool _writing;
+
+    // Which reason each drawn row belongs to, or -1, recorded as the frame is drawn so a tap
+    // is tested against exactly what was on screen.
+    private List<int> _rowReasons = [];
 
     /// <summary>Initialises the view.</summary>
     /// <param name="conversations">Conversation access.</param>
@@ -72,22 +76,61 @@ internal sealed class RegenerateView : ViewBase
             new("Esc", "Cancel"),
         ];
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Reroll is Enter, which is what spends. Reason steps to the next one the way Tab does,
+    /// for a thumb that would rather not reach for the arrows; tapping a reason picks it too.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => _writing
+        ? [Button.Escape("Done")]
+        :
+        [
+            Button.Back,
+            Button.Enter("Reroll"),
+            Button.Press("Reason", ConsoleKey.Tab, '\t'),
+            Button.Press("Write", 'i'),
+        ];
+
     private RegenerateReason Reason => RegenerateReasons.All[_selected];
+
+    /// <inheritdoc />
+    public ViewAction OnClick(int row, RenderContext context)
+    {
+        if (row >= 0 && row < _rowReasons.Count && _rowReasons[row] >= 0 && !_writing)
+        {
+            _selected = _rowReasons[row];
+        }
+
+        return ViewAction.None;
+    }
 
     /// <inheritdoc />
     public override IRenderable Render(RenderContext context)
     {
         var theme = context.Theme;
         var width = Math.Max(20, context.Width - 4);
+        var phone = context.Narrow;
+        var reasons = new List<int>();
 
+        // On a phone the warning is a line of its own rather than a hint beside the heading,
+        // which is wider than the screen on its own. Every line there is fitted: one that
+        // wraps pushes the reasons down a row the tap mapping below does not know about.
         var rows = new List<IRenderable>
         {
             new Markup(_pending.Describe() is { Length: > 0 } pending
-                ? Draw.Literal(pending + "…", theme.Warning)
+                ? Draw.Literal(Draw.Fit(pending + "…", context.Width), theme.Warning)
+                : phone
+                ? Draw.Literal(Draw.Fit("Replace this reply", context.Width), theme.Heading)
                 : Draw.Literal("Replace this reply with a new one", theme.Heading)
                   + Draw.Literal("   this costs credits and the current wording is not kept", theme.Muted)),
-            new Rule { Style = theme.Border },
         };
+
+        if (phone)
+        {
+            rows.Add(new Markup(Draw.Literal(Draw.Fit("Costs credits; this wording is lost.", context.Width), theme.Muted)));
+        }
+
+        rows.Add(new Rule { Style = theme.Border });
 
         // Show what is about to be discarded. Two lines is enough to recognise it without
         // burying the choice below the fold.
@@ -97,19 +140,51 @@ internal sealed class RegenerateView : ViewBase
         }
 
         rows.Add(Draw.Blank);
-        rows.Add(Draw.Heading("What was wrong with it?", theme, "the reason is sent with the request"));
+        rows.Add(Draw.Heading("What was wrong with it?", theme, phone ? null : "the reason is sent with the request"));
+
+        while (reasons.Count < rows.Count + 1)
+        {
+            reasons.Add(-1);
+        }
 
         for (var i = 0; i < RegenerateReasons.All.Count; i++)
         {
             var reason = RegenerateReasons.All[i];
             var selected = i == _selected;
+            var marker = Draw.Literal(selected ? "▌ " : "  ", selected ? theme.Accent : theme.Border);
+
+            // On a phone the label alone, and the description only for the reason picked,
+            // wrapped under it: ten descriptions beside ten labels were ten lines folded back
+            // to the left edge, and the one that matters is the one about to be sent.
+            if (phone)
+            {
+                rows.Add(new Markup(
+                    marker
+                    + Draw.Literal(selected ? "● " : "○ ", selected ? theme.Accent : theme.Border)
+                    + Draw.Literal(Draw.Fit(RegenerateReasons.Label(reason), context.Width - 4), selected ? theme.Accent : theme.Text)));
+                reasons.Add(i);
+
+                if (selected)
+                {
+                    foreach (var line in Draw.Wrap(RegenerateReasons.Describe(reason), Math.Max(1, context.Width - 6)))
+                    {
+                        rows.Add(new Markup(marker + Draw.Literal("    " + line, theme.Muted)));
+                        reasons.Add(i);
+                    }
+                }
+
+                continue;
+            }
 
             rows.Add(new Markup(
-                Draw.Literal(selected ? "▌ " : "  ", selected ? theme.Accent : theme.Border)
+                marker
                 + Draw.Literal(selected ? "● " : "○ ", selected ? theme.Accent : theme.Border)
                 + Draw.Literal(Draw.Pad(RegenerateReasons.Label(reason), 20), selected ? theme.Accent : theme.Text)
                 + Draw.Literal(RegenerateReasons.Describe(reason), theme.Muted)));
+            reasons.Add(i);
         }
+
+        _rowReasons = reasons;
 
         rows.Add(Draw.Blank);
         rows.Add(new Rule { Style = theme.Border });
@@ -124,7 +199,7 @@ internal sealed class RegenerateView : ViewBase
                 limit > 0 ? $"{length:N0}/{limit:N0}" : $"{length:N0}",
                 over ? theme.Error : theme.Muted)
             + Draw.Literal(
-                _writing ? "  Esc when done" : "  optional — press I to write some",
+                _writing ? "  Esc when done" : phone ? "  optional" : "  optional — press I to write some",
                 theme.Muted)));
 
         var text = _instructions.Text;

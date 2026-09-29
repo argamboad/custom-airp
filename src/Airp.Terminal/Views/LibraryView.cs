@@ -98,6 +98,22 @@ internal sealed class LibraryView : ViewBase
             new("Esc", "Back"),
         ];
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Page ↓ scrolls the text, since a swipe moves through the names. New presses a lower-case
+    /// n for the reason the chat list's does: under vim a capital N is the previous match.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => _naming
+        ? [Button.Enter("Create"), Button.Escape("Cancel")]
+        :
+        [
+            Button.Back,
+            Button.Enter("Edit"),
+            Button.Press("New", 'n'),
+            Button.Press("Shelf", ConsoleKey.Tab, '\t'),
+            Button.Press("Page ↓", ConsoleKey.PageDown),
+        ];
+
     private string Folder => _shelf switch
     {
         1 => _library.Personas,
@@ -135,6 +151,11 @@ internal sealed class LibraryView : ViewBase
     /// <inheritdoc />
     public override IRenderable Render(RenderContext context)
     {
+        if (context.Narrow)
+        {
+            return RenderPhone(context);
+        }
+
         var theme = context.Theme;
         var rows = new List<IRenderable>();
 
@@ -171,20 +192,7 @@ internal sealed class LibraryView : ViewBase
         var proseWidth = Math.Max(10, textWidth - 2);
         var height = Math.Max(3, context.Height - 7);
 
-        if (!_naming && Selected is { } current)
-        {
-            if (_previewKey != (_shelf, current, proseWidth))
-            {
-                _previewKey = (_shelf, current, proseWidth);
-                _preview = TextLibrary.Find(Folder, current) is { } path
-                    ? Describe(TextLibrary.Preview(path, MaxPreviewLines), proseWidth)
-                    : [];
-            }
-        }
-        else
-        {
-            _preview = [];
-        }
+        LoadPreview(proseWidth);
 
         // One row goes to saying where you are, but only when there is somewhere else to be.
         var scrollable = _preview.Count > height;
@@ -232,6 +240,120 @@ internal sealed class LibraryView : ViewBase
             Draw.Pane(list, listWidth, height, theme),
             new Rows(description),
             new Rows([.. bar.Select(cell => new Markup(cell))]));
+
+        rows.Add(grid);
+
+        return new Rows(rows);
+    }
+
+    /// <summary>Reads the selected file's text, wrapped to a width, unless it already has been.</summary>
+    /// <param name="proseWidth">Columns the text is wrapped to.</param>
+    private void LoadPreview(int proseWidth)
+    {
+        if (!_naming && Selected is { } current)
+        {
+            if (_previewKey != (_shelf, current, proseWidth))
+            {
+                _previewKey = (_shelf, current, proseWidth);
+                _preview = TextLibrary.Find(Folder, current) is { } path
+                    ? Describe(TextLibrary.Preview(path, MaxPreviewLines), proseWidth)
+                    : [];
+            }
+        }
+        else
+        {
+            _preview = [];
+        }
+    }
+
+    /// <summary>The library on a phone: the names above, the selected file's text below.</summary>
+    /// <remarks>
+    /// <para>
+    /// The desk puts them side by side, and at 38 columns that left seventeen for the text — a
+    /// card read two or three words to a line. Stacked, the text gets the whole width and most
+    /// of the height, and the names keep a short list above it: a swipe moves through them and
+    /// the text follows, which is how a shelf is browsed.
+    /// </para>
+    /// <para>
+    /// Four shelf tabs are wider than a phone, so the shelf in view is named alone, with where
+    /// it sits among the four; Shelf steps to the next.
+    /// </para>
+    /// </remarks>
+    /// <param name="context">Layout context.</param>
+    /// <returns>The library.</returns>
+    private IRenderable RenderPhone(RenderContext context)
+    {
+        var theme = context.Theme;
+        var width = context.Width;
+
+        var rows = new List<IRenderable>
+        {
+            new Markup(
+                Draw.Literal(" " + ShelfNames[_shelf] + " ", theme.Selection)
+                + Draw.Literal($"  shelf {_shelf + 1} of {ShelfNames.Length}", theme.Muted)),
+            new Rule { Style = theme.Border },
+        };
+
+        if (_naming)
+        {
+            rows.Add(new Markup(
+                Draw.Literal($"New {Kind}: ", theme.Accent)
+                + Draw.Literal(_newName, theme.Text)
+                + Draw.Literal("▌", theme.Selection)));
+        }
+
+        if (_names.Count == 0)
+        {
+            if (!_naming)
+            {
+                rows.Add(new Markup(Draw.Literal($"No {Kind}s yet — New starts one.", theme.Muted)));
+            }
+
+            return new Rows(rows);
+        }
+
+        // What is left once the shelf, its rule and the rule under the names have their rows.
+        var body = Math.Max(4, context.Height - rows.Count - 1);
+        var listRows = Math.Clamp(_names.Count, 1, Math.Max(1, Math.Min(8, body / 3)));
+        var top = Math.Clamp(_selected - listRows / 2, 0, Math.Max(0, _names.Count - listRows));
+
+        foreach (var (name, index) in _names.Select(static (n, i) => (n, i)).Skip(top).Take(listRows))
+        {
+            rows.Add(new Markup(Draw.Literal(
+                Draw.Pad(" " + name, width),
+                index == _selected && !_naming ? theme.Selection : theme.Text)));
+        }
+
+        rows.Add(new Rule { Style = theme.Border });
+
+        var proseWidth = Math.Max(10, width - 2);
+        var height = Math.Max(1, body - listRows);
+
+        LoadPreview(proseWidth);
+
+        var scrollable = _preview.Count > height;
+        var pane = scrollable ? height - 1 : height;
+
+        _scroll = Math.Clamp(_scroll, 0, Math.Max(0, _preview.Count - pane));
+
+        var shown = _preview.Skip(_scroll).Take(pane).ToList();
+        var text = shown
+            .Select(p => new Markup(Draw.Literal(p.Length == 0 ? " " : p, theme.Muted)))
+            .ToList<IRenderable>();
+
+        if (scrollable)
+        {
+            text.Add(new Markup(Draw.Literal(
+                $"{_scroll + 1}–{_scroll + shown.Count} of {_preview.Count}",
+                theme.Border)));
+        }
+
+        var bar = Draw.Scrollbar(_preview.Count, _scroll, shown.Count, theme);
+
+        var grid = new Grid();
+        grid.AddColumn(new GridColumn { Width = proseWidth, Padding = new Padding(0, 0, 1, 0) });
+        grid.AddColumn(new GridColumn { Width = 1, NoWrap = true, Padding = new Padding(0, 0, 0, 0) });
+        grid.AddRow(new Rows(text), new Rows([.. bar.Select(cell => new Markup(cell))]));
 
         rows.Add(grid);
 

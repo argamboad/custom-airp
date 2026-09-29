@@ -75,6 +75,27 @@ internal sealed class ChatSettingsView : ViewBase
         ];
 
     /// <inheritdoc />
+    /// <remarks>
+    /// − and + are ← and →, which is what changes a dial; which dial is chosen by a swipe,
+    /// since the wheel moves the cursor. Apply and Discard appear once there is something to
+    /// apply or discard, and Discard stands where Back was — leaving is discarding then.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => IsDirty
+        ?
+        [
+            Button.Escape("Discard"),
+            Button.Enter("Apply"),
+            Button.Press("−", ConsoleKey.LeftArrow),
+            Button.Press("+", ConsoleKey.RightArrow),
+        ]
+        :
+        [
+            Button.Back,
+            Button.Press("−", ConsoleKey.LeftArrow),
+            Button.Press("+", ConsoleKey.RightArrow),
+        ];
+
+    /// <inheritdoc />
     public override ValueTask<ViewAction> OnActivatedAsync(CancellationToken cancellationToken)
         => ValueTask.FromResult(Load());
 
@@ -83,10 +104,15 @@ internal sealed class ChatSettingsView : ViewBase
     {
         var theme = context.Theme;
         var width = Math.Max(20, context.Width - 2);
+        var phone = context.Narrow;
 
+        // On a phone every line here is fitted rather than left to wrap: this view scrolls by
+        // counting lines, and a line that folds is one it did not count.
         var rows = new List<IRenderable>
         {
-            Draw.Heading(_title, theme, "these apply to every reply from now on"),
+            phone
+                ? Draw.Heading(Draw.Fit(_title, context.Width), theme)
+                : Draw.Heading(_title, theme, "these apply to every reply from now on"),
         };
 
         if (!_loaded)
@@ -123,18 +149,31 @@ internal sealed class ChatSettingsView : ViewBase
 
             var gutter = Draw.Literal(selected ? "▌ " : "  ", selected ? theme.Accent : theme.Border);
 
+            var title = phone ? Draw.Fit(dial.Title, width - 2) : dial.Title;
+            var help = "  " + Shorten(dial.Help);
+
             lines.Add(
                 gutter
-                + Draw.Literal(dial.Title, selected ? theme.Accent : theme.Text)
-                + Draw.Literal("  " + Shorten(dial.Help), theme.Muted));
+                + Draw.Literal(title, selected ? theme.Accent : theme.Text)
+                + Draw.Literal(phone ? Draw.Fit(help, Math.Max(0, width - 2 - Draw.Width(title))) : help, theme.Muted));
 
             var (label, meaning) = Describe(dial, value);
+            var control = Control(dial, value, theme, selected);
+            var stated = "  " + label;
+            var previous = changed ? "  (was " + Describe(dial, was).Label + ")" : string.Empty;
+
+            if (phone)
+            {
+                var room = Math.Max(0, width - 2 - Draw.Width(Markup.Remove(control)));
+                stated = Draw.Fit(stated, room);
+                previous = Draw.Fit(previous, Math.Max(0, room - Draw.Width(stated)));
+            }
 
             lines.Add(
                 gutter
-                + Control(dial, value, theme, selected)
-                + Draw.Literal("  " + label, changed ? theme.Warning : theme.Success)
-                + Draw.Literal(changed ? "  (was " + Describe(dial, was).Label + ")" : string.Empty, theme.Muted));
+                + control
+                + Draw.Literal(stated, changed ? theme.Warning : theme.Success)
+                + Draw.Literal(previous, theme.Muted));
 
             foreach (var line in Draw.Wrap(meaning, width - 6))
             {
@@ -147,7 +186,11 @@ internal sealed class ChatSettingsView : ViewBase
         // The heading above and the rule-plus-status below are always on screen; the dials
         // scroll between them. The window follows the cursor: the selected dial's whole block
         // is brought into view, from its title.
-        var available = Math.Max(1, context.Height - 3);
+        //
+        // Four rows, not three: the heading is its title and a rule. Counting three made the
+        // dials one row taller than the space, and the renderer took the row back from the
+        // bottom — which was the status line saying whether Enter would apply anything.
+        var available = Math.Max(1, context.Height - 4);
         var blockStart = starts[_selected];
         var blockEnd = _selected + 1 < _rows.Count ? starts[_selected + 1] - 1 : lines.Count - 1;
 
@@ -178,7 +221,10 @@ internal sealed class ChatSettingsView : ViewBase
 
         rows.Add(new Rule { Style = theme.Border });
         rows.Add(new Markup(IsDirty
-            ? Draw.Literal("Press Enter to apply these changes to the conversation.", theme.Warning)
+            ? Draw.Literal(
+                phone ? Draw.Fit("Apply sends these to the story.", context.Width)
+                      : "Press Enter to apply these changes to the conversation.",
+                theme.Warning)
             : Draw.Literal("Nothing changed.", theme.Muted)));
 
         return new Rows(rows);

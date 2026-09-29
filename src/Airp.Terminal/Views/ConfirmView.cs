@@ -56,6 +56,13 @@ internal sealed class ConfirmView : ViewBase
     ];
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Cancel first, where the thumb lands going left to right, and the irreversible verb
+    /// after it. A tap anywhere else does nothing; a swipe, like any other key, cancels.
+    /// </remarks>
+    public override IReadOnlyList<Button> Buttons => [Button.Escape("Cancel"), Button.Enter(_confirmLabel)];
+
+    /// <inheritdoc />
     public override IRenderable Render(RenderContext context)
     {
         var theme = context.Theme;

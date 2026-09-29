@@ -71,9 +71,18 @@ internal sealed class CommandPaletteView : ViewBase, IMouseAware
             var command = _visible[i];
             var selected = i == _list.Selected;
 
-            rows.Add(new Markup(Draw.Literal(
-                $"{(selected ? '>' : ' ')} {Draw.Pad(command.Name, 34)} {Draw.Fit(command.Description, Math.Max(10, context.Width - 40))}",
-                selected ? theme.Selection : theme.Text)));
+            // On a phone the name takes what it needs and the description the rest of the one
+            // line, dimmed. The desk pads the name to thirty-four columns, which on a phone left
+            // the description to wrap onto a line of its own at ten columns: "Re-read t…".
+            rows.Add(new Markup(context.Narrow
+                ? Draw.Literal(selected ? "▌ " : "  ", selected ? theme.Accent : theme.Border)
+                  + Draw.Literal(Draw.Fit(command.Name, context.Width - 2), selected ? theme.Accent : theme.Text)
+                  + Draw.Literal(
+                      Draw.Fit("  " + command.Description, Math.Max(0, context.Width - 2 - Draw.Width(Draw.Fit(command.Name, context.Width - 2)))),
+                      theme.Muted)
+                : Draw.Literal(
+                    $"{(selected ? '>' : ' ')} {Draw.Pad(command.Name, 34)} {Draw.Fit(command.Description, Math.Max(10, context.Width - 40))}",
+                    selected ? theme.Selection : theme.Text)));
         }
 
         return new Rows(rows);
@@ -129,8 +138,16 @@ internal sealed class CommandPaletteView : ViewBase, IMouseAware
         }
 
         _list.Select(index);
-        return ViewAction.None;
+
+        // On a phone one tap runs it, as one tap opens a chat: a list reached from ⋯ is a menu,
+        // and a menu item that only highlights on the first tap reads as a tap that missed.
+        return context.Narrow
+            ? ViewAction.Run(_visible[index].Name, async ct => await Run(ct).ConfigureAwait(false))
+            : ViewAction.None;
     }
+
+    /// <inheritdoc />
+    public override IReadOnlyList<Button> Buttons => [Button.Back, Button.Enter("Run")];
 
     private async ValueTask<ViewAction> Run(CancellationToken cancellationToken)
     {
