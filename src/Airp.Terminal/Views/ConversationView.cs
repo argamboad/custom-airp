@@ -46,6 +46,10 @@ internal sealed partial class ConversationView : ViewBase
     private IReadOnlyList<ChatMessage> _messages = [];
     private int _selected;
     private int _scroll;
+
+    // Whether the last frame or key was on a phone. The legend and the buttons are properties
+    // with no layout to ask, and on a phone the composer's Enter and Send change places.
+    private bool _phone;
     private bool _searching;
     private bool _showData;
     private bool _composing;
@@ -156,6 +160,13 @@ internal sealed partial class ConversationView : ViewBase
             new("Enter", "Create the branch"),
             new("Esc", "Cancel"),
         ]
+        : _composing && _phone
+            ?
+            [
+                new("Alt+Enter", "Send"),
+                new("Enter", "New line"),
+                new("Esc", "Close"),
+            ]
         : _composing
             ?
             [
@@ -192,7 +203,7 @@ internal sealed partial class ConversationView : ViewBase
         : _branching
         ? [Button.Enter("Branch"), Button.Escape("Cancel")]
         : _composing
-        ? [Button.Enter("Send"), Button.Escape("Close")]
+        ? [_phone ? Button.Press("Send", ConsoleKey.Enter, '\r', alt: true) : Button.Enter("Send"), Button.Escape("Close")]
         :
         [
             Button.Back,
@@ -222,6 +233,8 @@ internal sealed partial class ConversationView : ViewBase
     /// <inheritdoc />
     public override IRenderable Render(RenderContext context)
     {
+        _phone = context.Narrow;
+
         var theme = context.Theme;
         var visible = Visible;
 
@@ -317,7 +330,9 @@ internal sealed partial class ConversationView : ViewBase
     /// <returns>The strip as markup.</returns>
     private string BuildSuggestionStrip(RenderContext context)
     {
-        const string Hint = "   Tab inserts · ↑↓ chooses · Esc dismisses";
+        // Short on a phone: the long hint alone is wider than the screen, and a strip that
+        // wraps is a row the transcript was not told about.
+        var hint = context.Narrow ? "   Tab inserts" : "   Tab inserts · ↑↓ chooses · Esc dismisses";
 
         var theme = context.Theme;
         var parts = new List<string> { Draw.Literal("  ", theme.Muted) };
@@ -325,7 +340,7 @@ internal sealed partial class ConversationView : ViewBase
         // Entries are measured in columns as they are added and dropped once the row is full.
         // The hint keeps its space throughout: the list is discoverable only if the keys that
         // drive it stay on screen, so it is the suggestions that give way, not the legend.
-        var budget = Math.Max(0, Column(context) - 2 - Draw.Width(Hint));
+        var budget = Math.Max(0, Column(context) - 2 - Draw.Width(hint));
         var used = 0;
 
         for (var i = 0; i < _suggestions.Count; i++)
@@ -344,7 +359,7 @@ internal sealed partial class ConversationView : ViewBase
             parts.Add(Draw.Literal(label, i == _suggestion ? theme.Selection : theme.Muted));
         }
 
-        parts.Add(Draw.Literal(Hint, theme.Muted));
+        parts.Add(Draw.Literal(hint, theme.Muted));
         return string.Concat(parts);
     }
 
@@ -531,6 +546,8 @@ internal sealed partial class ConversationView : ViewBase
         RenderContext context,
         CancellationToken cancellationToken)
     {
+        _phone = context.Narrow;
+
         if (_searching)
         {
             return ValueTask.FromResult(HandleSearchKey(stroke));
@@ -558,7 +575,9 @@ internal sealed partial class ConversationView : ViewBase
             case AppCommand.Edit or AppCommand.Accept:
             case AppCommand.Character when stroke.Character is 'i' or 'I':
                 _composing = true;
-                return ValueTask.FromResult(ViewAction.Status("Type your message. Enter sends it."));
+                return ValueTask.FromResult(ViewAction.Status(context.Narrow
+                    ? "Enter is a new line; Send sends it."
+                    : "Type your message. Enter sends it."));
 
             case AppCommand.MoveDown:
                 Step(1, context, visible);
@@ -880,8 +899,16 @@ internal sealed partial class ConversationView : ViewBase
     /// Handles a key while the composer has focus.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Enter sends and Alt+Enter inserts a newline, which is the convention every chat
     /// client uses — the common case should be one keystroke.
+    /// </para>
+    /// <para>
+    /// On a phone the two change places. A touch keyboard's Enter is a new line in every text
+    /// box on the device, it sits where a thumb lands mid-paragraph, and a send is permanent
+    /// and billed; Alt is two taps away on Termux's extra keys. So there Enter breaks the line
+    /// and sending is the Send button, which presses Alt+Enter through the same path.
+    /// </para>
     /// </remarks>
     /// <param name="stroke">The resolved key.</param>
     /// <returns>What the shell should do next.</returns>
@@ -942,7 +969,7 @@ internal sealed partial class ConversationView : ViewBase
             // A line break that arrived inside pasted text is part of the message, not an
             // instruction to send it. Getting this wrong sends half of whatever was pasted,
             // which costs credits and cannot be taken back.
-            case AppCommand.NewLine or AppCommand.Accept when alt || stroke.Pasted:
+            case AppCommand.NewLine or AppCommand.Accept when stroke.Pasted || (context.Narrow ? !alt : alt):
                 _composer.InsertNewLine();
                 return ViewAction.None;
 

@@ -140,6 +140,71 @@ public class PhoneBarTests
         Shell.Hit(hits, Phone + 1).ShouldBeNull();
     }
 
+    private static RenderContext At(int width) => new(width, 30, Theme.For(ThemeName.Dark), new AirpOptions());
+
+    private static KeyStroke Typed(char c)
+        => KeyMap.Resolve(new ConsoleKeyInfo(c, default, false, false, false), KeyboardMode.Standard, KeyContext.Text);
+
+    private static KeyStroke Enter(bool alt = false)
+        => KeyMap.Resolve(new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, alt, false), KeyboardMode.Standard, KeyContext.Text);
+
+    /// <summary>A conversation with the composer open and "a" typed, at the given width.</summary>
+    private static async Task<ConversationView> WritingAsync(int width)
+    {
+        var view = Conversation();
+        await view.HandleKeyAsync(Resolve(Button.Press("Write", 'i'), KeyboardMode.Standard), At(width), CancellationToken.None);
+        await view.HandleKeyAsync(Typed('a'), At(width), CancellationToken.None);
+        return view;
+    }
+
+    [Fact]
+    public async Task On_a_phone_Enter_is_a_new_line_and_sends_nothing()
+    {
+        // A touch keyboard's Enter is a new line in every other text box on the device, and a
+        // send is permanent and billed.
+        var view = await WritingAsync(Phone);
+
+        (await view.HandleKeyAsync(Enter(), At(Phone), CancellationToken.None)).ShouldBe(ViewAction.None);
+        await view.HandleKeyAsync(Typed('b'), At(Phone), CancellationToken.None);
+
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out = new AnsiConsoleOutput(new StringWriter()),
+        });
+        var writer = new StringWriter();
+        console.Profile.Out = new AnsiConsoleOutput(writer);
+        console.Profile.Width = Phone;
+        console.Write(view.Render(At(Phone)));
+
+        // The draft is two rows now: what was typed before Enter, and after it.
+        var lines = writer.ToString().Split('\n').Select(static l => l.Trim()).ToList();
+        lines.ShouldContain("a");
+        lines.IndexOf("b").ShouldBe(lines.IndexOf("a") + 1);
+    }
+
+    [Fact]
+    public async Task On_a_phone_the_Send_button_sends()
+    {
+        var view = await WritingAsync(Phone);
+        view.Render(At(Phone));
+
+        var send = Resolve(Named(view.Buttons, "Send"), KeyboardMode.Standard, KeyContext.Text);
+
+        (await view.HandleKeyAsync(send, At(Phone), CancellationToken.None)).ShouldBeOfType<ViewAction.RunAction>();
+    }
+
+    [Fact]
+    public async Task At_a_desk_Enter_still_sends_and_Alt_Enter_is_the_new_line()
+    {
+        (await (await WritingAsync(100)).HandleKeyAsync(Enter(), At(100), CancellationToken.None))
+            .ShouldBeOfType<ViewAction.RunAction>();
+
+        (await (await WritingAsync(100)).HandleKeyAsync(Enter(alt: true), At(100), CancellationToken.None))
+            .ShouldBe(ViewAction.None);
+    }
+
     [Fact]
     public async Task While_writing_the_bar_sends_and_closes()
     {
