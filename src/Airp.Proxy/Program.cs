@@ -163,8 +163,9 @@ app.MapPost("/v1/chat/completions", async (HttpContext context, CancellationToke
     log.LogInformation("Request tagged for {Conversation}.", resolved.ConversationId);
 
     // The newest user turn is the only thing taken from the request. Everything else the front
-    // end sent — its truncated history, its own framing — is what this exists to replace.
-    var said = userTurns[^1];
+    // end sent — its truncated history, its own framing — is what this exists to replace. The
+    // label the front end puts in front of it goes too.
+    var said = FrontEnd.Unlabel(userTurns);
 
     try
     {
