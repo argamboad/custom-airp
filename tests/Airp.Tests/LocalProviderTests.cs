@@ -294,6 +294,33 @@ public sealed class LocalProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task Resending_words_the_reader_deleted_puts_them_back_in_the_prompt()
+    {
+        // A real story: the reader deleted their last turn and pasted it again. The hash matched
+        // the tombstone, the send was taken for a retry of it, and the prompt was built from
+        // visible messages only — so the model kept answering the story without that turn.
+        var id = await StartAsync();
+        _model.Says("One.").Says("Two.").Says("Two, again.");
+        await Provider().SendAsync(id, "Primera.");
+        await Provider().SendAsync(id, "Segunda.");
+
+        var transcript = await Provider().GetMessagesAsync(id);
+        await Provider().DeleteFromAsync(id, transcript[2].Id);
+
+        var added = await Provider().SendAsync(id, "Segunda.");
+
+        added.Select(m => m.Role).ShouldBe([ChatRole.User, ChatRole.Assistant]);
+        _model.Calls[^1].Last(m => m.Role == ModelRole.User).Content.ShouldBe("Segunda.");
+
+        var visible = await Provider().GetMessagesAsync(id);
+        visible.Select(m => m.Text).ShouldBe(["Primera.", "One.", "Segunda.", "Two, again."]);
+
+        // The deleted turn and its reply are still on disk; nothing was erased to make room.
+        await using var store = _factory.CreateDbContext();
+        (await store.Messages.CountAsync()).ShouldBe(6);
+    }
+
+    [Fact]
     public async Task Regenerating_hides_the_old_reply_and_writes_a_new_one()
     {
         var id = await StartAsync();
