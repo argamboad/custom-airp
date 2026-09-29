@@ -191,6 +191,24 @@ public class ViewRenderingTests
     }
 
     [Fact]
+    public void A_reply_holding_a_tab_still_draws()
+    {
+        // A real stored reply held one tab. The wrapper expanded it to four spaces, so every
+        // offset after it pointed past the line and the conversation could not be drawn at all.
+        var formatted = Airp.Application.Text.ProseFormat.Format(
+            "She paused.\t*She looks away* and says \"fine\" before walking off into the rain.");
+
+        Should.NotThrow(() =>
+        {
+            foreach (var (start, segment) in Draw.WrapSegments(formatted.Text, 14))
+            {
+                formatted.Text.Substring(start, segment.Length).Replace('\t', ' ').ShouldBe(segment);
+                Draw.Prose(formatted, start, segment, Style.Plain, Style.Plain);
+            }
+        });
+    }
+
+    [Fact]
     public void WrapSegments_ReportsOffsetsForAHardBrokenToken()
     {
         var token = new string('x', 25);

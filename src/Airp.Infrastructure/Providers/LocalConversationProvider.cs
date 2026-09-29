@@ -258,6 +258,20 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             .FirstOrDefaultAsync(m => m.ConversationId == conversationId && m.RequestHash == hash, cancellationToken)
             .ConfigureAwait(false);
 
+        // A match the reader has since deleted is not a retry of anything. Resending the same
+        // words after deleting them is exactly how a reply is taken back and asked for again,
+        // and treating the tombstone as the pending turn sent a prompt without it: the model
+        // answered the story as it stood before, turn after turn, with nothing to say why. The
+        // tombstone keeps its text; only the hash goes, since it is unique per conversation and
+        // idempotency is all it was for.
+        if (existing is { DeletedAtUtc: not null })
+        {
+            existing.RequestHash = null;
+            await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("Sending again words the reader had deleted; storing them as a new turn.");
+            existing = null;
+        }
+
         MessageRecord sent;
 
         if (existing is not null)
