@@ -91,6 +91,45 @@ public sealed class WebStoryTests : IDisposable
     }
 
     [Fact]
+    public async Task A_picked_snippet_goes_into_the_box_and_nothing_is_sent()
+    {
+        var chat = await StoryAsync();
+        var turns = (await TurnsAsync(chat)).Count;
+        var calls = _model.Calls.Count;
+        var page = Page("I look up.");
+        page.Snippet = "storm";
+
+        var result = await page.OnPostInsertAsync(chat.Id, CancellationToken.None);
+
+        result.ShouldBeOfType<PageResult>();
+        page.Draft.ShouldBe("I look up. Rain hammers the lamp room glass.");
+        page.Notice.ShouldNotBeNull().ShouldContain("Nothing has been sent");
+        (await TurnsAsync(chat)).Count.ShouldBe(turns);
+        _model.Calls.Count.ShouldBe(calls);
+    }
+
+    [Fact]
+    public async Task Send_with_a_snippet_picked_inserts_it_rather_than_sending_a_page_the_reader_has_not_seen()
+    {
+        var chat = await StoryAsync();
+        var turns = (await TurnsAsync(chat)).Count;
+        var page = Page();
+        page.Snippet = "storm";
+
+        (await page.OnPostSendAsync(chat.Id, CancellationToken.None)).ShouldBeOfType<PageResult>();
+
+        page.Draft.ShouldBe("Rain hammers the lamp room glass.");
+        (await TurnsAsync(chat)).Count.ShouldBe(turns);
+    }
+
+    [Theory]
+    [InlineData(null, "Rain.")]
+    [InlineData("I wait.", "I wait. Rain.")]
+    [InlineData("I wait.\n", "I wait.\nRain.")]
+    public void A_snippet_is_added_to_the_end_after_a_space_unless_the_draft_already_ends_in_one(string? draft, string expected)
+        => StoryModel.AppendSnippet(draft, "Rain.").ShouldBe(expected);
+
+    [Fact]
     public async Task A_typo_is_refused_on_the_page_and_the_draft_is_kept()
     {
         var chat = await StoryAsync();

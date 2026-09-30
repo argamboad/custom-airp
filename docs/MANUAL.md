@@ -1007,9 +1007,11 @@ Do not put it behind Funnel or any public tunnel: the database holds every story
   [Commands in the composer](#commands-in-the-composer). An answer that is not part of the story
   is shown on the page and stored nowhere; `/search` links each turn it finds; an `/ask` answer
   has **Pin as fact** under it; a typo is refused with your text still in the box, never sent.
-- **Snippets and emoji.** Type `:name` for a snippet or `:name:` for an emoji, and they become
-  their text when you press Send — the pages have no script to do it as you type. **Snippets**
-  under the box lists yours.
+- **Snippets and emoji.** Pick a snippet from the list under the box and press **Insert**: its
+  text goes on the end of what you have written, still yours to edit, and nothing is sent. (Send
+  with one picked does the same, rather than sending a page you have not seen.) Typing `:name`
+  for a snippet or `:name:` for an emoji works too — they become their text when you press Send,
+  since the pages have no script to do it as you type.
 - **Reroll** under the newest reply: why it was wrong, and optionally what should be different.
 - **⋯ under any turn**: Branch from here, into a copy named as the terminal would name it, which
   the page then opens; or Delete from here, on a page that says how many messages would go.
