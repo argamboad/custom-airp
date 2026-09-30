@@ -251,3 +251,189 @@ button {
     font-size: 0.875rem;
     text-align: right;
 }
+
+/* ── Everything else the terminal does ───────────────────────────────────────────────── */
+
+/* A report's indentation is its structure: /cost and /audit line their figures up with it. */
+.aside-answer p { white-space: pre-wrap; }
+
+.quiet {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--rule);
+}
+
+.danger { color: #e0787a; }
+
+button.danger {
+    background: #e0787a;
+    color: var(--ground);
+}
+
+.notice {
+    margin: 1rem 0 0;
+    padding: 0.75rem;
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+}
+
+/* The story's menu: a thumb-sized ⋯ in the bar, opening a list under it. */
+.bar .menu { position: relative; }
+
+.bar .menu summary,
+.more summary,
+.row-tools summary {
+    list-style: none;
+    min-width: 2.75rem;
+    padding: 0.5rem;
+    color: var(--muted);
+    text-align: center;
+    cursor: pointer;
+}
+
+.bar .menu summary { margin: -0.75rem -0.5rem; padding: 0.75rem 0.5rem; font-size: 1.25rem; line-height: 1; }
+
+.bar .menu summary::-webkit-details-marker,
+.more summary::-webkit-details-marker,
+.row-tools summary::-webkit-details-marker { display: none; }
+
+.bar .menu nav {
+    position: absolute;
+    right: -0.5rem;
+    top: 2.25rem;
+    display: grid;
+    min-width: 13rem;
+    padding: 0.25rem 0;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 0.5rem;
+}
+
+.bar .menu nav a {
+    padding: 0.75rem 1rem;
+    text-decoration: none;
+}
+
+/* Under each turn: Reroll on the newest reply, and ⋯ for branching and deleting from it. */
+.turn-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.turn-tools .reroll { flex: 1 1 auto; margin-top: 0; }
+
+.turn-tools .more { margin-left: auto; }
+
+.more[open] { flex-basis: 100%; }
+
+.more form,
+.row-tools form {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.75rem;
+}
+
+.more label,
+.row-tools label {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+}
+
+.more button,
+.row-tools button { justify-self: end; }
+
+.more .cost {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-align: right;
+}
+
+.more .danger,
+.row-tools .danger {
+    display: block;
+    padding: 0.5rem 0;
+    text-align: right;
+}
+
+/* The list's rows: the ⋯ sits on the preview line, which leaves room for it. */
+.stories.with-tools li { position: relative; }
+
+.stories.with-tools .latest { padding-right: 2.25rem; }
+
+/* From the top, so it stays beside the preview line when the panel under it opens. */
+.row-tools > summary {
+    position: absolute;
+    right: -0.5rem;
+    top: 2.125rem;
+}
+
+.row-tools[open] { padding-bottom: 0.5rem; border-bottom: 1px solid var(--rule); }
+
+.composer-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.snippets summary {
+    display: inline-block;
+    padding: 0.25rem 0;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.snippets p { margin: 0.25rem 0; color: var(--muted); font-size: 0.9375rem; }
+
+.matches {
+    margin: 0.75rem 0 0;
+    padding-left: 1rem;
+}
+
+.matches li { margin-bottom: 0.5rem; }
+
+.confirm h2 { font-size: 1.125rem; margin: 1.25rem 0 0.75rem; }
+
+.confirm blockquote {
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--rule);
+    color: var(--muted);
+}
+
+.confirm form {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 1.25rem;
+    margin-top: 1.5rem;
+}
+
+.dials {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.dials label {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.dials .dial-title { font-weight: 600; }
+
+.dials .aside { color: var(--muted); font-size: 0.875rem; }
+
+.dials button { justify-self: end; }
+
+.dials .cost {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-align: right;
+}

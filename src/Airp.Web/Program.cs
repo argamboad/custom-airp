@@ -1,4 +1,7 @@
+using Airp.Application.Abstractions;
+using Airp.Application.Services;
 using Airp.Domain;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Airp.Infrastructure;
 using Airp.Infrastructure.Providers;
 using Airp.Web;
@@ -18,6 +21,10 @@ builder.Configuration
     .AddInMemoryCollection(EnvironmentOverrides.Read());
 
 builder.Services.AddAirpInfrastructure(builder.Configuration);
+
+// The one application service the pages use, for a transcript download. Not the whole
+// application layer: that brings a background synchroniser this process has no use for.
+builder.Services.TryAddSingleton<IExportService, ExportService>();
 builder.Services.AddRazorPages();
 
 var login = builder.Configuration["Airp:Web:Login"];

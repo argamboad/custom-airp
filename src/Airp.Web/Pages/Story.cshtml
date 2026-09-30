@@ -4,6 +4,17 @@
 @section Header {
     <a class="back" href="/" aria-label="Stories">‹</a>
     <h1>@Model.Chat!.Name</h1>
+
+    @* The story's own menu: what the terminal reaches with S and X. *@
+    <details class="menu">
+        <summary aria-label="Story menu">⋯</summary>
+        <nav>
+            <a href="/story/@Uri.EscapeDataString(Model.Chat.Id)/dials">Settings</a>
+            <a href="/story/@Uri.EscapeDataString(Model.Chat.Id)?handler=Export&amp;format=Markdown">Export as Markdown</a>
+            <a href="/story/@Uri.EscapeDataString(Model.Chat.Id)?handler=Export&amp;format=Json">Export as JSON</a>
+            <a href="/story/@Uri.EscapeDataString(Model.Chat.Id)?handler=Export&amp;format=PlainText">Export as text</a>
+        </nav>
+    </details>
 }
 
 @if (Model.Hidden > 0)
@@ -25,34 +36,51 @@
         var mine = turn.Role == ChatRole.User;
         var latest = i == Model.Shown.Count - 1;
 
-        @* The newest turn carries the anchor a page returns to: a turn is read from its start. *@
-        <li class="@(mine ? "turn you" : "turn reply")" id="@(latest ? "latest" : null)">
+        @* The newest turn carries the anchor a page returns to: a turn is read from its start.
+           Every other turn is anchored by its number, which is what a search links to. *@
+        <li class="@(mine ? "turn you" : "turn reply")" id="@(latest ? "latest" : $"t{Model.Number(i)}")">
             <span class="who">@(mine ? "You" : Model.Speaker)</span>
             @ProseHtml.Render(turn.Text)
 
-            @if (latest && Model.CanReroll)
-            {
-                <details class="reroll">
-                    <summary>Reroll</summary>
-                    <form method="post" asp-page-handler="Reroll">
+            <div class="turn-tools">
+                @if (latest && Model.CanReroll)
+                {
+                    <details class="reroll">
+                        <summary>Reroll</summary>
+                        <form method="post" asp-page-handler="Reroll">
+                            <label>
+                                <span>What was wrong with it</span>
+                                <select name="reason">
+                                    @foreach (var reason in RegenerateReasons.All)
+                                    {
+                                        <option value="@reason" selected="@(reason == RegenerateReason.Steer)">@RegenerateReasons.Label(reason)</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                <span>What should be different <span class="aside">optional</span></span>
+                                <textarea name="instructions" rows="2"></textarea>
+                            </label>
+                            <button type="submit">Replace this reply</button>
+                            <p class="cost">Costs credits, and this wording is not kept.</p>
+                        </form>
+                    </details>
+                }
+
+                <details class="more">
+                    <summary aria-label="More for this turn">⋯</summary>
+                    <form method="post" asp-page-handler="Branch">
+                        <input type="hidden" name="messageId" value="@turn.Id">
                         <label>
-                            <span>What was wrong with it</span>
-                            <select name="reason">
-                                @foreach (var reason in RegenerateReasons.All)
-                                {
-                                    <option value="@reason" selected="@(reason == RegenerateReason.Steer)">@RegenerateReasons.Label(reason)</option>
-                                }
-                            </select>
+                            <span>Branch from here, as</span>
+                            <input name="name" value="@Model.BranchName" autocomplete="off">
                         </label>
-                        <label>
-                            <span>What should be different <span class="aside">optional</span></span>
-                            <textarea name="instructions" rows="2"></textarea>
-                        </label>
-                        <button type="submit">Replace this reply</button>
-                        <p class="cost">Costs credits, and this wording is not kept.</p>
+                        <button type="submit">Branch</button>
+                        <p class="cost">A copy up to this turn. The original is untouched.</p>
                     </form>
+                    <a class="danger" href="/story/@Uri.EscapeDataString(Model.Chat!.Id)/delete-from/@Uri.EscapeDataString(turn.Id)">Delete from here…</a>
                 </details>
-            }
+            </div>
         </li>
     }
 </ol>
@@ -61,6 +89,24 @@
 {
     <section class="aside-answer">
         @ProseHtml.Render(Model.Aside)
+
+        @if (Model.Matches is { Count: > 0 } matches)
+        {
+            <ul class="matches">
+                @foreach (var match in matches)
+                {
+                    <li><a href="@Model.LinkTo(match.Number)">#@match.Number @(match.Role == ChatRole.User ? "You" : Model.Speaker)</a> @match.Excerpt</li>
+                }
+            </ul>
+        }
+
+        @if (Model.Answer is not null)
+        {
+            <form method="post" asp-page-handler="Pin">
+                <input type="hidden" name="answer" value="@Model.Answer">
+                <button type="submit" class="quiet">Pin as fact</button>
+            </form>
+        }
     </section>
 }
 
@@ -71,5 +117,21 @@
 
 <form method="post" asp-page-handler="Send" class="composer">
     <textarea name="Draft" rows="4" placeholder="Your turn. /help for commands.">@Model.Draft</textarea>
-    <button type="submit">Send</button>
+    <div class="composer-buttons">
+        @if (Model.CanContinue)
+        {
+            @* A second submit on the same form: carrying on ignores the box. *@
+            <button type="submit" class="quiet" asp-page-handler="Continue" title="Costs credits">Carry on</button>
+        }
+        <button type="submit">Send</button>
+    </div>
+
+    @if (Model.Snippets.Count > 0)
+    {
+        <details class="snippets">
+            <summary>Snippets</summary>
+            <p>Type one as <code>:name</code>; it becomes its text when you send. <code>:name:</code> does the same for an emoji.</p>
+            <p>@string.Join("  ", Model.Snippets.Select(static s => ":" + s))</p>
+        </details>
+    }
 </form>

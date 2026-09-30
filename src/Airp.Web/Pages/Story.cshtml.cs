@@ -1,6 +1,11 @@
+using System.Globalization;
+using System.Text;
+using Airp.Application.Abstractions;
 using Airp.Application.Options;
+using Airp.Application.Text;
 using Airp.Domain;
 using Airp.Domain.Conversations;
+using Airp.Infrastructure;
 using Airp.Infrastructure.Providers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -10,9 +15,13 @@ namespace Airp.Web.Pages;
 
 /// <summary>One story: read from its latest turns back, and played from the bottom.</summary>
 /// <param name="conversations">The store.</param>
+/// <param name="library">The shelves, for the snippets the composer expands.</param>
+/// <param name="export">Renders the transcript for a download.</param>
 /// <param name="options">Live application options, for the length limits.</param>
 public sealed class StoryModel(
     LocalConversationProvider conversations,
+    TextLibrary library,
+    IExportService export,
     IOptionsMonitor<AirpOptions> options) : PageModel
 {
     /// <summary>
@@ -40,16 +49,50 @@ public sealed class StoryModel(
     /// <summary>Why the last action did nothing, when it did nothing.</summary>
     public string? Error { get; private set; }
 
-    /// <summary>An answer that is not a turn — <c>/ask</c>, <c>/recap</c>, <c>/help</c> — shown once.</summary>
+    /// <summary>An answer that is not a turn — <c>/ask</c>, <c>/recap</c>, <c>/facts</c> and the rest — shown once.</summary>
     public string? Aside { get; private set; }
+
+    /// <summary>The bare answer to an <c>/ask</c>, which the page offers to pin as a fact.</summary>
+    public string? Answer { get; private set; }
+
+    /// <summary>What a <c>/search</c> found, each linked to its turn.</summary>
+    public IReadOnlyList<SearchMatch>? Matches { get; private set; }
+
+    /// <summary>The snippets the composer expands, by name.</summary>
+    public IReadOnlyList<string> Snippets { get; private set; } = [];
 
     /// <summary>Whether the newest turn is a reply, which is the one a reroll replaces.</summary>
     public bool CanReroll => Shown.Count > 0 && Shown[^1].Role == ChatRole.Assistant;
+
+    /// <summary>Whether there is a reply to carry on from.</summary>
+    public bool CanContinue => Shown.Any(static m => m.Role == ChatRole.Assistant);
+
+    /// <summary>A turn's position among the visible ones, from 1, which its anchor and a search both use.</summary>
+    /// <param name="shownIndex">Its index in <see cref="Shown"/>.</param>
+    /// <returns>The number.</returns>
+    public int Number(int shownIndex) => Hidden + shownIndex + 1;
+
+    /// <summary>The name a branch is offered, so that Branch is a valid answer without typing.</summary>
+    public string BranchName => SlashCommands.BranchName(Chat?.Name ?? string.Empty);
 
     /// <summary>Where a page returns to after a turn: the start of the newest one.</summary>
     /// <param name="id">The story's id.</param>
     /// <returns>The path.</returns>
     public static string Latest(string id) => $"/story/{Uri.EscapeDataString(id)}#latest";
+
+    /// <summary>Where a numbered turn is, whether or not it is among the recent ones on the page.</summary>
+    /// <param name="number">The turn's number.</param>
+    /// <returns>The link.</returns>
+    public string LinkTo(int number)
+    {
+        var total = Hidden + Shown.Count;
+        var anchor = number == total ? "latest" : $"t{number}";
+        var id = Uri.EscapeDataString(Chat!.Id);
+
+        return number > Hidden
+            ? $"/story/{id}#{anchor}"
+            : $"/story/{id}?all=true#{anchor}";
+    }
 
     /// <summary>Reads the story.</summary>
     /// <param name="id">The story's id.</param>
@@ -64,6 +107,11 @@ public sealed class StoryModel(
     /// <para>
     /// Through the same handling as a message from Janitor, so a command means the same thing in
     /// every front end and a typo is refused everywhere rather than stored somewhere.
+    /// </para>
+    /// <para>
+    /// Snippets and emoji shortcodes are expanded first. The terminal expands them as they are
+    /// typed; a page without a script has only the moment of sending, and a <c>:storm</c> stored
+    /// literally would be a permanent turn nobody meant.
     /// </para>
     /// <para>
     /// A turn that was stored ends in a redirect, so reloading the page cannot send it again —
@@ -81,7 +129,7 @@ public sealed class StoryModel(
             return NotFound();
         }
 
-        var said = Draft ?? string.Empty;
+        var said = ShortcodeScanner.ExpandAll(Draft ?? string.Empty, Snippet);
         var limit = options.CurrentValue.MessageCharacterLimit;
 
         if (limit > 0 && said.Trim().Length > limit)
@@ -122,8 +170,77 @@ public sealed class StoryModel(
             return Redirect(Latest(id));
         }
 
+        // A fact or a meter was written: the page's own view of the story is stale.
+        await LoadAsync(id, all: false, cancellationToken).ConfigureAwait(false);
+
         Draft = null;
         Aside = outcome.Text;
+        Answer = outcome.Answer;
+        Matches = outcome.Matches;
+        return Page();
+    }
+
+    /// <summary>Lets the story carry on from its last reply, with nothing from the reader.</summary>
+    /// <remarks>
+    /// No confirmation, as in the terminal: reading on is the whole point, and the button says
+    /// that it costs credits.
+    /// </remarks>
+    /// <param name="id">The story's id.</param>
+    /// <param name="cancellationToken">Token used to abort the work.</param>
+    /// <returns>A redirect to the reply, or the page with an error on it.</returns>
+    public async Task<IActionResult> OnPostContinueAsync(string id, CancellationToken cancellationToken)
+    {
+        if (!await LoadAsync(id, all: false, cancellationToken).ConfigureAwait(false))
+        {
+            return NotFound();
+        }
+
+        if (!CanContinue)
+        {
+            Error = "There is no reply to carry on from yet.";
+            return Page();
+        }
+
+        try
+        {
+            await conversations
+                .ContinueAsync(id, instruction: null, progress: null, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (AirpException ex)
+        {
+            Error = ex.Message;
+            await LoadAsync(id, all: false, cancellationToken).ConfigureAwait(false);
+            return Page();
+        }
+
+        return Redirect(Latest(id));
+    }
+
+    /// <summary>Pins an <c>/ask</c> answer as a fact, as the terminal's answer pane does.</summary>
+    /// <param name="id">The story's id.</param>
+    /// <param name="answer">The answer, as the page was given it.</param>
+    /// <param name="cancellationToken">Token used to abort the write.</param>
+    /// <returns>The page, saying what was pinned.</returns>
+    public async Task<IActionResult> OnPostPinAsync(string id, string? answer, CancellationToken cancellationToken)
+    {
+        if (!await LoadAsync(id, all: false, cancellationToken).ConfigureAwait(false))
+        {
+            return NotFound();
+        }
+
+        var outcome = await FrontEndTurn.PinAsync(conversations, Chat!, answer ?? string.Empty, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (outcome.Refused)
+        {
+            Error = outcome.Text;
+        }
+        else
+        {
+            Aside = outcome.Text;
+        }
+
         return Page();
     }
 
@@ -169,6 +286,88 @@ public sealed class StoryModel(
         return Redirect(Latest(id));
     }
 
+    /// <summary>Copies the story up to a turn into a new one, and goes into the copy.</summary>
+    /// <remarks>
+    /// Branching keeps everything and destroys nothing, so there is no confirmation, as in the
+    /// terminal: the worst a mistaken tap does is add one story to the list. The page goes into
+    /// the copy because a branch is made to be played.
+    /// </remarks>
+    /// <param name="id">The story's id.</param>
+    /// <param name="messageId">The last turn the copy keeps.</param>
+    /// <param name="name">What to call the copy.</param>
+    /// <param name="cancellationToken">Token used to abort the work.</param>
+    /// <returns>A redirect into the copy, or the page with an error on it.</returns>
+    public async Task<IActionResult> OnPostBranchAsync(
+        string id,
+        string? messageId,
+        string? name,
+        CancellationToken cancellationToken)
+    {
+        if (!await LoadAsync(id, all: false, cancellationToken).ConfigureAwait(false))
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            Error = "A story needs a name. Nothing was copied.";
+            return Page();
+        }
+
+        if (string.IsNullOrWhiteSpace(messageId))
+        {
+            return BadRequest();
+        }
+
+        try
+        {
+            var branch = await conversations.BranchAsync(id, messageId, name.Trim(), cancellationToken).ConfigureAwait(false);
+            return Redirect(Latest(branch.Id));
+        }
+        catch (AirpException ex)
+        {
+            Error = ex.Message;
+            return Page();
+        }
+    }
+
+    /// <summary>The visible transcript as a file to save: Markdown, JSON or plain text.</summary>
+    /// <remarks>
+    /// The file is named by the date and nothing else. A phone announces a download by its name,
+    /// and the tab already keeps a story's name off the screen for the same reason.
+    /// </remarks>
+    /// <param name="id">The story's id.</param>
+    /// <param name="format">Which format.</param>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>The file, or not found.</returns>
+    public async Task<IActionResult> OnGetExportAsync(string id, ExportFormat format, CancellationToken cancellationToken)
+    {
+        if (!await LoadAsync(id, all: true, cancellationToken).ConfigureAwait(false))
+        {
+            return NotFound();
+        }
+
+        var text = export.Render(
+            new ConversationTranscript
+            {
+                ConversationId = Chat!.Id,
+                Title = Chat.Name,
+                Speaker = Chat.Speaker,
+                Messages = Shown,
+            },
+            format);
+
+        var (extension, type) = format switch
+        {
+            ExportFormat.Json => ("json", "application/json"),
+            ExportFormat.PlainText => ("txt", "text/plain"),
+            _ => ("md", "text/markdown"),
+        };
+
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmm", CultureInfo.InvariantCulture);
+        return File(Encoding.UTF8.GetBytes(text), type + "; charset=utf-8", $"story-{stamp}.{extension}");
+    }
+
     private async Task<bool> LoadAsync(string id, bool all, CancellationToken cancellationToken)
     {
         Chat = await conversations.GetAsync(id, cancellationToken).ConfigureAwait(false);
@@ -184,6 +383,13 @@ public sealed class StoryModel(
 
         Shown = all ? turns : [.. turns.TakeLast(Recent)];
         Hidden = turns.Count - Shown.Count;
+        Snippets = TextLibrary.Names(library.Snippets);
         return true;
     }
+
+    /// <summary>A snippet's text by name, trimmed as the terminal inserts it; null when there is none.</summary>
+    private string? Snippet(string name)
+        => TextLibrary.Find(library.Snippets, name) is { } path
+            ? System.IO.File.ReadAllText(path).TrimEnd()
+            : null;
 }
