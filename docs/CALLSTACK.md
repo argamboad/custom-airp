@@ -24,7 +24,7 @@ Everything from here on is `LocalConversationProvider` —
 
 ---
 
-## 1. Idempotency, then persistence — `SendAsync` (line 221)
+## 1. Idempotency, then persistence — `SendAsync` (line 228)
 
 ```text
 SendAsync(conversationId, text, instruction, progress, ct)
@@ -52,7 +52,7 @@ database enforces what a check-then-insert could race past.
 
 ---
 
-## 2. Building the prompt — `ComposeAsync` (line 811)
+## 2. Building the prompt — `ComposeAsync` (line 851)
 
 Shared verbatim by a send, a carry-on, a regenerate, an aside, and every pass of a rebuild —
 an aside that differed by one layer would miss the prefix cache the next real turn is about to
@@ -136,7 +136,7 @@ occupies.
 
 ---
 
-## 4. Retrieval — `RecallAsync` (provider line 943) → `MemoryRetriever`
+## 4. Retrieval — `RecallAsync` (provider line 984) → `MemoryRetriever`
 
 ```text
 RecallAsync(store, conversation, prepared, ct)        (line 956)
@@ -184,7 +184,7 @@ memories, trackers, instruction`. Least → most volatile; the prefix cache cont
 
 ---
 
-## 6. The call and the write-back — `ReplyAsync` (line 695)
+## 6. The call and the write-back — `ReplyAsync` (line 731)
 
 ```text
 ReplyAsync(store, conversation, pending, instruction, progress, ct)
@@ -228,9 +228,9 @@ transcript and redraws.
 
 | Variation | Divergence point |
 |---|---|
-| Carry on (no user turn) | `ContinueAsync` (line 373): no pending row, a framed "carry the scene forward" instruction — then `ReplyAsync` as above |
-| Regenerate | `RegenerateAsync` (line 319): tombstone the newest reply **before** the call, restore it on failure — then `ReplyAsync` with `RegenerateDirective` |
-| Aside (`/ask`) | `AskAsync` (line 459): `ComposeAsync` with `AskDirective`, `ModelTask.Aside`; answer goes to `Asides` + a spend row — **never** to `Messages` |
-| Rebuild | `RebuildMemoryAsync` (line 1094): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
+| Carry on (no user turn) | `ContinueAsync` (line 401): no pending row, a framed "carry the scene forward" instruction — then `ReplyAsync` as above |
+| Regenerate | `RegenerateAsync` (line 333): refused on a written opening with no turn of the reader's yet (`RegenerateReasons.CanReplace`); otherwise tombstone the newest reply **before** the call, restore it on failure — then `ReplyAsync` with `RegenerateDirective` |
+| Aside (`/ask`) | `AskAsync` (line 487): `ComposeAsync` with `AskDirective`, `ModelTask.Aside`; answer goes to `Asides` + a spend row — **never** to `Messages` |
+| Rebuild | `RebuildMemoryAsync` (line 1121): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
 | From the proxy | `FrontEndTurn.RunAsync` decides turn, command or refusal; identical from `SendAsync` down ([FLOWS.md §7](FLOWS.md)) |
 | From the web pages | the same `FrontEndTurn.RunAsync`, then identical from `SendAsync` down; a stored turn answers with a redirect ([FLOWS.md §7b](FLOWS.md)) |

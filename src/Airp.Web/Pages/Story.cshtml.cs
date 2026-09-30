@@ -76,8 +76,11 @@ public sealed class StoryModel(
     /// <summary>The snippets the composer expands, by name.</summary>
     public IReadOnlyList<string> Snippets { get; private set; } = [];
 
-    /// <summary>Whether the newest turn is a reply, which is the one a reroll replaces.</summary>
-    public bool CanReroll => Shown.Count > 0 && Shown[^1].Role == ChatRole.Assistant;
+    /// <summary>
+    /// Whether the newest turn is a reply that can be written again — not a written opening
+    /// with nothing said since (<see cref="RegenerateReasons.CanReplace"/>).
+    /// </summary>
+    public bool CanReroll { get; private set; }
 
     /// <summary>Whether there is a reply to carry on from.</summary>
     public bool CanContinue => Shown.Any(static m => m.Role == ChatRole.Assistant);
@@ -406,6 +409,7 @@ public sealed class StoryModel(
 
         Shown = all ? turns : [.. turns.TakeLast(Recent)];
         Hidden = turns.Count - Shown.Count;
+        CanReroll = RegenerateReasons.CanReplace(turns);
         Snippets = TextLibrary.Names(library.Snippets);
         FellBackFrom = turns.Count > 0 && turns[^1].Role == ChatRole.Assistant ? turns[^1].FellBackFrom : null;
         return true;

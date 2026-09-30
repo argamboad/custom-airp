@@ -49,6 +49,32 @@ public enum RegenerateReason
 /// </remarks>
 public static class RegenerateReasons
 {
+    /// <summary>What to say when the newest reply is a story's written opening.</summary>
+    public const string OpeningRefusal =
+        "That is the story's opening, which you wrote; there is nothing to write again until you take a turn.";
+
+    /// <summary>
+    /// Whether the newest reply may be replaced by a new one.
+    /// </summary>
+    /// <remarks>
+    /// Not while it is the story's written opening and nothing has been said since. A reroll
+    /// there would throw away a page the reader wrote for a guess by the model — the opening does
+    /// the establishing, and it sits at the top of the story for the rest of its life. Told apart
+    /// by two things, because either alone is wrong: a reply after a <c>/do</c> has no turn of
+    /// the reader's before it and was generated; an imported reply was not generated here and
+    /// has the reader's turns around it.
+    /// </remarks>
+    /// <param name="visible">The story's visible messages, oldest first.</param>
+    /// <returns>True when the newest message is a reply that can be written again.</returns>
+    public static bool CanReplace(IReadOnlyList<ChatMessage> visible)
+    {
+        ArgumentNullException.ThrowIfNull(visible);
+
+        return visible.Count > 0
+            && visible[^1].Role == ChatRole.Assistant
+            && (visible[^1].Generated || visible.Any(static m => m.Role == ChatRole.User));
+    }
+
     /// <summary>Every reason a reader can pick, in the order the site lists them.</summary>
     public static readonly IReadOnlyList<RegenerateReason> All =
     [

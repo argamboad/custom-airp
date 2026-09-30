@@ -358,6 +358,20 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 recoveryHint: "Regenerate applies to the newest reply; send a message first.");
         }
 
+        // The same rule the screens apply before offering it (RegenerateReasons.CanReplace),
+        // enforced here so no front end can get past it.
+        if (last.Model is null
+            && !await store.Messages
+                .AnyAsync(
+                    m => m.ConversationId == conversationId && m.DeletedAtUtc == null && m.Role == ChatRole.User,
+                    cancellationToken)
+                .ConfigureAwait(false))
+        {
+            throw new ContractException(
+                RegenerateReasons.OpeningRefusal,
+                recoveryHint: "Write your first turn; the reply to it can be rerolled.");
+        }
+
         // Hidden, not removed: the wording being replaced is still something the model wrote,
         // and a later phase that summarises the conversation may want to know it was rejected.
         // It has to be hidden before the call, or the prompt would end on the very reply being
