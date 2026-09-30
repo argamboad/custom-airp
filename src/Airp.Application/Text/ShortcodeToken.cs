@@ -107,6 +107,71 @@ public static class ShortcodeScanner
             : (new ShortcodeToken(open.Start, caret - open.Start, open.Query), emoji);
     }
 
+    /// <summary>
+    /// Expands every shortcode in a finished message at once, for a composer that cannot
+    /// complete them as they are typed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The terminal expands a snippet the moment it is picked and an emoji the moment its
+    /// closing colon lands, so the reader sees the result before sending. A page without a
+    /// script has only the moment of sending, so this does both then, by the same rules: a
+    /// shortcode opens a word, a closed <c>:name:</c> that names an emoji becomes the emoji,
+    /// and an open <c>:name</c> that names a snippet becomes the snippet's text.
+    /// </para>
+    /// <para>
+    /// Anything else is left exactly as typed — a clock time, a URL, a colon in prose, a name
+    /// that is neither — because a message is permanent and guessing at it is not.
+    /// </para>
+    /// </remarks>
+    /// <param name="text">The message.</param>
+    /// <param name="snippet">The text of a snippet by name, or null when there is none.</param>
+    /// <returns>The message with its shortcodes expanded.</returns>
+    public static string ExpandAll(string? text, Func<string, string?> snippet)
+    {
+        ArgumentNullException.ThrowIfNull(snippet);
+        var source = text ?? string.Empty;
+        var result = new System.Text.StringBuilder(source.Length);
+        var i = 0;
+
+        while (i < source.Length)
+        {
+            var opensWord = source[i] == ':' && (i == 0 || char.IsWhiteSpace(source[i - 1]));
+
+            if (!opensWord)
+            {
+                result.Append(source[i++]);
+                continue;
+            }
+
+            var end = i + 1;
+            while (end < source.Length && IsNameCharacter(source[end]) && end - i <= MaxNameLength)
+            {
+                end++;
+            }
+
+            var name = source[(i + 1)..end];
+
+            if (name.Length > 0 && end < source.Length && source[end] == ':' && EmojiShortcodes.Find(name) is { } emoji)
+            {
+                result.Append(emoji);
+                i = end + 1;
+                continue;
+            }
+
+            if (name.Length > 0 && (end == source.Length || source[end] != ':') && snippet(name) is { Length: > 0 } expansion)
+            {
+                result.Append(expansion);
+                i = end;
+                continue;
+            }
+
+            result.Append(source[i++]);
+        }
+
+        return result.ToString();
+    }
+
     private static bool IsNameCharacter(char character)
         => char.IsAsciiLetterOrDigit(character) || character is '_' or '+' or '-';
 }

@@ -221,4 +221,50 @@ public static class DialEngine
             ? null
             : new JsonArray([.. kept.Select(static i => (JsonNode)i)]).ToJsonString();
     }
+
+    /// <summary>
+    /// Turns a value as a person typed it into the stored form, or null when the dial does not take it.
+    /// </summary>
+    /// <remarks>
+    /// Validated rather than trusted: a value the engine cannot read would be stored and then
+    /// silently say nothing on every turn. A list is typed comma-separated.
+    /// </remarks>
+    /// <param name="dial">The dial.</param>
+    /// <param name="raw">What was typed or picked.</param>
+    /// <returns>The stored form, or null when it is not a value this dial takes.</returns>
+    public static string? Parse(DialDefinition dial, string raw)
+    {
+        ArgumentNullException.ThrowIfNull(dial);
+        ArgumentNullException.ThrowIfNull(raw);
+
+        return dial.Kind switch
+        {
+            DialKind.Scale => LevelIndex(dial, raw) is not null ? raw.Trim() : null,
+            DialKind.Toggle => bool.TryParse(raw, out _) ? raw.Trim().ToLowerInvariant() : null,
+            DialKind.Choice => dial.Options.FirstOrDefault(
+                o => string.Equals(o.Key, raw.Trim(), StringComparison.OrdinalIgnoreCase))?.Key,
+            DialKind.List => StoreItems(raw.Split(',', StringSplitOptions.TrimEntries)),
+            DialKind.Text => string.IsNullOrWhiteSpace(raw) ? null : raw,
+            _ => null,
+        };
+    }
+
+    /// <summary>Names a stored value the way the settings screen shows it.</summary>
+    /// <param name="dial">The dial.</param>
+    /// <param name="value">The stored value.</param>
+    /// <returns>The level's or option's label, On/Off, the items, or the value itself.</returns>
+    public static string Label(DialDefinition dial, string value)
+    {
+        ArgumentNullException.ThrowIfNull(dial);
+
+        return dial.Kind switch
+        {
+            DialKind.Scale when LevelIndex(dial, value) is { } i => dial.Levels[i].Label,
+            DialKind.Toggle => IsOn(value) ? "On" : "Off",
+            DialKind.Choice => dial.Options.FirstOrDefault(
+                o => string.Equals(o.Key, value, StringComparison.OrdinalIgnoreCase))?.Label ?? value,
+            DialKind.List => string.Join(", ", Items(value)),
+            _ => value,
+        };
+    }
 }

@@ -116,4 +116,17 @@ public class ShortcodeScannerTests
     [Fact]
     public void Closed_IgnoresAColonThatDoesNotCloseAnything()
         => ShortcodeScanner.Closed("time is 10:30:", 14).ShouldBeNull();
+
+    private static string? Snippet(string name)
+        => name.Equals("storm", StringComparison.OrdinalIgnoreCase) ? "Rain hammers the glass." : null;
+
+    [Fact]
+    public void ExpandAll_ReplacesAClosedEmojiAndAnOpenSnippetWhereverTheyOpenAWord()
+        => ShortcodeScanner.ExpandAll(":storm and then :fire: here", Snippet)
+            .ShouldBe("Rain hammers the glass. and then 🔥 here");
+
+    [Fact]
+    public void ExpandAll_LeavesClockTimesUrlsAndUnknownNamesExactlyAsTyped()
+        => ShortcodeScanner.ExpandAll("at 10:30, see https://x.test and :nonsense: or :nothing", Snippet)
+            .ShouldBe("at 10:30, see https://x.test and :nonsense: or :nothing");
 }

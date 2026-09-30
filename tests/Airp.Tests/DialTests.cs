@@ -310,4 +310,25 @@ public sealed class DialProviderTests : IDisposable
         lust.Levels[3].Label.ShouldBe("Cuatro");
         lust.Levels[3].Text.ShouldBe("d4");
     }
+
+    [Fact]
+    public void A_typed_value_is_stored_only_in_a_form_the_dial_can_read()
+    {
+        var pack = DialPackParser.Parse(DialService.DefaultPackText());
+        var scale = pack.Find("lust").ShouldNotBeNull();
+        var toggle = pack.Find("inner-thoughts").ShouldNotBeNull();
+        var choice = pack.Find("pov").ShouldNotBeNull();
+        var list = pack.Find("veils").ShouldNotBeNull();
+
+        DialEngine.Parse(scale, "3").ShouldBe("3");
+        DialEngine.Parse(scale, "9").ShouldBeNull();
+        DialEngine.Parse(toggle, "True").ShouldBe("true");
+        DialEngine.Parse(toggle, "yes").ShouldBeNull();
+        DialEngine.Parse(choice, "THIRD-PAST").ShouldBe("third-past");
+        DialEngine.Parse(choice, "fourth-wall").ShouldBeNull();
+        DialEngine.Items(DialEngine.Parse(list, " gore , , spiders ")).ShouldBe(["gore", "spiders"]);
+
+        DialEngine.Label(choice, "third-past").ShouldBe("Third limited, past");
+        DialEngine.Label(toggle, "true").ShouldBe("On");
+    }
 }
