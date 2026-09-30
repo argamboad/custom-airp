@@ -106,6 +106,19 @@ environment variable of the same name — export `OPENROUTER_API_KEY` / `AIRP_PR
 the shell profile. A stored secret always wins over the variable where both exist. Never paste
 a key into chat or on a command line.
 
+## The web pages
+
+`Airp.Web` reads the same layers and one setting of its own:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `Airp:Web:Login` | none | the one Tailscale login let in, as `tailscale serve` reports it in `Tailscale-User-Login`. **Required** — without it the process exits with 78 rather than start. Usually set as `Airp__Web__Login` in the service's environment |
+
+It also exits with 78 when `--urls` (or `urls`, `http_ports`, `https_ports`) would listen on
+anything but loopback, because the login arrives in a header and a header is only evidence if
+nothing but `tailscale serve` can reach the port ([ADR 0018](adr/0018-web-trusts-the-tailnet.md)).
+It needs the model key like the terminal does, for the turns it sends.
+
 ## Launch profiles
 
 Two, and the sandbox is first: `Airp (sandbox)` sets `AIRP_HOME=.airp-dev` — a home with no

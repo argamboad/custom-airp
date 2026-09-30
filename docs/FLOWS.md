@@ -230,6 +230,7 @@ sequenceDiagram
     participant J as Front end (Janitor)
     participant PX as Airp.Proxy
     participant SR as SessionResolver
+    participant FT as FrontEndTurn
     participant P as LocalConversationProvider
 
     J->>PX: POST /v1/chat/completions + Bearer
@@ -240,8 +241,17 @@ sequenceDiagram
     alt no tag, or a tag naming nothing
         PX-->>J: 404 saying which, and how to fix it<br/>(nothing written — a wrong write is permanent)
     else resolved
-        PX->>P: SendAsync(id, newest user turn only)
-        Note over P: flows 1–3 run exactly as from the terminal —<br/>the front end's truncated history is discarded
+        PX->>FT: RunAsync(chat, newest user turn only, persona label stripped)
+        alt a message, /do or /focus
+            FT->>P: SendAsync / ContinueAsync
+            Note over P: flows 1–3 run exactly as from the terminal —<br/>the front end's truncated history is discarded
+        else /ask
+            FT->>P: AskAsync — shown, never stored
+        else /recap or /help
+            Note over FT: read from disk — no model call
+        else unknown or terminal-only command
+            FT-->>PX: refused — nothing stored, nothing billed
+        end
         alt stream: true
             PX-->>J: finished reply chunked as SSE
         else
@@ -249,6 +259,38 @@ sequenceDiagram
         end
     end
 ```
+
+`FrontEndTurn` lives in Infrastructure, not in the proxy, because the web pages (§7b) need the
+same answer to "what does this typed message mean". Two copies would be two places for a typo to
+be read differently — once as a refusal, once as a permanent turn.
+
+## 7b. The web pages — playing from a phone's browser
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Phone browser
+    participant TS as tailscale serve
+    participant W as Airp.Web
+    participant FT as FrontEndTurn
+    participant P as LocalConversationProvider
+
+    B->>TS: POST /story/{id}?handler=Send (tailnet only)
+    TS->>W: + Tailscale-User-Login, to 127.0.0.1
+    W->>W: Gate.Admits — 403 "Not available." for any other login
+    W->>FT: RunAsync(chat, draft)
+    alt stored (a message, /do, /focus)
+        W-->>B: 302 to /story/{id}#latest — a reload cannot send it twice
+    else answered, not stored (/ask, /recap, /help)
+        W-->>B: the page, with the answer set apart
+    else refused
+        W-->>B: the page, error shown, draft kept
+    end
+```
+
+Reroll posts to `?handler=Reroll` and goes straight to `RegenerateAsync`; starting a story posts
+to `/new` and goes to `CreateAsync`, with character and persona names accepted only if a file of
+that name is on the shelf.
 
 ---
 

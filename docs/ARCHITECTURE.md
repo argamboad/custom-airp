@@ -615,7 +615,7 @@ translates — every write goes through `LocalConversationProvider`, and a typed
   `Tailscale-User-Login`, and `Gate.Admits` lets one configured login through
   ([Gate.cs](../src/Airp.Web/Gate.cs)). A header is only evidence if nothing else can send it,
   so the process refuses to start without a login or on anything but loopback
-  (`Gate.OnlyLoopback`).
+  (`Gate.OnlyLoopback`, [ADR 0018](adr/0018-web-trusts-the-tailnet.md)).
 - **A stored turn ends in a redirect**, so a reload cannot send it twice; an answer that is not
   a turn (`/ask`, `/recap`) is drawn on the page that answers it, since it is stored nowhere.
 - **Names only from the shelves.** Starting a story stores a character and persona only if a
