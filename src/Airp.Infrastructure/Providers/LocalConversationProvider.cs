@@ -46,6 +46,9 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
     private readonly TextLibrary _library;
     private readonly IDialService _dials;
     private readonly SemaphoreSlim _migration = new(1, 1);
+
+    /// <summary>The provider's model list, and when it was read; see <see cref="CatalogueAsync"/>.</summary>
+    private (DateTimeOffset ReadAt, IReadOnlyList<ModelInfo> Models)? _catalogue;
     private bool _migrated;
 
     /// <summary>Initialises the adapter.</summary>
@@ -134,6 +137,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 c.Id,
                 c.Name,
                 c.Speaker,
+                c.Model,
                 Last = c.Messages
                     .Where(m => m.DeletedAtUtc == null)
                     .OrderByDescending(m => m.Sequence)
@@ -150,6 +154,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 Id = r.Id,
                 Name = r.Name,
                 Speaker = r.Speaker,
+                Model = r.Model,
                 LatestMessage = r.Last?.Text,
                 LastMessageAtUtc = r.Last?.SentAtUtc,
             })];
@@ -496,13 +501,11 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         {
             var choice = ModelRouter.For(ModelTask.Aside, composed.Settings);
 
-            reply = await _model.CompleteAsync(
+            (reply, _) = await CompleteForStoryAsync(
+                conversation,
                 composed.Context.Messages,
-                model: conversation.Model ?? choice.Model,
-                temperature: choice.Temperature,
-                maxTokens: choice.MaxTokens,
-                frequencyPenalty: null,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                choice with { FrequencyPenalty = null },
+                cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -732,6 +735,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         progress?.Report(SendPhase.Waiting);
 
         ModelReply reply;
+        string? fellBackFrom;
 
         try
         {
@@ -742,15 +746,13 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 maxTokens: composed.Sampler.MaxTokens,
                 frequencyPenalty: composed.Sampler.FrequencyPenalty);
 
-            reply = await _model.CompleteAsync(
+            // A model set on the conversation still wins: the router decides what kind of
+            // work this is, not which character is played on what.
+            (reply, fellBackFrom) = await CompleteForStoryAsync(
+                conversation,
                 context.Messages,
-                // A model set on the conversation still wins: the router decides what kind of
-                // work this is, not which character is played on what.
-                model: conversation.Model ?? choice.Model,
-                temperature: choice.Temperature,
-                maxTokens: choice.MaxTokens,
-                frequencyPenalty: choice.FrequencyPenalty,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                choice,
+                cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -773,11 +775,12 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             Text = reply.Text.Trim(),
             SentAtUtc = DateTimeOffset.UtcNow,
             Model = reply.Model,
+            FellBackFrom = fellBackFrom,
             Provider = reply.Provider,
             PromptTokens = reply.PromptTokens,
             CompletionTokens = reply.CompletionTokens,
             EstimatedPromptTokens = context.EstimatedTokens,
-            ContextAudit = context.Describe(),
+            ContextAudit = composed.Audit,
         };
 
         // What the model drew goes back to the store: that is what makes the number survive
@@ -800,7 +803,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         _logger.LogInformation(
             "Reply stored for {Conversation}: {Audit}; reported {Prompt} in, {Completion} out.",
             conversation.Id,
-            context.Describe(),
+            composed.Audit,
             reply.PromptTokens,
             reply.CompletionTokens);
 
@@ -816,7 +819,14 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         BuiltContext Context,
         ModelOptions Settings,
         IReadOnlyList<TrackerRecord> Meters,
-        SamplerOverrides Sampler);
+        SamplerOverrides Sampler,
+        int? ShrunkBudget = null)
+    {
+        /// <summary>The audit line: the builder's breakdown, and the budget when the story's model shrank it.</summary>
+        public string Audit => ShrunkBudget is { } budget
+            ? $"{Context.Describe()}; budget {budget:N0} (the story's model)"
+            : Context.Describe();
+    }
 
     /// <summary>
     /// Assembles the prompt for a call, compressing first when the transcript has outgrown
@@ -889,6 +899,19 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         var directives = DialEngine.Directives(pack, dialValues);
         var sampler = DialEngine.Sampler(pack, dialValues);
 
+        // A story on a model with a smaller window than the budget gets a budget that fits it,
+        // with room left for the reply. Shrunk here, once, and the copy handed to everything
+        // below — the summariser reserves room, the retriever trims to its share, the builder
+        // drops turns, and the day those three disagreed about the budget a real story lost
+        // twenty-four turns with nothing written down about them.
+        var window = conversation.Model is not null && conversation.ModelContext is { } length
+            ? length - (sampler.MaxTokens ?? settings.MaxTokens)
+            : (int?)null;
+
+        var configured = settings.ContextBudget;
+        settings = settings.WithWindow(window);
+        int? shrunk = settings.ContextBudget < configured ? settings.ContextBudget : null;
+
         // Resolved first, and then handed over, because the summariser has to reserve room for
         // the same layers this builds. Reading them off the conversation record instead
         // reserved nothing for a character kept in a file — which is every conversation — and
@@ -922,14 +945,17 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         // The budget is a target for cost and for attention, not a limit the model imposes —
         // it sits far below the window. When compression failed, going over it is the cheaper
         // mistake: a larger bill against a character that has forgotten.
+        // Except against the model's own window, which is not a target but a wall: a prompt
+        // over it is refused whole, and a refused turn is worse than one missing its oldest
+        // lines.
         var budget = prepared.CompressionFailed
-            ? int.MaxValue
+            ? window ?? int.MaxValue
             : settings.ContextBudget;
 
         // Retrieval covers exactly the gap summarising leaves: a summary says what happened
         // over a stretch, and loses the wording. Only turns already compressed out are
         // candidates — the recent ones are being sent whole anyway.
-        var memories = await RecallAsync(store, conversation, prepared, cancellationToken)
+        var memories = await RecallAsync(store, conversation, prepared, settings, cancellationToken)
             .ConfigureAwait(false);
 
         // Named, every one of them. Three separate bugs today came from a layer being added in
@@ -956,7 +982,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 conversation.Id);
         }
 
-        return new Composed(context, settings, meters, sampler);
+        return new Composed(context, settings, meters, sampler, shrunk);
     }
 
     /// <summary>
@@ -971,6 +997,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         AirpDbContext store,
         ConversationRecord conversation,
         SummarisedHistory prepared,
+        ModelOptions settings,
         CancellationToken cancellationToken)
     {
         if (_embeddings is null || prepared.Recent.Count == 0)
@@ -1001,7 +1028,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             conversation,
             query,
             compressedUpTo,
-            _options.CurrentValue.Model,
+            settings,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -1462,6 +1489,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             Persona = source.Persona,
             PersonaName = source.PersonaName,
             Model = source.Model,
+            ModelContext = source.ModelContext,
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
 
@@ -1645,6 +1673,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             Id = branch.Id,
             Name = branch.Name,
             Speaker = branch.Speaker,
+            Model = branch.Model,
             LatestMessage = messages.Count > 0 ? messages[^1].Text : null,
             LastMessageAtUtc = messages.Count > 0 ? messages[^1].SentAtUtc : branch.CreatedAtUtc,
         };
@@ -2137,6 +2166,167 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             : !string.IsNullOrWhiteSpace(named) ? $"from the file {named}"
             : !string.IsNullOrWhiteSpace(fallback) ? $"the default, {fallback}"
             : "nothing resolved";
+    }
+
+    // ── A story's model ──────────────────────────────────────────────────────────────────
+
+    /// <summary>How long a read of the provider's model list is trusted before it is read again.</summary>
+    private static readonly TimeSpan CatalogueLifetime = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Sets the model a story's replies and questions are written by, or clears it back to the
+    /// default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The model can change at any turn: the prompt is built from the store every time, so
+    /// nothing a model wrote is tied to it. Only replies and <c>/ask</c> follow the story;
+    /// summaries and facts stay on the configured model, so a story's memory is written the same
+    /// way whatever is playing it.
+    /// </para>
+    /// <para>
+    /// A model is saved only if the provider's own list has it, and its window is saved with it,
+    /// which is what fits the story's budget to the model. One that is not listed — or cannot be
+    /// checked, because the list cannot be read — is not saved, and the story stays on what it
+    /// had: a mistyped identifier would otherwise fail every turn until someone noticed.
+    /// </para>
+    /// </remarks>
+    /// <param name="conversationId">The story.</param>
+    /// <param name="model">The model's identifier, or null or the default's to clear it.</param>
+    /// <param name="cancellationToken">Token used to abort the work.</param>
+    /// <returns>What the story now uses, and what to tell the reader.</returns>
+    public async Task<ModelChange> SetModelAsync(
+        string conversationId,
+        string? model,
+        CancellationToken cancellationToken = default)
+    {
+        var fallback = _options.CurrentValue.Model.Name;
+        var wanted = model?.Trim() ?? string.Empty;
+
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var conversation = await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+
+        if (wanted.Length == 0 || string.Equals(wanted, fallback, StringComparison.OrdinalIgnoreCase))
+        {
+            conversation.Model = null;
+            conversation.ModelContext = null;
+            await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+            return new ModelChange(Saved: true, Model: null, Context: null, $"This story uses the default, {fallback}.");
+        }
+
+        var keeping = conversation.Model ?? fallback;
+        IReadOnlyList<ModelInfo> listed;
+
+        try
+        {
+            listed = await CatalogueAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ModelUnavailableException ex)
+        {
+            _logger.LogWarning(ex, "Could not read the model list to check {Model}.", wanted);
+
+            return new ModelChange(
+                Saved: false,
+                Model: conversation.Model,
+                Context: conversation.ModelContext,
+                $"{wanted} could not be checked — the model list could not be read — so it was not set. "
+                + $"The story stays on {keeping}.");
+        }
+
+        if (listed.FirstOrDefault(m => string.Equals(m.Id, wanted, StringComparison.OrdinalIgnoreCase)) is not { } found)
+        {
+            return new ModelChange(
+                Saved: false,
+                Model: conversation.Model,
+                Context: conversation.ModelContext,
+                $"{wanted} is not available — the provider does not list it — so it was not set. "
+                + $"The story stays on {keeping}.");
+        }
+
+        conversation.Model = found.Id;
+        conversation.ModelContext = found.ContextLength;
+        await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // The same sum the prompt builder makes: the window less room for the reply.
+        var settings = _options.CurrentValue.Model;
+        var budget = settings.ContextBudget;
+        var fits = found.ContextLength is not { } length || length - settings.MaxTokens >= budget;
+
+        return new ModelChange(
+            Saved: true,
+            Model: found.Id,
+            Context: found.ContextLength,
+            fits
+                ? $"This story now uses {found.Id}."
+                : $"This story now uses {found.Id}. Its window is {found.ContextLength:N0} tokens, under the "
+                  + $"{budget:N0} budget, so the story's budget shrinks to fit it and older turns compress sooner.");
+    }
+
+    /// <summary>
+    /// The provider's list of models, read at most once every ten minutes.
+    /// </summary>
+    /// <remarks>
+    /// Checking a model is one GET of a public list; reading it for every change of every story
+    /// would be wasteful, and trusting it for the life of the process would miss a model added
+    /// or withdrawn today.
+    /// </remarks>
+    private async Task<IReadOnlyList<ModelInfo>> CatalogueAsync(CancellationToken cancellationToken)
+    {
+        if (_catalogue is { } read && DateTimeOffset.UtcNow - read.ReadAt < CatalogueLifetime)
+        {
+            return read.Models;
+        }
+
+        var models = await _model.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+        _catalogue = (DateTimeOffset.UtcNow, models);
+        return models;
+    }
+
+    /// <summary>
+    /// Asks the story's model, and the default when the story's model is not there any more.
+    /// </summary>
+    /// <remarks>
+    /// Only a refusal about the model itself falls back (<see cref="ModelUnavailableException.NoSuchModel"/>):
+    /// a rejected key, an empty account or a host that is down would refuse the default
+    /// identically, and a second attempt would only be a second failure. The story keeps its
+    /// model — "no endpoints" is often a host missing for an hour — and the reply says who
+    /// wrote it.
+    /// </remarks>
+    /// <returns>The reply, and the story's model when the default wrote it instead.</returns>
+    private async Task<(ModelReply Reply, string? FellBackFrom)> CompleteForStoryAsync(
+        ConversationRecord conversation,
+        IReadOnlyList<ModelMessage> messages,
+        ModelChoice choice,
+        CancellationToken cancellationToken)
+    {
+        if (conversation.Model is not { } own)
+        {
+            return (await Ask(choice.Model).ConfigureAwait(false), null);
+        }
+
+        try
+        {
+            return (await Ask(own).ConfigureAwait(false), null);
+        }
+        catch (ModelUnavailableException ex) when (ex.NoSuchModel)
+        {
+            _logger.LogWarning(
+                "{Model} is not available for {Conversation} ({Reason}); the default wrote this turn.",
+                own,
+                conversation.Id,
+                ex.Message);
+
+            return (await Ask(choice.Model).ConfigureAwait(false), own);
+        }
+
+        Task<ModelReply> Ask(string model) => _model.CompleteAsync(
+            messages,
+            model: model,
+            temperature: choice.Temperature,
+            maxTokens: choice.MaxTokens,
+            frequencyPenalty: choice.FrequencyPenalty,
+            cancellationToken: cancellationToken);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────────────

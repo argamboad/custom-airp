@@ -106,11 +106,13 @@ internal static partial class Program
 
         var shown = string.IsNullOrWhiteSpace(filter)
             ? models
-            : [.. models.Where(m => m.Contains(filter, StringComparison.OrdinalIgnoreCase))];
+            : [.. models.Where(m => m.Id.Contains(filter, StringComparison.OrdinalIgnoreCase))];
 
-        foreach (var id in shown)
+        foreach (var model in shown)
         {
-            AnsiConsole.MarkupLine($"  {Markup.Escape(id)}");
+            AnsiConsole.MarkupLine(model.ContextLength is { } context
+                ? $"  {Markup.Escape(model.Id)}  [grey]{context:N0} context[/]"
+                : $"  {Markup.Escape(model.Id)}");
         }
 
         AnsiConsole.WriteLine();

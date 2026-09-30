@@ -206,15 +206,24 @@ public sealed class OpenRouterClient : ILanguageModelClient
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ModelInfo>> ListModelsAsync(CancellationToken cancellationToken = default)
     {
         var settings = Model;
         var body = await SendAsync("models", payload: null, settings, cancellationToken).ConfigureAwait(false);
 
         return body?["data"]?.AsArray()
-            .Select(static m => m?["id"]?.GetValue<string>())
-            .OfType<string>()
+            .Select(static m => m?["id"]?.GetValue<string>() is { } id
+                ? new ModelInfo(id, ContextLength(m["context_length"]))
+                : null)
+            .OfType<ModelInfo>()
             .ToArray() ?? [];
+
+        // OpenRouter's own field. A list that does not carry it gives null, which leaves the
+        // story's budget as configured rather than guessing a window.
+        static int? ContextLength(JsonNode? node)
+            => node is JsonValue value && value.TryGetValue<long>(out var length) && length > 0
+                ? (int)Math.Min(length, int.MaxValue)
+                : null;
     }
 
     /// <summary>
@@ -283,9 +292,12 @@ public sealed class OpenRouterClient : ILanguageModelClient
 
             if (!response.IsSuccessStatusCode)
             {
+                var explained = Explain(content);
+
                 throw new ModelUnavailableException(
-                    $"The API returned {(int)response.StatusCode} {response.ReasonPhrase}. {Explain(content)}".TrimEnd(),
-                    (int)response.StatusCode);
+                    $"The API returned {(int)response.StatusCode} {response.ReasonPhrase}. {explained}".TrimEnd(),
+                    (int)response.StatusCode,
+                    noSuchModel: NoSuchModel((int)response.StatusCode, explained));
             }
 
             _logger.LogInformation(
@@ -309,6 +321,20 @@ public sealed class OpenRouterClient : ILanguageModelClient
     /// </remarks>
     /// <param name="content">The raw error body.</param>
     /// <returns>A short explanation, or an empty string.</returns>
+    /// <summary>
+    /// Whether a refusal was about the model named rather than about the request or the account.
+    /// </summary>
+    /// <remarks>
+    /// OpenRouter answers a model it has no host for with 404 ("No endpoints found for …") and
+    /// an identifier it does not know with 400 ("… is not a valid model ID"). Only these may
+    /// send a story's turn to the default model instead: a rejected key or an empty account
+    /// would refuse the default identically, and a 400 about anything else is a request the
+    /// default would refuse too.
+    /// </remarks>
+    private static bool NoSuchModel(int status, string explained)
+        => status == 404
+           || (status == 400 && explained.Contains("not a valid model", StringComparison.OrdinalIgnoreCase));
+
     private static string Explain(string content)
     {
         try

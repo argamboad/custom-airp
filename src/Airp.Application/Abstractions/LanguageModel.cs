@@ -99,6 +99,14 @@ public sealed record ModelReply
         string.Equals(FinishReason, "length", StringComparison.OrdinalIgnoreCase);
 }
 
+/// <summary>One model the account can reach, as the provider's list describes it.</summary>
+/// <param name="Id">The identifier a request names it by.</param>
+/// <param name="ContextLength">
+/// The most tokens a request to it may hold, prompt and reply together, or null when the list
+/// does not say — OpenRouter's does; a plain OpenAI-shaped list does not.
+/// </param>
+public sealed record ModelInfo(string Id, int? ContextLength);
+
 /// <summary>Calls an OpenAI-compatible chat completions endpoint.</summary>
 public interface ILanguageModelClient
 {
@@ -129,10 +137,10 @@ public interface ILanguageModelClient
         double? frequencyPenalty = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Lists the model identifiers the account can reach.</summary>
+    /// <summary>Lists the models the account can reach, with the context each accepts.</summary>
     /// <param name="cancellationToken">Token used to abort the call.</param>
-    /// <returns>Model identifiers, in the order the API returned them.</returns>
-    Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken cancellationToken = default);
+    /// <returns>The models, in the order the API returned them.</returns>
+    Task<IReadOnlyList<ModelInfo>> ListModelsAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Turns text into vectors that can be compared for similarity.</summary>

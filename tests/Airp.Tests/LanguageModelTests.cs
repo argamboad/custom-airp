@@ -359,14 +359,28 @@ public class OpenRouterClientTests
     }
 
     [Fact]
-    public async Task Listing_models_returns_the_identifiers()
+    public async Task Listing_models_returns_the_identifiers_and_the_context_each_accepts()
     {
         const string body = """
-            { "data": [ { "id": "deepseek/deepseek-v4-flash" }, { "id": "deepseek/deepseek-v4-pro" } ] }
+            { "data": [ { "id": "deepseek/deepseek-v4-flash", "context_length": 1048576 }, { "id": "local/plain" } ] }
             """;
 
         var models = await Build(new ScriptedHandler(HttpStatusCode.OK, body)).ListModelsAsync();
 
-        models.ShouldBe(["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"]);
+        models.ShouldBe([new ModelInfo("deepseek/deepseek-v4-flash", 1048576), new ModelInfo("local/plain", null)]);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, """{ "error": { "message": "No endpoints found for x/y." } }""", true)]
+    [InlineData(HttpStatusCode.BadRequest, """{ "error": { "message": "x/y is not a valid model ID" } }""", true)]
+    [InlineData(HttpStatusCode.BadRequest, """{ "error": { "message": "max_tokens is too large" } }""", false)]
+    [InlineData(HttpStatusCode.Unauthorized, """{ "error": { "message": "No auth credentials found" } }""", false)]
+    [InlineData(HttpStatusCode.PaymentRequired, """{ "error": { "message": "Insufficient credits" } }""", false)]
+    public async Task Only_a_refusal_about_the_model_itself_says_there_is_no_such_model(HttpStatusCode status, string body, bool noSuchModel)
+    {
+        var refused = await Should.ThrowAsync<ModelUnavailableException>(
+            () => Build(new ScriptedHandler(status, body)).CompleteAsync([new ModelMessage(ModelRole.User, "Hello.")]));
+
+        refused.NoSuchModel.ShouldBe(noSuchModel);
     }
 }
