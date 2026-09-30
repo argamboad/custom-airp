@@ -512,6 +512,10 @@ the wording it is superseding. That is deliberate: shown its own last attempt, a
 to write it again. It also means a reason like *Guide the reply* asks for a fresh take rather
 than for a comparison against something invisible.
 
+**A story's written opening is not rerolled** until you have taken a turn — in the terminal or
+in the browser. It is a page you wrote, and a reroll would swap it for the model's guess. A
+beat the model wrote after it (a `/do`, or Carry on) can be rerolled like any reply.
+
 ---
 
 ## Commands in the composer
