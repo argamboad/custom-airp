@@ -962,9 +962,8 @@ repository. This one only ever reads the files.
 
 ## Playing from a browser
 
-Optional. Your stories as web pages, for a phone: the list, a story from its newest turns back,
-a box to write in, reroll, and starting a story from the library. Plain pages, no scripts, over
-your own private network.
+Optional. Your stories as web pages, for a phone: everything the terminal does to a story, and
+renaming, deleting and starting one. Plain pages, no scripts, over your own private network.
 
 It is a separate program beside the terminal, reading the same database. Build it from source
 (the releases carry only `airp`), and tell it which Tailscale account may come in — the login
@@ -992,20 +991,30 @@ Do not put it behind Funnel or any public tunnel: the database holds every story
 **What it does:**
 
 - **The list**, newest first, with the latest line of each. A story opens at its newest turn,
-  with a link to the earlier ones.
-- **Writing a turn.** Send, and the page moves on to the reply. Reloading afterwards does not
-  send it again.
-- **The same commands as Janitor** — `/recap`, `/do`, `/focus`, `/ask`, `/help` — with the same
-  meaning: an answer that is not part of the story is shown on the page and stored nowhere, and
-  a typo is refused with your text still in the box, never sent. See
-  [Commands in Janitor](#commands-in-janitor).
-- **Reroll** under the newest reply: why it was wrong, and optionally what should be different.
+  with a link to the earlier ones. **⋯** on a row renames the story or deletes it — the delete
+  on a page of its own that names the story first.
 - **New**, top right in the list: pick a character from the shelf, and the form comes with that
   character's opening already in it. Name falls back to the character, the persona to your
   default. Starting costs nothing; the model is first asked on your first turn.
+- **Writing a turn.** Send, and the page moves on to the reply. Reloading afterwards does not
+  send it again. **Carry on**, beside Send, lets the story go on with nothing from you, as `>`
+  does in the terminal.
+- **Every composer command**, with the same meaning as in the terminal, plus `/recap` — see
+  [Commands in the composer](#commands-in-the-composer). An answer that is not part of the story
+  is shown on the page and stored nowhere; `/search` links each turn it finds; an `/ask` answer
+  has **Pin as fact** under it; a typo is refused with your text still in the box, never sent.
+- **Snippets and emoji.** Type `:name` for a snippet or `:name:` for an emoji, and they become
+  their text when you press Send — the pages have no script to do it as you type. **Snippets**
+  under the box lists yours.
+- **Reroll** under the newest reply: why it was wrong, and optionally what should be different.
+- **⋯ under any turn**: Branch from here, into a copy named as the terminal would name it, which
+  the page then opens; or Delete from here, on a page that says how many messages would go.
+- **⋯ in the bar**: the dials — every one the pack declares, inner thoughts included, applied
+  together — and the transcript as Markdown, JSON or text. The download is named by the date
+  alone, so a phone's download notice does not say what it is.
 
-**What stays in the terminal:** the dials, branching, deleting turns, the library itself,
-snippets, trackers and the facts. The pages are for playing, not for managing.
+**What stays in the terminal:** the library itself, and copying with one key — on a phone, press
+and hold the text instead.
 
 **Private by design.** The tab says "Stories" and nothing else, and the pages tell the browser
 not to keep them, not to send where they came from to any link, and not to be indexed.
@@ -1095,11 +1104,12 @@ and **`/recap`** shows it: the latest summary, then the last four turns word for
 for ten. It is answered by the proxy from what is on disk, so it costs nothing and is stored
 nowhere.
 
-The composer's commands that steer a turn work here too, with the same meaning: `/do <direction>`,
-`/focus <who>`, and `/ask <question>`, whose answer is shown and never stored. `/help` lists
-them. Anything else that starts with a slash — a typo, or a command only the terminal can
-show — is refused with an error and stored nowhere, so a mistyped command never becomes a turn
-the character has to answer. To send prose that genuinely begins with a slash, double it.
+Every one of the composer's commands works here too, with the same meaning — `/do`, `/focus`,
+`/ask` (shown, never stored), the ones that only read (`/card`, `/facts`, `/cost` and the rest),
+and `/fact` and `/tracker`, which write to the story's state but never add a turn. Their answers
+arrive as the reply. `/help` lists them. Anything else that starts with a slash — a typo — is
+refused with an error and stored nowhere, so a mistyped command never becomes a turn the
+character has to answer. To send prose that genuinely begins with a slash, double it.
 
 **Not yet understood by the proxy:** Janitor's reroll resends your last message, and the proxy
 stores it as a new turn — your message twice, answered twice. Regenerate in airp instead. Edits
