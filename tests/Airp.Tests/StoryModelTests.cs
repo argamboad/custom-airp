@@ -1,5 +1,14 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 using Airp.Application.Abstractions;
+using Airp.Application.Options;
+using Airp.Application.Services;
+using Airp.Infrastructure;
+using Airp.Terminal.Ui;
+using Airp.Terminal.Views;
+using Airp.Web.Pages;
 using Airp.Domain;
 using Airp.Domain.Conversations;
 using Airp.Infrastructure.Providers;
@@ -166,5 +175,131 @@ public sealed class StoryModelTests : IDisposable
         var branch = await Provider().BranchAsync(chat.Id, turns[^1].Id, "Vardhal (2)");
 
         branch.Model.ShouldBe("small/model");
+    }
+
+    // ── On the screens ───────────────────────────────────────────────────────────────────
+
+    private static KeyStroke Nav(ConsoleKey key)
+        => KeyMap.Resolve(new ConsoleKeyInfo('\0', key, false, false, false), KeyboardMode.Standard, KeyContext.Navigation);
+
+    private static RenderContext Context() => new(100, 30, Theme.For(ThemeName.Dark), new AirpOptions());
+
+    private async Task<(ChatSettingsView View, List<string?> Changed, FakeDialService Dials)> SettingsAsync(Chat chat, IReadOnlyList<string> choices)
+    {
+        var changed = new List<string?>();
+        var dials = new FakeDialService();
+        var view = new ChatSettingsView(
+            dials,
+            chat.Id,
+            chat.Name,
+            provider: Provider(),
+            defaultModel: Default,
+            modelChoices: choices,
+            modelChanged: changed.Add);
+
+        var load = (await view.OnActivatedAsync(CancellationToken.None)).ShouldBeOfType<ViewAction.RunAction>();
+        await load.Work(CancellationToken.None);
+        return (view, changed, dials);
+    }
+
+    private static async Task<ViewAction> ApplyAsync(ChatSettingsView view)
+    {
+        var apply = (await view.HandleKeyAsync(Nav(ConsoleKey.Enter), Context(), CancellationToken.None))
+            .ShouldBeOfType<ViewAction.RunAction>();
+        return await apply.Work(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task The_terminal_settings_lead_with_the_model_and_apply_it_like_a_dial()
+    {
+        var chat = await StoryAsync();
+        var (view, changed, dials) = await SettingsAsync(chat, ["big/model", "small/model"]);
+
+        // The first row is the model, on the default; one step right is the first choice.
+        await view.HandleKeyAsync(Nav(ConsoleKey.RightArrow), Context(), CancellationToken.None);
+        await ApplyAsync(view);
+
+        changed.ShouldBe(["big/model"]);
+        dials.Writes.ShouldBeEmpty();
+        (await Provider().GetAsync(chat.Id)).ShouldNotBeNull().Model.ShouldBe("big/model");
+    }
+
+    [Fact]
+    public async Task A_model_the_terminal_cannot_set_is_said_and_the_row_goes_back_to_what_the_story_has()
+    {
+        var chat = await StoryAsync();
+        var (view, changed, _) = await SettingsAsync(chat, ["missing/model"]);
+
+        await view.HandleKeyAsync(Nav(ConsoleKey.RightArrow), Context(), CancellationToken.None);
+        var said = (await ApplyAsync(view)).ShouldBeOfType<ViewAction.StatusAction>();
+
+        said.Kind.ShouldBe(StatusKind.Warning);
+        said.Text.ShouldContain("not available");
+        changed.ShouldBeEmpty();
+        (await Provider().GetAsync(chat.Id)).ShouldNotBeNull().Model.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task The_web_settings_change_the_model_and_say_so_or_say_why_not()
+    {
+        var chat = await StoryAsync();
+
+        var page = new DialsModel(new FakeDialService(), Provider(), TestOptions.Default());
+        await page.OnPostModelAsync(chat.Id, "big/model", CancellationToken.None);
+        page.Applied.ShouldNotBeNull().ShouldContain("big/model");
+
+        var refused = new DialsModel(new FakeDialService(), Provider(), TestOptions.Default());
+        await refused.OnPostModelAsync(chat.Id, "missing/model", CancellationToken.None);
+        refused.Error.ShouldNotBeNull().ShouldContain("stays on big/model");
+    }
+
+    [Fact]
+    public async Task A_story_started_on_an_unavailable_model_starts_on_the_default_and_its_page_says_so_once()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "airp-model-" + Guid.NewGuid().ToString("N"));
+        var library = new TextLibrary(root);
+        library.EnsureCreated();
+        File.WriteAllText(Path.Combine(library.Characters, "Vardhal.txt"), "=== THE WORLD ===\nA lighthouse.");
+        var temp = new TempDataDictionary(new DefaultHttpContext(), Substitute.For<ITempDataProvider>());
+
+        try
+        {
+            var form = new NewStoryModel(Provider(), library, TestOptions.Default()) { Model = "missing/model", TempData = temp };
+            await form.OnPostAsync("Vardhal", CancellationToken.None);
+
+            var chat = (await Provider().ListAsync()).ShouldHaveSingleItem();
+            chat.Model.ShouldBeNull();
+
+            var story = new StoryModel(
+                Provider(),
+                library,
+                new ExportService(TestOptions.Default(), NullLogger<ExportService>.Instance),
+                TestOptions.Default()) { TempData = temp };
+            await story.OnGetAsync(chat.Id, all: false, CancellationToken.None);
+
+            story.Arrival.ShouldNotBeNull().ShouldContain("not available");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task The_story_page_says_when_the_newest_reply_was_written_by_the_default()
+    {
+        var chat = await StoryAsync();
+        await Provider().SetModelAsync(chat.Id, "gone/model");
+        _model.HasNoSuchModel().Says("The default wrote this.");
+        await Provider().SendAsync(chat.Id, "I come in.");
+
+        var story = new StoryModel(
+            Provider(),
+            new TextLibrary(Path.Combine(Path.GetTempPath(), "airp-none-" + Guid.NewGuid().ToString("N"))),
+            new ExportService(TestOptions.Default(), NullLogger<ExportService>.Instance),
+            TestOptions.Default());
+        await story.OnGetAsync(chat.Id, all: false, CancellationToken.None);
+
+        story.FellBackFrom.ShouldBe("gone/model");
     }
 }

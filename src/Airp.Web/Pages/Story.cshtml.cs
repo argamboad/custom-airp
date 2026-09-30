@@ -49,6 +49,21 @@ public sealed class StoryModel(
     /// <summary>Why the last action did nothing, when it did nothing.</summary>
     public string? Error { get; private set; }
 
+    /// <summary>What a page that sent the reader here had to say, shown once on arrival.</summary>
+    public string? Arrival { get; private set; }
+
+    /// <summary>Where a page that redirects here leaves a notice for it to show once.</summary>
+    public const string NoticeKey = "notice";
+
+    /// <summary>
+    /// The story's own model, when the newest reply was written by the default because that
+    /// model was not available.
+    /// </summary>
+    public string? FellBackFrom { get; private set; }
+
+    /// <summary>The model a story uses when it has none of its own.</summary>
+    public string DefaultModel => options.CurrentValue.Model.Name;
+
     /// <summary>An answer that is not a turn — <c>/ask</c>, <c>/recap</c>, <c>/facts</c> and the rest — shown once.</summary>
     public string? Aside { get; private set; }
 
@@ -100,7 +115,15 @@ public sealed class StoryModel(
     /// <param name="cancellationToken">Token used to abort the read.</param>
     /// <returns>The page, or not found.</returns>
     public async Task<IActionResult> OnGetAsync(string id, bool all, CancellationToken cancellationToken)
-        => await LoadAsync(id, all, cancellationToken).ConfigureAwait(false) ? Page() : NotFound();
+    {
+        if (!await LoadAsync(id, all, cancellationToken).ConfigureAwait(false))
+        {
+            return NotFound();
+        }
+
+        Arrival = TempData?[NoticeKey] as string;
+        return Page();
+    }
 
     /// <summary>Sends what the reader wrote: a turn, a command, or a refusal.</summary>
     /// <remarks>
@@ -384,6 +407,7 @@ public sealed class StoryModel(
         Shown = all ? turns : [.. turns.TakeLast(Recent)];
         Hidden = turns.Count - Shown.Count;
         Snippets = TextLibrary.Names(library.Snippets);
+        FellBackFrom = turns.Count > 0 && turns[^1].Role == ChatRole.Assistant ? turns[^1].FellBackFrom : null;
         return true;
     }
 

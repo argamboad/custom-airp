@@ -13,6 +13,63 @@ namespace Airp.Terminal;
 /// <summary>Talking to and about the model: ask, models, secrets, configuration.</summary>
 internal static partial class Program
 {
+    /// <summary>Shows or changes the model a story is played on.</summary>
+    /// <remarks>
+    /// The same change the settings screens make, so the same rules: a model is saved only if
+    /// the provider lists it, the default's own id or <c>--default</c> clears it, and an
+    /// unavailable one leaves the story as it was and says on what.
+    /// </remarks>
+    /// <param name="services">Resolved services.</param>
+    /// <param name="args">The command line: a model id, or <c>--default</c>, and <c>--chat</c>.</param>
+    /// <param name="cancellationToken">Token used to abort.</param>
+    /// <returns>The process exit code.</returns>
+    private static async Task<int> StoryModelAsync(
+        IServiceProvider services,
+        string[] args,
+        CancellationToken cancellationToken)
+    {
+        var (local, chat) = await ResolveChatAsync(services, args, cancellationToken).ConfigureAwait(false);
+
+        if (local is null || chat is null)
+        {
+            return 66;
+        }
+
+        var settings = services.GetRequiredService<IOptionsMonitor<AirpOptions>>().CurrentValue.Model;
+        var wanted = Positional(args).ElementAtOrDefault(1);
+        var clear = args.Any(static a => string.Equals(a, "--default", StringComparison.OrdinalIgnoreCase));
+
+        if (wanted is null && !clear)
+        {
+            AnsiConsole.MarkupLine(chat.Model is { } own
+                ? $"'{Markup.Escape(chat.Name)}' is played on [bold]{Markup.Escape(own)}[/]."
+                : $"'{Markup.Escape(chat.Name)}' is played on the default, [bold]{Markup.Escape(settings.Name)}[/].");
+
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[grey]It can be switched to:[/]");
+
+            foreach (var choice in settings.EffectiveChoices)
+            {
+                AnsiConsole.MarkupLine($"  {Markup.Escape(choice)}");
+            }
+
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[grey]airp model <id> [[--chat <name>]] switches it; --default goes back. "
+                + "Any id the provider lists works, not only these.[/]");
+            return 0;
+        }
+
+        var change = await AnsiConsole.Status()
+            .StartAsync("Checking the model…", async _ =>
+                await local.SetModelAsync(chat.Id, clear ? null : wanted, cancellationToken).ConfigureAwait(false))
+            .ConfigureAwait(false);
+
+        AnsiConsole.MarkupLine(change.Saved
+            ? $"[green]{Markup.Escape(change.Message)}[/]"
+            : $"[yellow]{Markup.Escape(change.Message)}[/]");
+
+        return change.Saved ? 0 : 65;
+    }
 
     /// <summary>Sends one message to the configured model and prints the reply.</summary>
     /// <remarks>

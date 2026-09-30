@@ -35,13 +35,19 @@ internal sealed class NewChatView : ViewBase
     private const int SpeakerField = 1;
     private const int CharacterField = 2;
     private const int PersonaField = 3;
-    private const int OpeningField = 4;
+    private const int ModelField = 4;
+    private const int OpeningField = 5;
 
     private readonly IServiceProvider _services;
     private readonly LocalConversationProvider _provider;
 
     private readonly IReadOnlyList<string?> _characters;
     private readonly IReadOnlyList<string?> _personas;
+
+    /// <summary>The models on offer, null first for the configured default.</summary>
+    private readonly IReadOnlyList<string?> _models;
+
+    private readonly string _defaultModel;
     private readonly string? _defaultPersona;
 
     private readonly TextDocument _opening = TextDocument.FromText(null);
@@ -80,6 +86,7 @@ internal sealed class NewChatView : ViewBase
     private string _speaker = string.Empty;
     private int _character;
     private int _persona;
+    private int _model;
     private int _focus;
 
     /// <summary>Whether the opening's current text came from the shelf rather than typing.</summary>
@@ -112,6 +119,11 @@ internal sealed class NewChatView : ViewBase
         // persona's null slot means "the configured default", which is what most stories want.
         _characters = [null, .. TextLibrary.Names(library.Characters)];
         _personas = [null, .. TextLibrary.Names(library.Personas)];
+
+        // Null first, as the persona's is: most stories start on the configured model.
+        _defaultModel = options.CurrentValue.Model.Name;
+        _models = [null, .. options.CurrentValue.Model.EffectiveChoices
+            .Where(m => !string.Equals(m, _defaultModel, StringComparison.OrdinalIgnoreCase))];
         _defaultPersona = options.CurrentValue.DefaultPersona;
         _openingsFolder = library.Openings;
         _charactersFolder = library.Characters;
@@ -191,7 +203,7 @@ internal sealed class NewChatView : ViewBase
     /// ◂ and ▸ are there only while a character or a persona is being picked, since that is all
     /// they pick. Create presses Ctrl+Enter, the chord that reaches the application everywhere.
     /// </remarks>
-    public override IReadOnlyList<Button> Buttons => _focus is CharacterField or PersonaField
+    public override IReadOnlyList<Button> Buttons => _focus is CharacterField or PersonaField or ModelField
         ?
         [
             Button.Escape("Cancel"),
@@ -208,7 +220,7 @@ internal sealed class NewChatView : ViewBase
         ];
 
     private bool Touched
-        => _name.Length > 0 || _speaker.Length > 0 || _persona > 0
+        => _name.Length > 0 || _speaker.Length > 0 || _persona > 0 || _model > 0
            || (_opening.CharacterCount > 0 && !_openingFromShelf);
 
     /// <inheritdoc />
@@ -259,6 +271,13 @@ internal sealed class NewChatView : ViewBase
                     ?? (_defaultPersona is null ? "(none)" : $"(default: {_defaultPersona})")),
                 _personas[_persona] is null ? theme.Muted : theme.Text)
             + Draw.Literal(_focus == PersonaField && !phone ? "  ←→" : string.Empty, theme.Muted)));
+
+        rows.Add(new Markup(
+            Label(ModelField, "Model")
+            + Draw.Literal(
+                Value(_models[_model] ?? $"(default: {_defaultModel})"),
+                _models[_model] is null ? theme.Muted : theme.Text)
+            + Draw.Literal(_focus == ModelField && !phone ? "  ←→" : string.Empty, theme.Muted)));
 
         rows.Add(new Rule { Style = theme.Border });
 
@@ -377,8 +396,8 @@ internal sealed class NewChatView : ViewBase
         return new Rows(rows);
     }
 
-    /// <summary>How many rows the panel under the rule gets.</summary>
-    private static int Panel(RenderContext context) => Math.Max(3, context.Height - 12);
+    /// <summary>How many rows the panel under the rule gets: what the five fields, the rule and the frame leave.</summary>
+    private static int Panel(RenderContext context) => Math.Max(3, context.Height - 13);
 
     /// <summary>A preview, wrapped to the width of the column it will stand in.</summary>
     private static List<string> Wrapped(IReadOnlyList<string> text, int width)
@@ -496,7 +515,7 @@ internal sealed class NewChatView : ViewBase
                 return ViewAction.None;
 
             case AppCommand.MoveUp when _focus == OpeningField && _opening.CursorLine == 0:
-                _focus = PersonaField;
+                _focus = ModelField;
                 return ViewAction.None;
 
             // Enter walks the short fields, because that is what typing a form feels like;
@@ -519,6 +538,14 @@ internal sealed class NewChatView : ViewBase
                 _character = (_character + 1) % _characters.Count;
                 await OfferOpeningAsync(cancellationToken).ConfigureAwait(false);
                 DescribeCharacter();
+                return ViewAction.None;
+
+            case AppCommand.MoveLeft when _focus == ModelField:
+                _model = (_model + _models.Count - 1) % _models.Count;
+                return ViewAction.None;
+
+            case AppCommand.MoveRight when _focus == ModelField:
+                _model = (_model + 1) % _models.Count;
                 return ViewAction.None;
 
             case AppCommand.MoveLeft when _focus == PersonaField:
@@ -655,11 +682,29 @@ internal sealed class NewChatView : ViewBase
                 cancellationToken)
             .ConfigureAwait(false);
 
+        // Started whatever becomes of the model: an unavailable one leaves the story on the
+        // default, and the status line says so rather than the start going unsaid.
+        var started = ViewAction.Status($"\"{chat.Name}\" started.", StatusKind.Success);
+
+        if (_models[_model] is { } model)
+        {
+            var change = await _provider.SetModelAsync(chat.Id, model, cancellationToken).ConfigureAwait(false);
+
+            if (change.Saved)
+            {
+                chat = chat with { Model = change.Model };
+            }
+            else
+            {
+                started = ViewAction.Status($"\"{chat.Name}\" started. {change.Message}", StatusKind.Warning);
+            }
+        }
+
         // Straight into the conversation. Creating a chat and then hunting for it in the list
         // would be the terminal making the reader do its filing.
         return ViewAction.Sequence(
             ViewAction.Pop,
             ViewAction.Push(RowView.For(chat, _services)),
-            ViewAction.Status($"\"{chat.Name}\" started.", StatusKind.Success));
+            started);
     }
 }

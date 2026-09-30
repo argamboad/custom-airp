@@ -109,7 +109,7 @@ public sealed class WebManageTests : IDisposable
     {
         var chat = await StoryAsync();
         var dials = new FakeDialService().With("pacing", "1");
-        var page = new DialsModel(dials, Provider())
+        var page = new DialsModel(dials, Provider(), TestOptions.Default())
         {
             Values = new(StringComparer.OrdinalIgnoreCase)
             {
@@ -135,7 +135,7 @@ public sealed class WebManageTests : IDisposable
     {
         var chat = await StoryAsync();
         var dials = new FakeDialService();
-        var page = new DialsModel(dials, Provider())
+        var page = new DialsModel(dials, Provider(), TestOptions.Default())
         {
             Values = new(StringComparer.OrdinalIgnoreCase) { ["lust"] = "3", ["pov"] = "fourth-wall" },
         };

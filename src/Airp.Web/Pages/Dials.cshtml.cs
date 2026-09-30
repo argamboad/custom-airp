@@ -1,9 +1,11 @@
 using Airp.Application.Abstractions;
 using Airp.Application.Dials;
+using Airp.Application.Options;
 using Airp.Domain.Conversations;
 using Airp.Infrastructure.Providers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Options;
 
 namespace Airp.Web.Pages;
 
@@ -20,9 +22,37 @@ namespace Airp.Web.Pages;
 /// </para>
 /// </remarks>
 /// <param name="dials">The pack and each story's choices.</param>
-/// <param name="conversations">The store, for the story itself.</param>
-public sealed class DialsModel(IDialService dials, LocalConversationProvider conversations) : PageModel
+/// <param name="conversations">The store, for the story itself and its model.</param>
+/// <param name="options">Live application options, for the default model and the list to pick from.</param>
+public sealed class DialsModel(
+    IDialService dials,
+    LocalConversationProvider conversations,
+    IOptionsMonitor<AirpOptions> options) : PageModel
 {
+    /// <summary>The model a story uses when it has none of its own.</summary>
+    public string DefaultModel => options.CurrentValue.Model.Name;
+
+    /// <summary>
+    /// The models the story can be switched to: the configured list, and the story's own model
+    /// when it is not on it, so the page never shows a choice it cannot display.
+    /// </summary>
+    public IReadOnlyList<string> ModelChoices
+    {
+        get
+        {
+            var choices = options.CurrentValue.Model.EffectiveChoices
+                .Where(c => !string.Equals(c, DefaultModel, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (Chat?.Model is { } own && !choices.Contains(own, StringComparer.OrdinalIgnoreCase))
+            {
+                choices.Insert(0, own);
+            }
+
+            return choices;
+        }
+    }
+
     /// <summary>The story.</summary>
     public Chat? Chat { get; private set; }
 
@@ -73,6 +103,38 @@ public sealed class DialsModel(IDialService dials, LocalConversationProvider con
     /// <returns>The page, or not found.</returns>
     public async Task<IActionResult> OnGetAsync(string id, CancellationToken cancellationToken)
         => await LoadAsync(id, cancellationToken).ConfigureAwait(false) ? Page() : NotFound();
+
+    /// <summary>Changes the story's model, or clears it back to the default.</summary>
+    /// <remarks>
+    /// Its own form, apart from the dials: a model is checked against the provider's list
+    /// before it is saved, and an unavailable one is refused with what the story stays on —
+    /// which has nothing to do with whether the dials beside it were valid.
+    /// </remarks>
+    /// <param name="id">The story's id.</param>
+    /// <param name="model">The model picked, or empty for the default.</param>
+    /// <param name="cancellationToken">Token used to abort the work.</param>
+    /// <returns>The page, saying what the story now uses or why it did not change.</returns>
+    public async Task<IActionResult> OnPostModelAsync(string id, string? model, CancellationToken cancellationToken)
+    {
+        if (!await LoadAsync(id, cancellationToken).ConfigureAwait(false))
+        {
+            return NotFound();
+        }
+
+        var change = await conversations.SetModelAsync(id, model, cancellationToken).ConfigureAwait(false);
+
+        if (change.Saved)
+        {
+            Applied = change.Message;
+        }
+        else
+        {
+            Error = change.Message;
+        }
+
+        await LoadAsync(id, cancellationToken).ConfigureAwait(false);
+        return Page();
+    }
 
     /// <summary>Applies every changed dial, or none if any value is one its dial does not take.</summary>
     /// <param name="id">The story's id.</param>
