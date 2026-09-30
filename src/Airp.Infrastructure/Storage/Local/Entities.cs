@@ -60,6 +60,16 @@ public sealed class ConversationRecord
     public string? Model { get; set; }
 
     /// <summary>
+    /// The context window of <see cref="Model"/>, as the provider's list gave it when the model
+    /// was chosen; null when the list did not say or no model is chosen.
+    /// </summary>
+    /// <remarks>
+    /// Stored rather than looked up per turn, so a send never waits on a second request. It is
+    /// what shrinks the story's budget when the model cannot hold the configured one.
+    /// </remarks>
+    public int? ModelContext { get; set; }
+
+    /// <summary>
     /// Dead: the Lust dial before dials moved to <see cref="DialValueRecord"/>.
     /// </summary>
     /// <remarks>
@@ -342,6 +352,16 @@ public sealed class MessageRecord
     public string? Model { get; set; }
 
     /// <summary>
+    /// The story's own model, when it was not available and this turn was written by the
+    /// default instead; null otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Recorded rather than worked out by comparing names, because the name an API reports
+    /// back is not always the one that was asked for.
+    /// </remarks>
+    public string? FellBackFrom { get; set; }
+
+    /// <summary>
     /// The upstream host that served the turn, when the API named one.
     /// </summary>
     /// <remarks>
@@ -399,6 +419,8 @@ public sealed class MessageRecord
         Role = Role,
         Text = Text,
         SentAtUtc = SentAtUtc,
+        Generated = Model is not null,
+        FellBackFrom = FellBackFrom,
     };
 }
 

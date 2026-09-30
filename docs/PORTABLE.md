@@ -181,9 +181,13 @@ If you want one story on several machines, do not copy — keep it on one and re
 
 ## Reaching it from another machine
 
-airp is a terminal application, so SSH is the whole answer. A mesh VPN such as Tailscale is
-what makes the addresses stable and the connection private without opening a port to the
-internet.
+airp is a terminal application, so SSH is the answer for everything it does. A mesh VPN such as
+Tailscale is what makes the addresses stable and the connection private without opening a port
+to the internet.
+
+A phone can use the browser pages instead, served over the same tailnet — everything the
+terminal does to a story, without a terminal: see
+[Playing from a browser](MANUAL.md#playing-from-a-browser).
 
 ```bash
 ssh -t user@host airp

@@ -1,0 +1,93 @@
+@page "/new"
+@model NewStoryModel
+
+@section Header {
+    @if (Model.Character is null)
+    {
+        <a class="back" href="/" aria-label="Stories">‹</a>
+        <h1>New story</h1>
+    }
+    else
+    {
+        <a class="back" href="/new" aria-label="Characters">‹</a>
+        <h1>@Model.Character</h1>
+    }
+}
+
+@if (Model.Character is null)
+{
+    @if (Model.Characters.Count == 0)
+    {
+        <p class="empty">No characters on the shelf yet. Add one in airp with M, or <code>airp library --samples</code>.</p>
+    }
+    else
+    {
+        <ul class="stories">
+            @foreach (var (name, teaser) in Model.Characters)
+            {
+                <li>
+                    <a href="/new?character=@Uri.EscapeDataString(name)">
+                        <span class="name">@name</span>
+                        <span class="latest">@teaser</span>
+                    </a>
+                </li>
+            }
+        </ul>
+    }
+}
+else
+{
+    @* Folded: a world runs to forty lines, and the form is what this page is for. It costs
+       nothing to show — it is the section the card already sends. *@
+    @if (!string.IsNullOrWhiteSpace(Model.World))
+    {
+        <details class="world">
+            <summary>The world</summary>
+            @ProseHtml.Render(Model.World)
+        </details>
+    }
+
+    <form method="post" class="new-story">
+        <input type="hidden" name="character" value="@Model.Character">
+        <label>
+            <span>Name</span>
+            <input name="Name" value="@Model.Name" placeholder="@Model.Character" autocomplete="off">
+        </label>
+        <label>
+            <span>Speaker <span class="aside">who replies — optional</span></span>
+            <input name="Speaker" value="@Model.Speaker" autocomplete="off">
+        </label>
+        <label>
+            <span>Persona</span>
+            <select name="Persona">
+                <option value="">@(Model.DefaultPersona is { } fallback ? $"Default ({fallback})" : "None")</option>
+                @foreach (var persona in Model.Personas)
+                {
+                    <option value="@persona" selected="@(string.Equals(persona, Model.Persona, StringComparison.OrdinalIgnoreCase))">@persona</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>Model <span class="aside">what writes the replies; can be changed later in Settings</span></span>
+            <select name="Model">
+                <option value="">Default — @Model.Label(Model.DefaultModel)</option>
+                @foreach (var choice in Model.ModelChoices)
+                {
+                    <option value="@choice" selected="@(string.Equals(choice, Model.Model, StringComparison.OrdinalIgnoreCase))">@Model.Label(choice)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>Opening <span class="aside">optional</span></span>
+            <textarea name="Opening" rows="10">@Model.Opening</textarea>
+        </label>
+
+        @if (Model.Error is not null)
+        {
+            <p class="error" role="alert">@Model.Error</p>
+        }
+
+        <button type="submit">Start</button>
+        <p class="cost">Starting costs nothing; the model is first asked on your first turn.</p>
+    </form>
+}

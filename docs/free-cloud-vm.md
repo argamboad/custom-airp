@@ -19,8 +19,10 @@ console's defaults break several of them; where that happens this page says so.
 4. [First login](#first-login)
 5. [Reaching it with Tailscale](#reaching-it-with-tailscale)
 6. [Install and run airp](#install-and-run-airp)
-7. [Check that it is free](#check-that-it-is-free)
-8. [A safety net](#a-safety-net)
+7. [Keeping it up to date](#keeping-it-up-to-date)
+8. [The stories in a browser](#the-stories-in-a-browser)
+9. [Check that it is free](#check-that-it-is-free)
+10. [A safety net](#a-safety-net)
 
 ---
 
@@ -222,6 +224,213 @@ is [PORTABLE.md](PORTABLE.md#moving-the-data).
 **What is on that disk.** The database holds the whole history in the clear, and the key is
 in a text file. Google encrypts the disk at rest, but it is still someone else's machine.
 Decide that before moving a real story there.
+
+---
+
+## Keeping it up to date
+
+The VM can install each new release by itself. It **pulls**: a timer on the machine asks
+GitHub for the latest release every hour and installs it if it is newer. Nothing reaches in
+from outside — no deploy job, no key to the machine sitting in anyone's CI — which matters
+all the more because the repository is public.
+
+A release is installed only if its download matches the `SHA256SUMS` file published with it;
+a release without one is refused rather than installed unchecked. Releases after v1.2.0
+publish it. The script never downgrades and never touches your data, and it replaces the
+binary by renaming a new one over it, so a session left open keeps running on the version it
+started with and the next one gets the new version.
+
+The script, as `/usr/local/sbin/airp-update` — a fork changes `repo` to its own:
+
+```sh
+#!/bin/sh
+# Installs the newest airp release when it is newer than the one installed,
+# and only once the download matches the release's own SHA256SUMS.
+set -eu
+
+repo=argamboad/custom-airp
+asset=airp-linux-x64.tar.gz
+target=/usr/local/bin/airp
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# The binary unpacks part of itself on first run; give it somewhere to do that
+# that exists under systemd, where root may have no HOME.
+export DOTNET_BUNDLE_EXTRACT_BASE_DIR="$work/.bundle"
+
+latest=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+  | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)
+installed=$("$target" version 2>/dev/null | awk '{print $2}' | cut -d+ -f1)
+
+if [ -z "$latest" ]; then
+  echo "airp-update: could not read the latest release" >&2
+  exit 1
+fi
+
+newest=$(printf '%s\n%s\n' "$installed" "$latest" | sort -V | tail -n 1)
+if [ "$installed" = "$latest" ] || [ "$newest" != "$latest" ]; then
+  exit 0
+fi
+
+cd "$work"
+base="https://github.com/$repo/releases/download/v$latest"
+
+if ! curl -fsSL -o SHA256SUMS "$base/SHA256SUMS"; then
+  echo "airp-update: v$latest publishes no SHA256SUMS; not installing it" >&2
+  exit 1
+fi
+
+curl -fsSL -o "$asset" "$base/$asset"
+
+if ! grep -E " [ *]$asset\$" SHA256SUMS | sha256sum -c - >/dev/null; then
+  echo "airp-update: the v$latest download does not match its checksum; not installing it" >&2
+  exit 1
+fi
+
+tar xzf "$asset"
+
+if ! ./airp version | grep -Eq "^airp $latest([+ ]|\$)"; then
+  echo "airp-update: the v$latest download reports another version; not installing it" >&2
+  exit 1
+fi
+
+# Beside the old one and then renamed over it: a session that is open keeps the
+# binary it started with, and the next one gets this.
+install -m 755 airp "$target.new"
+mv -f "$target.new" "$target"
+echo "airp-update: $installed -> $latest"
+```
+
+Make it executable:
+
+```bash
+sudo chmod 755 /usr/local/sbin/airp-update
+```
+
+A service that runs it, as `/etc/systemd/system/airp-update.service`:
+
+```ini
+[Unit]
+Description=Install the newest airp release
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/airp-update
+```
+
+And a timer that runs the service every hour, as `/etc/systemd/system/airp-update.timer`:
+
+```ini
+[Unit]
+Description=Look for a new airp release every hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Switch it on:
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now airp-update.timer
+```
+
+When it last ran, when it runs next, and what it said:
+
+```bash
+systemctl list-timers airp-update.timer
+```
+
+```bash
+journalctl -u airp-update.service -n 20
+```
+
+An hourly check is one small request to GitHub's API, well inside the sixty an hour it allows
+without a login; the download, about 45 MB, happens only when there is something new.
+
+---
+
+## The stories in a browser
+
+Optional: the stories as web pages, for playing from a phone without a terminal — what they do
+is in the manual, [Playing from a browser](MANUAL.md#playing-from-a-browser). On this machine
+they run as a service beside airp and are reached the same private way.
+
+The releases do not carry the pages, and the updater above does not touch them. Build them on a
+machine with the .NET SDK, from a clone of the repository, and copy the folder over:
+
+```bash
+dotnet publish src/Airp.Web -c Release -r linux-x64 --self-contained -o airp-web
+```
+
+```bash
+scp -r airp-web USER@100.x.y.z:
+```
+
+On the VM, put it in place:
+
+```bash
+sudo rm -rf /usr/local/lib/airp-web && sudo mv ~/airp-web /usr/local/lib/airp-web && sudo chmod +x /usr/local/lib/airp-web/airp-web
+```
+
+The pages need the model key for the turns they send. A service does not read `~/.bashrc`, so
+the key goes in a file only your user can read, written without passing through your shell
+history:
+
+```bash
+mkdir -p ~/.config/airp-web && read -rs -p "OpenRouter key: " k && printf 'OPENROUTER_API_KEY=%s\n' "$k" > ~/.config/airp-web/env && unset k && chmod 600 ~/.config/airp-web/env
+```
+
+The service, as `/etc/systemd/system/airp-web.service` — with your user, and your Tailscale
+login as the one account let in:
+
+```ini
+[Unit]
+Description=airp web pages (localhost only, reached through tailscale serve)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=USER
+WorkingDirectory=/usr/local/lib/airp-web
+Environment=Airp__Web__Login=you@example.com
+EnvironmentFile=/home/USER/.config/airp-web/env
+ExecStart=/usr/local/lib/airp-web/airp-web --urls http://127.0.0.1:5291
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now airp-web
+```
+
+And give it an address on your tailnet — on 8443, so 443 stays free for anything else:
+
+```bash
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:5291
+```
+
+`https://<vm-name>.<tailnet>.ts.net:8443/` on the phone, with Tailscale on, is your stories.
+`journalctl -u airp-web -n 20` says why when it is not: it refuses to start without a login
+to let in, and turns away anyone else with "Not available."
+
+**It fits, not by much.** The pages hold about 170 MB of the `e2-micro`'s 1 GB while running.
+With airp open in `tmux` beside them there is still room; add the Janitor proxy as well and
+there is about 250 MB to spare.
+
+To update them, publish and copy again, move the folder into place, then
+`sudo systemctl restart airp-web`.
 
 ---
 

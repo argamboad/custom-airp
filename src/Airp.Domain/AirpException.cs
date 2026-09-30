@@ -141,12 +141,23 @@ public sealed class ModelUnavailableException : AirpException
     /// <param name="message">A message suitable for display in the terminal.</param>
     /// <param name="statusCode">The HTTP status the API returned, when there was one.</param>
     /// <param name="inner">The underlying failure, if any.</param>
-    public ModelUnavailableException(string message, int? statusCode = null, Exception? inner = null)
+    /// <param name="noSuchModel">Whether the refusal was about the model named, which no host serves.</param>
+    public ModelUnavailableException(string message, int? statusCode = null, Exception? inner = null, bool noSuchModel = false)
         : base(message, inner)
-        => StatusCode = statusCode;
+    {
+        StatusCode = statusCode;
+        NoSuchModel = noSuchModel;
+    }
 
     /// <summary>The HTTP status the API returned, when the failure got that far.</summary>
     public int? StatusCode { get; }
+
+    /// <summary>
+    /// Whether the refusal was about the model named — unknown, or with no host serving it —
+    /// rather than about the key, the credit or the request. Only this may be answered by
+    /// trying the default model instead.
+    /// </summary>
+    public bool NoSuchModel { get; }
 
     /// <inheritdoc />
     public override string RecoveryHint => StatusCode switch

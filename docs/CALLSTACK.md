@@ -24,7 +24,7 @@ Everything from here on is `LocalConversationProvider` —
 
 ---
 
-## 1. Idempotency, then persistence — `SendAsync` (line 221)
+## 1. Idempotency, then persistence — `SendAsync` (line 228)
 
 ```text
 SendAsync(conversationId, text, instruction, progress, ct)
@@ -52,7 +52,7 @@ database enforces what a check-then-insert could race past.
 
 ---
 
-## 2. Building the prompt — `ComposeAsync` (line 811)
+## 2. Building the prompt — `ComposeAsync` (line 851)
 
 Shared verbatim by a send, a carry-on, a regenerate, an aside, and every pass of a rebuild —
 an aside that differed by one layer would miss the prefix cache the next real turn is about to
@@ -71,12 +71,16 @@ ComposeAsync(store, conversation, instruction, ct)
 │                    in force, rendered in the screen's own words (DialEngine.cs:54)
 ├─ 876  sampler    = DialEngine.Sampler(pack, values)      temperature / ceiling /
 │                    frequency penalty, from the sampler-lever dials (DialEngine.cs:124)
+├─      settings   = settings.WithWindow(ModelContext − reply ceiling) when the story
+│                    has its own model with a smaller window — ONE copy, handed to the
+│                    summariser, the retriever and the builder, so they cannot disagree
 ├─ 887  prepared   = ConversationSummariser.PrepareAsync(...)   ← §3, may compress
 ├─ 905  live       = FactExtractor.LiveAsync AGAIN — extraction may have just run,
 │                    and a fact established in the compressed stretch must reach
 │                    THIS turn's prompt, not the next one's
-├─ 911  budget     = prepared.CompressionFailed ? int.MaxValue : ContextBudget
-│                    — going over budget costs cents; dropping turns costs the story
+├─ 911  budget     = prepared.CompressionFailed ? (model window ?? int.MaxValue) : ContextBudget
+│                    — going over budget costs cents; dropping turns costs the story;
+│                    a model's own window is a wall, not a target
 ├─ 918  memories   = RecallAsync(...)                            ← §4
 └─ 924  LocalPrompt.Build(named arguments, every one)            ← §5
 ```
@@ -132,7 +136,7 @@ occupies.
 
 ---
 
-## 4. Retrieval — `RecallAsync` (provider line 943) → `MemoryRetriever`
+## 4. Retrieval — `RecallAsync` (provider line 984) → `MemoryRetriever`
 
 ```text
 RecallAsync(store, conversation, prepared, ct)        (line 956)
@@ -180,7 +184,7 @@ memories, trackers, instruction`. Least → most volatile; the prefix cache cont
 
 ---
 
-## 6. The call and the write-back — `ReplyAsync` (line 695)
+## 6. The call and the write-back — `ReplyAsync` (line 731)
 
 ```text
 ReplyAsync(store, conversation, pending, instruction, progress, ct)
@@ -189,7 +193,10 @@ ReplyAsync(store, conversation, pending, instruction, progress, ct)
 │                composed.Sampler — the dial engine's temperature (0.6..1.4),
 │                ceiling (200..2600) and frequency penalty, each falling back
 │                to the configured default when its dial is unset)
-├─ 731  _model.CompleteAsync(messages, conversation.Model ?? choice.Model, ...)
+├─ 731  CompleteForStoryAsync → _model.CompleteAsync(messages, conversation.Model ?? choice.Model, ...)
+│         · the story's model refused as NoSuchModel (404, "not a valid model") →
+│           the same call on choice.Model; the reply records FellBackFrom
+│         · any other refusal is not retried on the default
 │         OpenRouterClient (OpenRouterClient.cs:56):
 │         · payload is plain OpenAI; "provider" routing object only when
 │           Prefer/IgnoreProviders are set (line 178), omitted otherwise
@@ -221,8 +228,9 @@ transcript and redraws.
 
 | Variation | Divergence point |
 |---|---|
-| Carry on (no user turn) | `ContinueAsync` (line 373): no pending row, a framed "carry the scene forward" instruction — then `ReplyAsync` as above |
-| Regenerate | `RegenerateAsync` (line 319): tombstone the newest reply **before** the call, restore it on failure — then `ReplyAsync` with `RegenerateDirective` |
-| Aside (`/ask`) | `AskAsync` (line 459): `ComposeAsync` with `AskDirective`, `ModelTask.Aside`; answer goes to `Asides` + a spend row — **never** to `Messages` |
-| Rebuild | `RebuildMemoryAsync` (line 1094): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
-| From the proxy | identical from `SendAsync` down; only the entry differs ([FLOWS.md §7](FLOWS.md)) |
+| Carry on (no user turn) | `ContinueAsync` (line 401): no pending row, a framed "carry the scene forward" instruction — then `ReplyAsync` as above |
+| Regenerate | `RegenerateAsync` (line 333): refused on a written opening with no turn of the reader's yet (`RegenerateReasons.CanReplace`); otherwise tombstone the newest reply **before** the call, restore it on failure — then `ReplyAsync` with `RegenerateDirective` |
+| Aside (`/ask`) | `AskAsync` (line 487): `ComposeAsync` with `AskDirective`, `ModelTask.Aside`; answer goes to `Asides` + a spend row — **never** to `Messages` |
+| Rebuild | `RebuildMemoryAsync` (line 1121): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
+| From the proxy | `FrontEndTurn.RunAsync` decides turn, command or refusal; identical from `SendAsync` down ([FLOWS.md §7](FLOWS.md)) |
+| From the web pages | the same `FrontEndTurn.RunAsync`, then identical from `SendAsync` down; a stored turn answers with a redirect ([FLOWS.md §7b](FLOWS.md)) |

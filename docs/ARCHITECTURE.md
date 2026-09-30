@@ -16,13 +16,14 @@ classes that matter in each. The companion documents go deeper on specific quest
 
 ## The map
 
-Five projects. Dependencies point downward only; nothing below knows what sits above it.
+Six projects. Dependencies point downward only; nothing below knows what sits above it.
 
 ```mermaid
 flowchart TB
     subgraph Presentation
         Terminal["Airp.Terminal\nSpectre.Console TUI + CLI verbs"]
         Proxy["Airp.Proxy\nOpenAI-compatible endpoint"]
+        Web["Airp.Web\nRazor Pages, for a phone"]
     end
 
     subgraph Application["Airp.Application — knows nothing about HTTP"]
@@ -45,6 +46,7 @@ flowchart TB
     Terminal --> Services
     Terminal --> Abstractions
     Proxy --> LCP
+    Web --> LCP
     Services --> Abstractions
     LCP -. implements .-> Abstractions
     ORC -. implements .-> Abstractions
@@ -583,17 +585,50 @@ front end's site.
 - **Bearer token always**, compared in constant time; the process refuses to start without one
   ([Program.cs](../src/Airp.Proxy/Program.cs)). It is a different secret from the model key: this
   one gets typed into a third party's settings.
-- `SessionResolver` maps the incoming request to a stored conversation by three strategies in
-  trust order — explicit `[[rp:<id>]]` tag, unique speaker name, opening-text prefix — and
-  **refuses rather than guesses** when none is unambiguous, because a turn written into the
-  wrong conversation is permanent.
+- `SessionResolver` maps the incoming request to the stored conversation its `[[rp:<id>]]` tag
+  names, and to nothing else: a request without a tag, or with one naming no conversation, is
+  refused and writes nothing, because a turn written into the wrong conversation is permanent
+  and billed ([ADR 0017](adr/0017-proxy-writes-only-where-tagged.md)).
 - Only the newest user turn is taken from the request; the front end's truncated history is
   discarded and the prompt is rebuilt from the store by the same `ComposeAsync` the terminal
   uses.
 - `stream: true` is honoured by chunking the finished reply as SSE — the reply is complete
   before the first byte goes out, split by text element so no surrogate pair is cut.
 
-What has never run: this proxy against real Janitor.
+Played against real Janitor on a phone on 2026-09-29. The request comes from the phone itself,
+not from Janitor's servers, so a tailnet address is enough.
+
+What a typed message means — a turn, a command, or a refusal — is `FrontEndTurn`, in
+Infrastructure rather than here, because the web pages need the same answer
+([FrontEndTurn.cs](../src/Airp.Infrastructure/Providers/FrontEndTurn.cs)).
+
+---
+
+## The web pages
+
+`Airp.Web` is Razor Pages with no script, doing to a story what the terminal does — every
+composer command, carry on, reroll, branch, delete from a turn, the dials, export — plus
+renaming, deleting and starting one. Like the proxy it only translates — every write goes
+through `LocalConversationProvider`, and a typed message through `FrontEndTurn`, so a command
+means the same thing in both and a typo is refused in both.
+
+What the reading commands answer comes from `StoryReports`
+([StoryReports.cs](../src/Airp.Infrastructure/Providers/StoryReports.cs)), which the terminal's
+panes read too: three front ends, one account of what "the facts" or "what this story cost"
+says. The card and persona come from `LocalConversationProvider.IdentityAsync`, resolved by the
+same rule and library as the prompt.
+
+- **No password; the tailnet decides.** `tailscale serve` passes the asking account in
+  `Tailscale-User-Login`, and `Gate.Admits` lets one configured login through
+  ([Gate.cs](../src/Airp.Web/Gate.cs)). A header is only evidence if nothing else can send it,
+  so the process refuses to start without a login or on anything but loopback
+  (`Gate.OnlyLoopback`, [ADR 0018](adr/0018-web-trusts-the-tailnet.md)).
+- **A stored turn ends in a redirect**, so a reload cannot send it twice; an answer that is not
+  a turn (`/ask`, `/recap`) is drawn on the page that answers it, since it is stored nowhere.
+- **Names only from the shelves.** Starting a story stores a character and persona only if a
+  file of that name exists — a name matching no file is a story with an empty character layer.
+- Every response carries a strict CSP, `no-store`, `no-referrer` and `noindex`; the tab title is
+  "Stories" on every page.
 
 ---
 

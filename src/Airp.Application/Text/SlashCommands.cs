@@ -196,4 +196,62 @@ public static class SlashCommands
             ? (text, string.Empty)
             : (text[..separator].Trim(), text[(separator + 2)..].Trim());
     }
+
+    /// <summary>
+    /// Splits a <c>/tracker</c> argument into the meter's name and its new value.
+    /// </summary>
+    /// <remarks>
+    /// The value is the last word, not the first, so a meter whose name is two words still
+    /// works: <c>/tracker her patience 40</c>. Splitting the other way would have made the name
+    /// a single token and quietly created a second meter the first time one was typed with a
+    /// space in it.
+    /// </remarks>
+    /// <param name="argument">Everything after <c>/tracker</c>.</param>
+    /// <returns>The name and value, or null when the last word is not a number.</returns>
+    public static (string Name, double Value)? SplitTracker(string? argument)
+    {
+        var text = (argument ?? string.Empty).Trim();
+        var cut = text.LastIndexOf(' ');
+
+        if (cut <= 0
+            || !double.TryParse(
+                text[(cut + 1)..],
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var value))
+        {
+            return null;
+        }
+
+        return (text[..cut].Trim(), value);
+    }
+
+    /// <summary>
+    /// A name for a copy of a story that will not collide with the story's own.
+    /// </summary>
+    /// <remarks>
+    /// Numbered rather than suffixed with the turn, because a reader branching twice from the
+    /// same message would otherwise get the same name twice — and the turn number means nothing
+    /// once the copy has grown its own turns.
+    /// </remarks>
+    /// <param name="name">The name of the story being branched.</param>
+    /// <returns>The suggestion: <c>Name (2)</c>, or the next number when it already has one.</returns>
+    public static string BranchName(string name)
+    {
+        var trimmed = (name ?? string.Empty).Trim();
+        var open = trimmed.LastIndexOf(" (", StringComparison.Ordinal);
+
+        if (open > 0
+            && trimmed.EndsWith(')')
+            && int.TryParse(
+                trimmed.AsSpan(open + 2, trimmed.Length - open - 3),
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var number))
+        {
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{trimmed[..open]} ({number + 1})");
+        }
+
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{trimmed} (2)");
+    }
 }

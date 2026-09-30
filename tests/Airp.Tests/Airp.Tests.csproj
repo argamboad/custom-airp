@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Airp.Infrastructure\Airp.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Airp.Terminal\Airp.Terminal.csproj" />
     <ProjectReference Include="..\..\src\Airp.Proxy\Airp.Proxy.csproj" />
+    <ProjectReference Include="..\..\src\Airp.Web\Airp.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,97 @@
+@page "/story/{id}/dials"
+@using Airp.Application.Dials
+@model DialsModel
+
+@section Header {
+    <a class="back" href="/story/@Uri.EscapeDataString(Model.Chat!.Id)#latest" aria-label="Back to the story">‹</a>
+    <h1>Settings</h1>
+}
+
+@if (Model.Applied is not null)
+{
+    <p class="notice" role="status">@Model.Applied</p>
+}
+
+@if (Model.Error is not null)
+{
+    <p class="error" role="alert">@Model.Error</p>
+}
+
+@* The model first: it decides more about a reply than any dial. *@
+<form method="post" asp-page-handler="Model" class="dials story-model">
+    <label>
+        <span class="dial-title">Model</span>
+        <span class="aside">
+            What writes this story's replies and answers. Summaries and facts stay on the default.
+            A model with a smaller window than the budget shrinks the story's budget to fit.
+        </span>
+        <select name="model">
+            <option value="">Default — @Model.Label(Model.DefaultModel)</option>
+            @foreach (var choice in Model.ModelChoices)
+            {
+                <option value="@choice" selected="@(string.Equals(choice, Model.Chat!.Model, StringComparison.OrdinalIgnoreCase))">@Model.Label(choice)</option>
+            }
+        </select>
+    </label>
+    <button type="submit">Use this model</button>
+</form>
+
+<form method="post" class="dials">
+    @foreach (var dial in Model.Rows)
+    {
+        var current = Model.Current(dial);
+        var name = $"Values[{dial.Key}]";
+
+        <label>
+            <span class="dial-title">@dial.Title</span>
+            @if (!string.IsNullOrWhiteSpace(dial.Help))
+            {
+                <span class="aside">@dial.Help</span>
+            }
+
+            @switch (dial.Kind)
+            {
+                case DialKind.Scale:
+                    <select name="@name">
+                        <option value="">@DialsModel.DefaultLabel(dial)</option>
+                        @for (var level = 0; level < dial.Levels.Count; level++)
+                        {
+                            var value = level.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            <option value="@value" selected="@(value == current)">@dial.Levels[level].Label</option>
+                        }
+                    </select>
+                    break;
+
+                case DialKind.Toggle:
+                    <select name="@name">
+                        <option value="">@DialsModel.DefaultLabel(dial)</option>
+                        <option value="true" selected="@(current == "true")">On</option>
+                        <option value="false" selected="@(current == "false")">Off</option>
+                    </select>
+                    break;
+
+                case DialKind.Choice:
+                    <select name="@name">
+                        <option value="">@DialsModel.DefaultLabel(dial)</option>
+                        @foreach (var option in dial.Options)
+                        {
+                            <option value="@option.Key" selected="@(string.Equals(option.Key, current, StringComparison.OrdinalIgnoreCase))">@option.Label</option>
+                        }
+                    </select>
+                    break;
+
+                default:
+                    <input name="@name" value="@current" autocomplete="off"
+                           placeholder="@(dial.Accepts ?? (dial.Kind == DialKind.List ? "comma-separated" : "empty for the default"))">
+                    @if (dial.Examples.Count > 0)
+                    {
+                        <span class="aside">For example: @string.Join(" · ", dial.Examples)</span>
+                    }
+                    break;
+            }
+        </label>
+    }
+
+    <button type="submit">Apply</button>
+    <p class="cost">Takes effect from the next reply. Default clears this story's own choice.</p>
+</form>

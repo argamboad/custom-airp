@@ -25,6 +25,12 @@ namespace Airp.Terminal.Views;
 internal sealed partial class ConversationView : ViewBase
 {
     private readonly Chat _conversation;
+
+    /// <summary>The story's own model, kept current when the settings change it; null for the default.</summary>
+    private string? _model;
+
+    /// <inheritdoc />
+    public override string? Model => _model;
     private readonly IConversationService _conversations;
     private readonly IClipboardService _clipboard;
     private readonly IExportService _export;
@@ -109,6 +115,7 @@ internal sealed partial class ConversationView : ViewBase
     {
         _library = library ?? new Airp.Infrastructure.TextLibrary();
         _conversation = conversation;
+        _model = conversation.Model;
         _conversations = conversations;
         _clipboard = clipboard;
         _export = export;
@@ -648,12 +655,24 @@ internal sealed partial class ConversationView : ViewBase
                 return ValueTask.FromResult(Load(forceRefresh: true));
 
             case AppCommand.Settings when _dials is not null:
-                return ValueTask.FromResult(ViewAction.Push(
-                    new ChatSettingsView(_dials, _conversation.Id, _conversation.Name)));
+                return ValueTask.FromResult(ViewAction.Push(new ChatSettingsView(
+                    _dials,
+                    _conversation.Id,
+                    _conversation.Name,
+                    provider: _provider,
+                    defaultModel: _options?.CurrentValue.Model.Name,
+                    modelChoices: _options?.CurrentValue.Model.EffectiveChoices,
+                    modelChanged: model => _model = model)));
 
             case AppCommand.Settings:
                 return ValueTask.FromResult(ViewAction.Status(
                     "Settings are not available in this session.", StatusKind.Warning));
+
+            // A written opening is the reader's page, not a guess to be had again.
+            case AppCommand.Generate when _messages.Count > 0
+                                          && _messages[^1].Role == ChatRole.Assistant
+                                          && !RegenerateReasons.CanReplace(_messages):
+                return ValueTask.FromResult(ViewAction.Status(RegenerateReasons.OpeningRefusal, StatusKind.Info));
 
             // The site offers this on the newest reply only, so the cursor's position does
             // not choose the target — the view says which reply it will replace.
@@ -675,7 +694,7 @@ internal sealed partial class ConversationView : ViewBase
                         return ViewAction.Run("Refreshing", async ct =>
                         {
                             await RefreshSpendAsync(ct).ConfigureAwait(false);
-                            return ViewAction.Status("A new reply arrived.", StatusKind.Success);
+                            return Arrived("A new reply arrived.");
                         });
                     })));
 
@@ -732,6 +751,19 @@ internal sealed partial class ConversationView : ViewBase
                 return ValueTask.FromResult(ViewAction.None);
         }
     }
+
+    /// <summary>
+    /// Says a reply arrived — or, when the story's model was not available and the default
+    /// wrote it, says that instead, since the voice on screen is not the one chosen.
+    /// </summary>
+    /// <param name="arrived">What to say when the story's own model wrote it.</param>
+    /// <returns>The status.</returns>
+    private ViewAction Arrived(string arrived)
+        => _messages.LastOrDefault(static m => m.Role == ChatRole.Assistant)?.FellBackFrom is { } missing
+            ? ViewAction.Status(
+                $"{missing} was not available, so the default wrote this reply. The story still asks for it; S to change.",
+                StatusKind.Warning)
+            : ViewAction.Status(arrived, StatusKind.Success);
 
     private ViewAction Load(bool forceRefresh)
         => ViewAction.Run("Loading conversation", async ct =>
@@ -1393,9 +1425,9 @@ internal sealed partial class ConversationView : ViewBase
             await RefreshSpendAsync(ct).ConfigureAwait(false);
 
             var added = Visible.Count(static m => m.Role == ChatRole.Assistant) - before;
-            return ViewAction.Status(
-                added > 0 ? $"Reply received ({added} new message(s))." : "Sent, but no reply came back.",
-                added > 0 ? StatusKind.Success : StatusKind.Warning);
+            return added > 0
+                ? Arrived($"Reply received ({added} new message(s)).")
+                : ViewAction.Status("Sent, but no reply came back.", StatusKind.Warning);
         });
     }
 
@@ -1460,11 +1492,10 @@ internal sealed partial class ConversationView : ViewBase
 
             var after = _messages.LastOrDefault(static m => m.Role == ChatRole.Assistant)?.Text.Length ?? 0;
 
-            return ViewAction.Status(
+            return Arrived(
                 after > before
                     ? $"The chat carried on — {after - before:N0} more characters."
-                    : "The chat carried on.",
-                StatusKind.Success);
+                    : "The chat carried on.");
         });
     }
 

@@ -1,0 +1,22 @@
+@page "/story/{id}/delete-from/{messageId}"
+@model DeleteFromModel
+
+@section Header {
+    <a class="back" href="/story/@Uri.EscapeDataString(Model.Chat!.Id)#latest" aria-label="Back to the story">‹</a>
+    <h1>Delete</h1>
+}
+
+<section class="confirm">
+    <h2>Delete this message and the @(Model.Doomed - 1) after it?</h2>
+    <blockquote>@Model.Preview</blockquote>
+    <p>
+        @Model.Doomed message(s) would be removed from the conversation itself, not just from this page.
+        This cannot be undone.
+    </p>
+    <p>@Model.Remaining message(s) would remain.</p>
+
+    <form method="post">
+        <a href="/story/@Uri.EscapeDataString(Model.Chat!.Id)#latest">Keep them</a>
+        <button type="submit" class="danger">Delete</button>
+    </form>
+</section>

@@ -230,18 +230,30 @@ sequenceDiagram
     participant J as Front end (Janitor)
     participant PX as Airp.Proxy
     participant SR as SessionResolver
+    participant FT as FrontEndTurn
     participant P as LocalConversationProvider
 
     J->>PX: POST /v1/chat/completions + Bearer
     PX->>PX: constant-time token check — 401 on mismatch
-    PX->>P: ListAsync + first stored user turn per chat
-    PX->>SR: Resolve(full prompt, first user turn, chats, openings)
-    Note over SR: 1. [[rp:id]] tag — exact<br/>2. speaker name — unique or ambiguous<br/>3. opening prefix — normalised first 80 chars
-    alt no unambiguous match
-        PX-->>J: 404 with instructions (never guesses —<br/>a wrong write is permanent)
+    PX->>P: ListAsync
+    PX->>SR: Resolve(full prompt, chats)
+    Note over SR: the [[rp:id]] tag, and nothing else —<br/>no names, no openings (ADR 0017)
+    alt no tag, or a tag naming nothing
+        PX-->>J: 404 saying which, and how to fix it<br/>(nothing written — a wrong write is permanent)
     else resolved
-        PX->>P: SendAsync(id, newest user turn only)
-        Note over P: flows 1–3 run exactly as from the terminal —<br/>the front end's truncated history is discarded
+        PX->>FT: RunAsync(chat, newest user turn only, persona label stripped)
+        alt a message, /do or /focus
+            FT->>P: SendAsync / ContinueAsync
+            Note over P: flows 1–3 run exactly as from the terminal —<br/>the front end's truncated history is discarded
+        else /ask
+            FT->>P: AskAsync — shown, never stored
+        else /recap, /help or a reading command (/card /facts /cost …)
+            Note over FT: StoryReports, read from disk — no model call
+        else /fact or /tracker
+            FT->>P: AddFactAsync / SetTrackerAsync — state, never a turn
+        else unknown command
+            FT-->>PX: refused — nothing stored, nothing billed
+        end
         alt stream: true
             PX-->>J: finished reply chunked as SSE
         else
@@ -249,6 +261,53 @@ sequenceDiagram
         end
     end
 ```
+
+`FrontEndTurn` lives in Infrastructure, not in the proxy, because the web pages (§7b) need the
+same answer to "what does this typed message mean". Two copies would be two places for a typo to
+be read differently — once as a refusal, once as a permanent turn.
+
+## 7b. The web pages — playing from a phone's browser
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Phone browser
+    participant TS as tailscale serve
+    participant W as Airp.Web
+    participant FT as FrontEndTurn
+    participant P as LocalConversationProvider
+
+    B->>TS: POST /story/{id}?handler=Send (tailnet only)
+    TS->>W: + Tailscale-User-Login, to 127.0.0.1
+    W->>W: Gate.Admits — 403 "Not available." for any other login
+    W->>W: ShortcodeScanner.ExpandAll — snippets and :emoji: become their text
+    W->>FT: RunAsync(chat, draft)
+    alt stored (a message, /do, /focus)
+        W-->>B: 302 to /story/{id}#latest — a reload cannot send it twice
+    else answered, not stored (/ask, /recap, a reading command, /fact, /tracker)
+        W-->>B: the page, with the answer set apart —<br/>search matches linked, an /ask answer pinnable
+    else refused
+        W-->>B: the page, error shown, draft kept
+    end
+```
+
+A story on its own model is asked through that model (`CompleteForStoryAsync`), and when the
+provider no longer serves it the default writes the turn and the reply records `FellBackFrom`;
+the page and the terminal say so while that reply is the newest.
+
+The other handlers go straight to the provider, each ending in a redirect when it wrote:
+
+| From the page | Handler | Goes to |
+|---|---|---|
+| Carry on | `?handler=Continue` | `ContinueAsync` with no instruction |
+| Reroll | `?handler=Reroll` | `RegenerateAsync` |
+| Pin as fact | `?handler=Pin` | `FrontEndTurn.PinAsync` → `AddFactAsync` |
+| Branch from here | `?handler=Branch` | `BranchAsync`, then into the copy |
+| Delete from here | `/story/{id}/delete-from/{messageId}` | a confirmation, then `DeleteFromAsync` |
+| Export | `?handler=Export&format=…` | `IExportService.Render`, as a download |
+| Settings | `/story/{id}/dials` | `SetModelAsync` for the model; `IDialService`, values through `DialEngine.Parse`, for the dials |
+| Rename, delete a story | `/?handler=Rename`, `/story/{id}/delete` | `RenameConversationAsync`, `DeleteConversationAsync` |
+| New | `/new` | `CreateAsync`, names only from the shelves |
 
 ---
 

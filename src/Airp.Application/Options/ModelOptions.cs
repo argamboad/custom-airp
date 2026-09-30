@@ -64,6 +64,77 @@ public sealed class ModelOptions
     public string Name { get; set; } = "deepseek/deepseek-v4-flash";
 
     /// <summary>
+    /// The models a story can be switched to, besides <see cref="Name"/>; null for the shipped list.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Offered as a list wherever a story's model is picked, because a mistyped identifier
+    /// fails every turn it is used for. A choice is still checked against the provider's own
+    /// list before it is saved, and a turn falls back to <see cref="Name"/> when the provider
+    /// no longer serves it.
+    /// </para>
+    /// <para>
+    /// Null rather than a pre-filled list, because the configuration binder appends a file's
+    /// array to one that already has items: a reader listing three models would have got the
+    /// shipped ten and their three. <see cref="EffectiveChoices"/> is what everything reads.
+    /// </para>
+    /// </remarks>
+    public IList<string>? Choices { get; set; }
+
+    /// <summary>
+    /// The shipped list: open-weight finetunes for roleplay and creative writing, chosen to be
+    /// more willing than the default rather than less. Only two describe themselves as
+    /// uncensored; the rest are there on their reputation, which a host can still undo.
+    /// </summary>
+    public static IReadOnlyList<string> ShippedChoices { get; } =
+    [
+        "cognitivecomputations/dolphin-mistral-24b-venice-edition",
+        "thedrummer/cydonia-24b-v4.1",
+        "anthracite-org/magnum-v4-72b",
+        "sao10k/l3.3-euryale-70b",
+        "sao10k/l3.1-euryale-70b",
+        "thedrummer/unslopnemo-12b",
+        "thedrummer/skyfall-36b-v2",
+        "aion-labs/aion-2.0",
+        "aion-labs/aion-rp-llama-3.1-8b",
+        "nousresearch/hermes-3-llama-3.1-70b",
+    ];
+
+    /// <summary>
+    /// These settings with the budget made to fit a model's window, or these settings when it
+    /// already fits.
+    /// </summary>
+    /// <remarks>
+    /// A copy, so the story whose model is small does not shrink every other story's budget.
+    /// <see cref="RecallBudget"/> is derived from the budget, so it follows without being told.
+    /// </remarks>
+    /// <param name="window">The tokens the prompt may take — the model's context less the reply's ceiling — or null when unknown.</param>
+    /// <returns>Settings whose <see cref="ContextBudget"/> is at most <paramref name="window"/>.</returns>
+    public ModelOptions WithWindow(int? window)
+    {
+        if (window is not { } room || room >= ContextBudget)
+        {
+            return this;
+        }
+
+        var fitted = (ModelOptions)MemberwiseClone();
+
+        // Never below a floor where nothing but the newest turn could fit; a model that small
+        // cannot play a story, and the provider says so when it refuses.
+        fitted.ContextBudget = Math.Max(room, 2048);
+        return fitted;
+    }
+
+    /// <summary>The models a story can pick from, besides the default: the configured list, or the shipped one.</summary>
+    public IReadOnlyList<string> EffectiveChoices
+        => Choices is null
+            ? ShippedChoices
+            : [.. Choices
+                .Where(static c => !string.IsNullOrWhiteSpace(c))
+                .Select(static c => c.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)];
+
+    /// <summary>
     /// Name of the secret holding the API key, looked up through <c>ISecretStore</c>.
     /// </summary>
     /// <remarks>

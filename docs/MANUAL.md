@@ -18,10 +18,11 @@ For how the code is put together — diagrams, call stacks, the schema — start
 8. [What it costs](#what-it-costs)
 9. [Seeing what is going on](#seeing-what-is-going-on)
 10. [Importing old transcripts](#importing-old-transcripts)
-11. [Playing from Janitor](#playing-from-janitor)
-12. [Configuration](#configuration)
-13. [When something breaks](#when-something-breaks)
-14. [All the commands](#all-the-commands)
+11. [Playing from a browser](#playing-from-a-browser)
+12. [Playing from Janitor](#playing-from-janitor)
+13. [Configuration](#configuration)
+14. [When something breaks](#when-something-breaks)
+15. [All the commands](#all-the-commands)
 
 ---
 
@@ -119,7 +120,8 @@ It returns the reply, the model, which provider served it and how long it took. 
 everything else works.
 
 The default is `deepseek/deepseek-v4-flash`. To see others, `airp models --find deepseek`; to
-try one without changing anything, `airp ask "…" --model <id>`.
+try one without changing anything, `airp ask "…" --model <id>`. A story can be played on a model
+of its own — see [A model per story](#a-model-per-story).
 
 ### 3. The library
 
@@ -511,6 +513,10 @@ the wording it is superseding. That is deliberate: shown its own last attempt, a
 to write it again. It also means a reason like *Guide the reply* asks for a fresh take rather
 than for a comparison against something invisible.
 
+**A story's written opening is not rerolled** until you have taken a turn — in the terminal or
+in the browser. It is a page you wrote, and a reroll would swap it for the model's guess. A
+beat the model wrote after it (a `/do`, or Carry on) can be rerolled like any reply.
+
 ---
 
 ## Commands in the composer
@@ -666,6 +672,49 @@ airp dials --chat <id> --clear pacing   # back to the pack's default
 Scales, toggles and choices are adjusted with `←→` in the `S` view; the typed kinds — veils,
 reply language — are set with `--set` (`--set veils=graphic violence,character death`,
 `--set language=Spanish`).
+
+### A model per story
+
+Every story is played on the default model unless you give it one of its own, and you can change
+it at any turn — the prompt is rebuilt from the story on every send, so nothing already written
+belongs to the model that wrote it. Where to change it:
+
+- **In a conversation**, `S`: the first row is the model. `←→` steps through the list, Enter
+  applies it with the dials.
+- **Starting a story**, `N`: a Model field under Persona.
+- **In the browser**, ⋯ in the bar → Settings, and a Model list on New.
+- **At a shell**: `airp model --chat <name>` says what the story is on and what it can switch to;
+  `airp model <id>` switches it, `airp model --default` goes back.
+
+Each choice shows OpenRouter's list prices and how its prompt price compares with the default's —
+`anthracite-org/magnum-v4-72b — $2.50 / $5.00 per M · ≈31× the default` — since the prompt is
+where a long story's money goes. They are for choosing by; what a turn actually cost is in
+`airp cost`, from what OpenRouter charged ([ADR 0019](adr/0019-a-storys-model.md)).
+
+The list is the default and `model.choices` in `airp.json`. Unset, it is ten open-weight
+roleplay finetunes picked to be more willing than the default, not less: Dolphin Mistral 24B
+Venice, Cydonia 24B, Magnum v4 72B, both Euryale 70Bs, UnslopNemo 12B, Skyfall 36B, Aion 2.0,
+Aion-RP 8B and Hermes 3 70B. Only the first two say they are uncensored; the rest are there on
+reputation, and a host can filter what a model would not — the audit's *served by* column says
+which host wrote a reply. Try one on a throwaway story before a real one.
+
+**A model is checked before it is saved.** airp reads OpenRouter's list of models and saves one
+only if it is on it, with the size of its context window. One that is not listed — or cannot be
+checked, because the list could not be read — is not saved, and you are told what the story
+stays on.
+
+**A small window shrinks the story's budget.** If the model holds less than your budget plus the
+reply, the story's budget becomes what it can hold: older turns are summarised sooner, and the
+audit says `budget … (the story's model)`. Magnum and Skyfall take 32k; the default takes a
+million.
+
+**If the story's model disappears**, a turn is not lost: the default writes that reply, the
+screen says so, and the story keeps asking for its own model on the next turn, since a model
+missing from OpenRouter is often missing for an hour. Only "no such model" does this — a rejected
+key or an empty account fails the same way on any model, so it is reported instead.
+
+**Summaries and facts stay on the default** (or `backgroundModel`), whatever the story is played
+on, so every story's memory is written the same way.
 
 ### A pack of your own
 
@@ -959,29 +1008,162 @@ repository. This one only ever reads the files.
 
 ---
 
+## Playing from a browser
+
+Optional. Your stories as web pages, for a phone: everything the terminal does to a story, and
+renaming, deleting and starting one. Plain pages, no scripts, over your own private network.
+
+It is a separate program beside the terminal, reading the same database. Build it from source
+(the releases carry only `airp`), and tell it which Tailscale account may come in — the login
+Tailscale shows for you, usually an email address:
+
+```bash
+Airp__Web__Login=you@example.com dotnet run --project src/Airp.Web --urls http://127.0.0.1:5291
+```
+
+Then, on the same machine:
+
+```bash
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:5291
+```
+
+and open that address — `https://<machine>.<tailnet>.ts.net:8443/` — on the phone, with
+Tailscale on.
+
+**Who gets in is decided by Tailscale, not by a password.** `tailscale serve` tells the pages
+which account is asking, and anyone else is turned away with a plain "Not available." That only
+means something if nothing can reach the pages except through `tailscale serve`, so the program
+refuses to start listening anywhere but loopback, and refuses to start without a login to allow.
+Do not put it behind Funnel or any public tunnel: the database holds every story in the clear.
+
+**What it does:**
+
+- **The list**, newest first, with the latest line of each. A story opens at its newest turn,
+  with a link to the earlier ones. **⋯** on a row renames the story or deletes it — the delete
+  on a page of its own that names the story first.
+- **New**, top right in the list: pick a character from the shelf, and the form comes with that
+  character's opening already in it. Name falls back to the character, the persona to your
+  default. Starting costs nothing; the model is first asked on your first turn.
+- **Writing a turn.** Send, and the page moves on to the reply. Reloading afterwards does not
+  send it again. **Carry on**, beside Send, lets the story go on with nothing from you, as `>`
+  does in the terminal.
+- **Every composer command**, with the same meaning as in the terminal, plus `/recap` — see
+  [Commands in the composer](#commands-in-the-composer). An answer that is not part of the story
+  is shown on the page and stored nowhere; `/search` links each turn it finds; an `/ask` answer
+  has **Pin as fact** under it; a typo is refused with your text still in the box, never sent.
+- **Snippets and emoji.** Pick a snippet from the list under the box and press **Insert**: its
+  text goes on the end of what you have written, still yours to edit, and nothing is sent. (Send
+  with one picked does the same, rather than sending a page you have not seen.) Typing `:name`
+  for a snippet or `:name:` for an emoji works too — they become their text when you press Send,
+  since the pages have no script to do it as you type.
+- **Reroll** under the newest reply: why it was wrong, and optionally what should be different.
+- **⋯ under any turn**: Branch from here, into a copy named as the terminal would name it, which
+  the page then opens; or Delete from here, on a page that says how many messages would go.
+- **⋯ in the bar**: Settings — the story's model, then the dials, every one the pack declares,
+  inner thoughts included, applied together — and the transcript as Markdown, JSON or text. The download is named by the date
+  alone, so a phone's download notice does not say what it is.
+
+**What stays in the terminal:** the library itself, and copying with one key — on a phone, press
+and hold the text instead.
+
+**Private by design.** The tab says "Stories" and nothing else, and the pages tell the browser
+not to keep them, not to send where they came from to any link, and not to be indexed.
+
+---
+
 ## Playing from Janitor
 
 Optional. It is for playing **your local conversations** from your phone, with Janitor's
 interface but your memory and your model.
 
+The proxy needs a token of its own, different from the model key — it is what you type into
+Janitor. On Windows, `airp secret set AIRP_PROXY_TOKEN`; on Linux and macOS, where that command
+refuses, an environment variable of the same name, exactly as for the model key. Then:
+
 ```bash
-airp secret set AIRP_PROXY_TOKEN     # your own token, different from the model key
-dotnet run --project src/Airp.Proxy --urls http://localhost:5290
+dotnet run --project src/Airp.Proxy --urls http://127.0.0.1:5290
 ```
 
-Then a TLS tunnel — `cloudflared tunnel --url http://localhost:5290` — and in Janitor you
-point the Proxy URL at `https://whatever/v1/chat/completions`, with that token as the API key.
+**Janitor has to be able to reach it, and that can stay private.** Tried against Janitor on a
+phone: the request came from the phone itself, not from Janitor's servers — so a private network
+the phone is on is enough, and nothing needs to face the internet. With Tailscale, on the machine
+running the proxy:
 
-In the Custom Prompt put `[[rp:<id>]]` with the conversation's id, which `airp audit` prints
-under the conversation's name. Without it the proxy tries to recognise the conversation by its
-character or by how the transcript opens, and **if it cannot, it returns an error rather than
-guessing** — writing a turn into the wrong conversation is permanent.
+```bash
+sudo tailscale serve --bg http://127.0.0.1:5290
+```
 
-The proxy does not start without a token configured. Behind it is a database with all your
-conversations in the clear, reachable from wherever the tunnel reaches.
+gives it an HTTPS address only your own devices can reach. In Janitor, point the Proxy URL at
+that address followed by `/v1/chat/completions`, with the token as the API key. A public tunnel
+would work too, and would put a database of all your conversations on the internet behind that
+one token.
+
+**A tag in Janitor's Custom Prompt says which story** — `[[rp:<id>]]`, with the id that
+`airp audit <chat>` prints under the story's name. A request without one writes nothing: the
+proxy refuses it and says why. It never works out a story from a character's name or how a chat
+opens, because a match among your stories is still a guess about a Janitor chat they have never
+seen, and a turn written into the wrong story is permanent and billed.
+
+### Setting it up in Janitor
+
+As Janitor's settings looked on 2026-09-29, on Android. They are Janitor's screens, not ours,
+and can change.
+
+1. **Model settings → Provider: Proxy**, then add a configuration under Proxy Configurations
+   (or edit one with the pencil). The configuration name is yours to choose; the model name can
+   be anything, since the proxy uses airp's model; the proxy URL is your address followed by
+   `/v1/chat/completions`; the API key is the proxy's token.
+2. **Make a prompt holding the tag, on one line** — `[[rp:<id>]]`, and nothing else is needed in
+   it. Name it after the story. A line break between the two closing brackets and it is no
+   longer a tag.
+3. **Select that prompt in both places Janitor has one**: the configuration's own *Prompt
+   (optional)*, and *Instructions → Custom prompt*. Which of the two reaches a proxy has not
+   been pinned down; with the prompt in both, the tag arrives.
+4. **Tick each panel, then Save** at the top of Model settings.
+
+The first attempt here failed with the proxy's "no tag" refusal, and the tag arrived once the
+prompt was on one line, in both fields and saved — three changes at once, so which one mattered
+is not known. The proxy's log says which case you are in: `Request tagged for <id>` when it
+worked, `carries no [[rp:…]] tag` when the tag never arrived.
+
+**The Custom prompt belongs to the model settings, not to a chat.** It applies to every Janitor
+chat that uses that proxy configuration, so while it names a story, whatever you write through
+the proxy — with any bot — goes into that story. The way to live with that:
+
+- **One named prompt per story**, and pick the right one before you play.
+- **One Janitor chat per story**, and come back to it. Its window shows only what was said in
+  Janitor; every reply is built from the whole story, including everything played in the
+  terminal.
+- **The bot does not change the replies** — the proxy uses airp's card, persona and dials — but
+  the matching one keeps the name and picture right.
+- **A new story starts in airp** — `N` in the chat list, `airp new`, or **New** in the
+  [browser pages](#playing-from-a-browser). The proxy only writes to a story that already exists.
 
 Janitor sends its own truncated history; the proxy **discards it** and builds the prompt from
-your store.
+your store. Only your newest message is taken from the request.
+
+Janitor puts your persona's name in front of each of your messages — `Allan: …`. The proxy takes
+it off before anything else, so it is not stored as part of your turn and does not hide a
+command.
+
+### Commands in Janitor
+
+Janitor's window shows only what was said in it, so a story you have been playing in the
+terminal arrives there looking empty. The replies are built from the whole story regardless,
+and **`/recap`** shows it: the latest summary, then the last four turns word for word — `/recap 10`
+for ten. It is answered by the proxy from what is on disk, so it costs nothing and is stored
+nowhere.
+
+Every one of the composer's commands works here too, with the same meaning — `/do`, `/focus`,
+`/ask` (shown, never stored), the ones that only read (`/card`, `/facts`, `/cost` and the rest),
+and `/fact` and `/tracker`, which write to the story's state but never add a turn. Their answers
+arrive as the reply. `/help` lists them. Anything else that starts with a slash — a typo — is
+refused with an error and stored nowhere, so a mistyped command never becomes a turn the
+character has to answer. To send prose that genuinely begins with a slash, double it.
+
+**Not yet understood by the proxy:** Janitor's reroll resends your last message, and the proxy
+stores it as a new turn — your message twice, answered twice. Regenerate in airp instead. Edits
+and deletions made in Janitor do not reach the store either.
 
 ---
 

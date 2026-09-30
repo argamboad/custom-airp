@@ -67,7 +67,7 @@ internal static partial class Program
                 Markup.Escape(dial.Kind.ToString().ToLowerInvariant()
                               + (dial.Lever == DialLever.Prompt ? string.Empty : $" → {dial.Maps}")),
                 dial.Enabled ? "[green]enabled[/]" : "[yellow]pinned[/]",
-                effective is null ? "[grey]not set[/]" : Markup.Escape(Label(dial, effective)));
+                effective is null ? "[grey]not set[/]" : Markup.Escape(DialEngine.Label(dial, effective)));
         }
 
         AnsiConsole.Write(table);
@@ -130,18 +130,9 @@ internal static partial class Program
             return 64;
         }
 
-        // The stored form per kind, validated here rather than trusted: a value the engine
-        // cannot read would be stored and then silently say nothing on every turn.
-        string? value = dial.Kind switch
-        {
-            DialKind.Scale => DialEngine.LevelIndex(dial, raw) is not null ? raw : null,
-            DialKind.Toggle => bool.TryParse(raw, out _) ? raw.ToLowerInvariant() : null,
-            DialKind.Choice => dial.Options.FirstOrDefault(
-                o => string.Equals(o.Key, raw, StringComparison.OrdinalIgnoreCase))?.Key,
-            DialKind.List => DialEngine.StoreItems(raw.Split(',', StringSplitOptions.TrimEntries)),
-            DialKind.Text => string.IsNullOrWhiteSpace(raw) ? null : raw,
-            _ => null,
-        };
+        // The stored form per kind, validated rather than trusted: a value the engine cannot
+        // read would be stored and then silently say nothing on every turn.
+        var value = DialEngine.Parse(dial, raw);
 
         if (value is null)
         {
@@ -151,20 +142,9 @@ internal static partial class Program
         }
 
         await dials.SetAsync(conversationId, dial.Key, value, cancellationToken).ConfigureAwait(false);
-        AnsiConsole.MarkupLine($"[green]{Markup.Escape(dial.Title)} → {Markup.Escape(Label(dial, value))}[/]");
+        AnsiConsole.MarkupLine($"[green]{Markup.Escape(dial.Title)} → {Markup.Escape(DialEngine.Label(dial, value))}[/]");
         return 0;
     }
-
-    /// <summary>Names a stored value the way the settings screen would.</summary>
-    private static string Label(DialDefinition dial, string value) => dial.Kind switch
-    {
-        DialKind.Scale when DialEngine.LevelIndex(dial, value) is { } i => dial.Levels[i].Label,
-        DialKind.Toggle => DialEngine.IsOn(value) ? "On" : "Off",
-        DialKind.Choice => dial.Options.FirstOrDefault(
-            o => string.Equals(o.Key, value, StringComparison.OrdinalIgnoreCase))?.Label ?? value,
-        DialKind.List => string.Join(", ", DialEngine.Items(value)),
-        _ => value,
-    };
 
     /// <summary>What a dial accepts, said the way its own documentation says it.</summary>
     private static string Expects(DialDefinition dial) => dial.Kind switch

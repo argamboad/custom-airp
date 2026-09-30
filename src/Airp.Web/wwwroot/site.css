@@ -1,0 +1,440 @@
+/* Phone first: one column of prose at a size that can be read without zooming, and a measure
+   that stops growing on a wide screen, for the same reason the terminal caps its own. */
+
+:root {
+    --ground: #15161a;
+    --surface: #1e2026;
+    --text: #e4e1da;
+    --muted: #8b8d96;
+    --action: #a9a7a0;
+    --accent: #b79cf0;
+    --rule: #2c2e36;
+    --measure: 40rem;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font: 1.0625rem/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--accent); }
+
+.bar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.75rem max(1rem, env(safe-area-inset-left));
+    background: var(--surface);
+    border-bottom: 1px solid var(--rule);
+}
+
+.bar h1 {
+    margin: 0;
+    flex: 1;
+    font-size: 1.125rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bar .aside { color: var(--muted); }
+
+.bar .action {
+    margin: -0.75rem -0.5rem;
+    padding: 0.75rem 0.5rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+/* A thumb-sized target, not a glyph-sized one. */
+.bar .back {
+    display: inline-block;
+    min-width: 2.75rem;
+    margin: -0.75rem 0 -0.75rem -0.5rem;
+    padding: 0.75rem 0.5rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+}
+
+main {
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: 0 1rem 2rem;
+}
+
+.empty, .earlier { color: var(--muted); }
+
+.stories {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.stories a {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.125rem 0.75rem;
+    padding: 0.875rem 0;
+    border-bottom: 1px solid var(--rule);
+    color: inherit;
+    text-decoration: none;
+}
+
+.stories .name { font-weight: 600; }
+
+.stories .age { color: var(--muted); font-size: 0.875rem; }
+
+.stories .latest {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.turns {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.turn {
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--rule);
+}
+
+.turn .who {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.turn.you .who { color: var(--muted); }
+
+.turn p { margin: 0 0 0.75rem; }
+
+.turn p:last-child { margin-bottom: 0; }
+
+/* What was between asterisks: italic and a little dimmer, as the terminal draws it. */
+.turn em { color: var(--action); }
+
+/* ── Writing ─────────────────────────────────────────────────────────────────────────── */
+
+/* The newest turn's anchor clears the sticky bar when a page returns to it. */
+.turn { scroll-margin-top: 3.5rem; }
+
+textarea, select, input, button {
+    font: inherit;
+    color: inherit;
+}
+
+textarea, select, input {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 0.5rem;
+}
+
+textarea { resize: vertical; }
+
+button {
+    min-height: 2.75rem;
+    padding: 0.5rem 1.25rem;
+    background: var(--accent);
+    color: var(--ground);
+    border: 0;
+    border-radius: 0.5rem;
+    font-weight: 600;
+}
+
+.composer {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+}
+
+.composer button { justify-self: end; }
+
+.error {
+    margin: 1rem 0 0;
+    padding: 0.75rem;
+    border-left: 3px solid #e0787a;
+    background: var(--surface);
+}
+
+/* An answer that is not a turn: set apart, so it never reads as part of the story. */
+.aside-answer {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px dashed var(--rule);
+    border-radius: 0.5rem;
+}
+
+.aside-answer p { margin: 0 0 0.75rem; }
+
+.aside-answer p:last-child { margin-bottom: 0; }
+
+.reroll { margin-top: 0.75rem; }
+
+.reroll summary {
+    display: inline-block;
+    padding: 0.5rem 0;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.reroll form {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.reroll label {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+}
+
+.reroll .cost {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+}
+
+/* ── Starting ────────────────────────────────────────────────────────────────────────── */
+
+.world { margin-top: 1rem; }
+
+.world summary {
+    padding: 0.5rem 0;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.world p { margin: 0 0 0.75rem; }
+
+.new-story {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.new-story label {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+}
+
+.new-story label .aside { font-size: 0.875rem; }
+
+.new-story button { justify-self: end; }
+
+.new-story .cost {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-align: right;
+}
+
+/* ── Everything else the terminal does ───────────────────────────────────────────────── */
+
+/* A report's indentation is its structure: /cost and /audit line their figures up with it. */
+.aside-answer p { white-space: pre-wrap; }
+
+.quiet {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--rule);
+}
+
+.danger { color: #e0787a; }
+
+button.danger {
+    background: #e0787a;
+    color: var(--ground);
+}
+
+.notice {
+    margin: 1rem 0 0;
+    padding: 0.75rem;
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+}
+
+/* The story's menu: a thumb-sized ⋯ in the bar, opening a list under it. */
+.bar .menu { position: relative; }
+
+.bar .menu summary,
+.more summary,
+.row-tools summary {
+    list-style: none;
+    min-width: 2.75rem;
+    padding: 0.5rem;
+    color: var(--muted);
+    text-align: center;
+    cursor: pointer;
+}
+
+.bar .menu summary { margin: -0.75rem -0.5rem; padding: 0.75rem 0.5rem; font-size: 1.25rem; line-height: 1; }
+
+.bar .menu summary::-webkit-details-marker,
+.more summary::-webkit-details-marker,
+.row-tools summary::-webkit-details-marker { display: none; }
+
+.bar .menu nav {
+    position: absolute;
+    right: -0.5rem;
+    top: 2.25rem;
+    display: grid;
+    min-width: 13rem;
+    padding: 0.25rem 0;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 0.5rem;
+}
+
+.bar .menu nav a {
+    padding: 0.75rem 1rem;
+    text-decoration: none;
+}
+
+/* Under each turn: Reroll on the newest reply, and ⋯ for branching and deleting from it. */
+.turn-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.turn-tools .reroll { flex: 1 1 auto; margin-top: 0; }
+
+.turn-tools .more { margin-left: auto; }
+
+.more[open] { flex-basis: 100%; }
+
+.more form,
+.row-tools form {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.75rem;
+}
+
+.more label,
+.row-tools label {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+}
+
+.more button,
+.row-tools button { justify-self: end; }
+
+.more .cost {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-align: right;
+}
+
+.more .danger,
+.row-tools .danger {
+    display: block;
+    padding: 0.5rem 0;
+    text-align: right;
+}
+
+/* The list's rows: the ⋯ sits on the preview line, which leaves room for it. */
+.stories.with-tools li { position: relative; }
+
+.stories.with-tools .latest { padding-right: 2.25rem; }
+
+/* From the top, so it stays beside the preview line when the panel under it opens. */
+.row-tools > summary {
+    position: absolute;
+    right: -0.5rem;
+    top: 2.125rem;
+}
+
+.row-tools[open] { padding-bottom: 0.5rem; border-bottom: 1px solid var(--rule); }
+
+.composer-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.snippet-picker {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.snippet-picker select { flex: 1; min-width: 0; }
+
+/* Clears the sticky bar when a page opens at the answer area. */
+#respond { scroll-margin-top: 3.5rem; }
+
+.matches {
+    margin: 0.75rem 0 0;
+    padding-left: 1rem;
+}
+
+.matches li { margin-bottom: 0.5rem; }
+
+.confirm h2 { font-size: 1.125rem; margin: 1.25rem 0 0.75rem; }
+
+.confirm blockquote {
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--rule);
+    color: var(--muted);
+}
+
+.confirm form {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 1.25rem;
+    margin-top: 1.5rem;
+}
+
+.dials {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.dials label {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.dials .dial-title { font-weight: 600; }
+
+.dials .aside { color: var(--muted); font-size: 0.875rem; }
+
+.dials button { justify-self: end; }
+
+.dials .cost {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-align: right;
+}

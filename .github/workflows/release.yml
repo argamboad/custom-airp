@@ -92,6 +92,13 @@ jobs:
         with:
           merge-multiple: true
 
+      # Written here, over the files exactly as they are about to be uploaded, so the
+      # sums describe what the release holds rather than what some job built. A machine
+      # that updates itself checks the download against this before installing it, and
+      # refuses a release that has none.
+      - name: Checksum the binaries
+        run: sha256sum airp-* > SHA256SUMS && cat SHA256SUMS
+
       - name: Write the notes
         run: |
           cat > notes.md <<'END'
@@ -115,6 +122,13 @@ jobs:
 
           Everything it keeps lives in one folder: `%LOCALAPPDATA%\Airp` on Windows,
           `~/.local/share/Airp` elsewhere.
+
+          `SHA256SUMS` lists a checksum for each download. To check one on Linux or
+          macOS, with both files in the same folder:
+
+          ```bash
+          sha256sum --check --ignore-missing SHA256SUMS
+          ```
           END
 
       # The GitHub CLI rather than a third-party action: it is already on the runner,
@@ -131,5 +145,5 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "A release for $GITHUB_REF_NAME already exists; leaving it as it is."
           else
-            gh release create "$GITHUB_REF_NAME" airp-* --generate-notes --notes-file notes.md
+            gh release create "$GITHUB_REF_NAME" airp-* SHA256SUMS --generate-notes --notes-file notes.md
           fi

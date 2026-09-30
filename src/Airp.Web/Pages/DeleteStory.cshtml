@@ -1,0 +1,20 @@
+@page "/story/{id}/delete"
+@model DeleteStoryModel
+
+@section Header {
+    <a class="back" href="/" aria-label="Stories">‹</a>
+    <h1>Delete</h1>
+}
+
+<section class="confirm">
+    <h2>Delete the story "@Model.Chat!.Name"?</h2>
+    <p>
+        The whole conversation goes, all @Model.Turns turn(s) of it, from the store itself — not just
+        from this page. This cannot be undone.
+    </p>
+
+    <form method="post">
+        <a href="/">Keep it</a>
+        <button type="submit" class="danger">Delete</button>
+    </form>
+</section>

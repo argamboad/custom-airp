@@ -100,6 +100,9 @@ namespace Airp.Infrastructure.Storage.Local.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ModelContext")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -228,6 +231,9 @@ namespace Airp.Infrastructure.Storage.Local.Migrations
 
                     b.Property<int?>("EstimatedPromptTokens")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("FellBackFrom")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Model")
                         .HasMaxLength(200)

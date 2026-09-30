@@ -22,6 +22,9 @@ The diagrams and walkthroughs live in [ARCHITECTURE.md](../ARCHITECTURE.md),
 | [0014](0014-proxy-is-passive.md) | The proxy is passive; no automated access to JanitorAI |
 | [0015](0015-dials.md) | Three dials, each wired to the strongest lever available |
 | [0016](0016-dials-are-data.md) | Dials are data: a configurable pack instead of a hardcoded trio |
+| [0017](0017-proxy-writes-only-where-tagged.md) | The proxy writes only where a `[[rp:<id>]]` tag says |
+| [0018](0018-web-trusts-the-tailnet.md) | The web pages trust the tailnet's word for who is asking |
+| [0019](0019-a-storys-model.md) | A story's model is checked, fitted, and never the reason a turn is lost |
 
 New records take the next number. A superseded decision keeps its file and gains a
 **Status**: superseded by NNNN line — the history of being wrong is part of the record.

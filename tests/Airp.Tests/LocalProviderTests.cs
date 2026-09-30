@@ -17,6 +17,9 @@ internal sealed class ScriptedModel : ILanguageModelClient
 
     public List<IReadOnlyList<ModelMessage>> Calls { get; } = [];
 
+    /// <summary>The model each call asked for, in order; null where the call named none.</summary>
+    public List<string?> Models { get; } = [];
+
     public double? LastTemperature { get; private set; }
 
     public int? LastMaxTokens { get; private set; }
@@ -57,6 +60,16 @@ internal sealed class ScriptedModel : ILanguageModelClient
     public ScriptedModel Fails(string message = "the provider is down")
     {
         _answers.Enqueue(() => throw new ModelUnavailableException(message));
+        return this;
+    }
+
+    /// <summary>Refuses the way OpenRouter does a model no host serves any more.</summary>
+    public ScriptedModel HasNoSuchModel()
+    {
+        _answers.Enqueue(() => throw new ModelUnavailableException(
+            "The API returned 404 Not Found. No endpoints found for the model.",
+            404,
+            noSuchModel: true));
         return this;
     }
 
@@ -123,6 +136,7 @@ internal sealed class ScriptedModel : ILanguageModelClient
         CancellationToken cancellationToken = default)
     {
         Calls.Add(messages);
+        Models.Add(model);
         LastTemperature = temperature;
         LastMaxTokens = maxTokens;
         LastFrequencyPenalty = frequencyPenalty;
@@ -131,8 +145,16 @@ internal sealed class ScriptedModel : ILanguageModelClient
         return Task.FromResult(next());
     }
 
-    public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult<IReadOnlyList<string>>(["test-model"]);
+    /// <summary>What <see cref="ListModelsAsync"/> answers; a test replaces it to shape the catalogue.</summary>
+    public IReadOnlyList<ModelInfo> Catalogue { get; set; } = [new ModelInfo("test-model", 128_000)];
+
+    /// <summary>When set, <see cref="ListModelsAsync"/> fails with it, as an unreachable list would.</summary>
+    public Exception? CatalogueFailure { get; set; }
+
+    public Task<IReadOnlyList<ModelInfo>> ListModelsAsync(CancellationToken cancellationToken = default)
+        => CatalogueFailure is { } failure
+            ? Task.FromException<IReadOnlyList<ModelInfo>>(failure)
+            : Task.FromResult(Catalogue);
 }
 
 /// <summary>Hands out contexts over one in-memory connection that stays open.</summary>

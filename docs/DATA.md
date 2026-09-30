@@ -32,6 +32,7 @@ erDiagram
         string PersonaName "file in the library"
         string Persona "inline text; wins over the name"
         string Model "per-conversation override"
+        int ModelContext "that model's window, from the provider's list when chosen"
         int Lust "dead - migrated to DialValues"
         int ResponseLength "dead - migrated"
         int Creativity "dead - migrated"
@@ -49,6 +50,7 @@ erDiagram
         datetime DeletedAtUtc "tombstone"
         string RequestHash "idempotency, unique where present"
         string Model
+        string FellBackFrom "the story's model, when it was gone and the default wrote this"
         string Provider "which host actually served it"
         int PromptTokens "reported"
         int CompletionTokens "reported"

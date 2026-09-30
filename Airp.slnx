@@ -4,6 +4,7 @@
     <Project Path="src/Airp.Domain/Airp.Domain.csproj" />
     <Project Path="src/Airp.Infrastructure/Airp.Infrastructure.csproj" />
     <Project Path="src/Airp.Proxy/Airp.Proxy.csproj" />
+    <Project Path="src/Airp.Web/Airp.Web.csproj" />
     <Project Path="src/Airp.Terminal/Airp.Terminal.csproj" />
   </Folder>
   <Folder Name="/tests/">

@@ -46,6 +46,18 @@ public sealed record ChatMessage
     /// <summary>Whether the site flagged the content, and why.</summary>
     public string? FlaggedReason { get; init; }
 
+    /// <summary>
+    /// Whether a model wrote it here — false for the reader's turns, a story's written opening
+    /// and imported text.
+    /// </summary>
+    public bool Generated { get; init; }
+
+    /// <summary>
+    /// The story's own model, when it was not available and the default wrote this reply
+    /// instead; null otherwise.
+    /// </summary>
+    public string? FellBackFrom { get; init; }
+
     /// <summary>Number of whitespace-separated words.</summary>
     public int WordCount
     {

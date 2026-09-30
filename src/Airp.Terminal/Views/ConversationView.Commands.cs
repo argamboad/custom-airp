@@ -78,14 +78,14 @@ internal sealed partial class ConversationView
             "focus" => Steer(LocalDirections.Focus(argument), $"Handing the turn to {argument}"),
             "ask" => Ask(argument),
 
-            "card" => Show("Character", ResolveCharacterAsync, "no character definition"),
-            "persona" => Show("Persona", ResolvePersonaAsync, "no persona"),
-            "facts" => ShowFacts(),
-            "trackers" => ShowTrackers(),
-            "audit" => ShowAudit(),
+            "card" => Report("Character", ct => StoryReports.CharacterAsync(_provider!, _conversation.Id, ct)),
+            "persona" => Report("Persona", ct => StoryReports.PersonaAsync(_provider!, _conversation.Id, ct)),
+            "facts" => Report("Facts", ct => StoryReports.FactsAsync(_provider!, _conversation.Id, ct)),
+            "trackers" => Report("Trackers", ct => StoryReports.TrackersAsync(_provider!, _conversation.Id, ct)),
+            "audit" => Report("Audit", ct => StoryReports.AuditAsync(_provider!, _conversation.Id, ct)),
             "cost" => ShowCost(),
             "search" => Find(argument),
-            "help" => ViewAction.Push(new TextPaneView("Commands", "typed in the composer", HelpLines())),
+            "help" => ViewAction.Push(new TextPaneView("Commands", "typed in the composer", StoryReports.HelpLines())),
 
             "fact" => AddFact(argument),
             "tracker" => SetTracker(argument),
@@ -149,7 +149,7 @@ internal sealed partial class ConversationView
             await RefreshSpendAsync(ct).ConfigureAwait(false);
 
             return Visible.Count(static m => m.Role == ChatRole.Assistant) > before
-                ? ViewAction.Status("Reply received.", StatusKind.Success)
+                ? Arrived("Reply received.")
                 : ViewAction.Status("No reply came back.", StatusKind.Warning);
         });
     }
@@ -193,260 +193,37 @@ internal sealed partial class ConversationView
 
     // ------------------------------------------------------------ the free ones
 
-    /// <summary>Opens a pane over text resolved from the library.</summary>
-    /// <param name="title">Pane title.</param>
-    /// <param name="resolve">Produces the text and a line saying where it came from.</param>
-    /// <param name="missing">What to say when there is nothing to show.</param>
-    private ViewAction Show(
-        string title,
-        Func<CancellationToken, Task<(string? Text, string Source)>> resolve,
-        string missing)
+    /// <summary>Opens a pane over one of the reading commands' reports, or says why there is none.</summary>
+    /// <remarks>
+    /// The lines come from <see cref="StoryReports"/>, which every front end reads from, so
+    /// "the facts" or "what this story has cost" means the same thing here, on a phone's
+    /// browser and in Janitor.
+    /// </remarks>
+    /// <param name="title">What the progress line calls it.</param>
+    /// <param name="read">Produces the report.</param>
+    private static ViewAction Report(string title, Func<CancellationToken, Task<StoryReport>> read)
         => ViewAction.Run(title, async ct =>
         {
-            var (text, source) = await resolve(ct).ConfigureAwait(false);
+            var report = await read(ct).ConfigureAwait(false);
 
-            return string.IsNullOrWhiteSpace(text)
-                ? ViewAction.Status($"This conversation has {missing}.", StatusKind.Warning)
-                : ViewAction.Push(new TextPaneView(title, source, [.. text.Replace("\r\n", "\n").Split('\n')]));
+            return report.IsEmpty
+                ? ViewAction.Status(report.Subtitle, StatusKind.Info)
+                : ViewAction.Push(new TextPaneView(report.Title, report.Subtitle, report.Lines));
         });
 
-    /// <summary>
-    /// Resolves the character exactly as a turn would.
-    /// </summary>
-    /// <remarks>
-    /// The same three-branch rule the prompt uses — the conversation's own text, then the file
-    /// it names, then nothing — because a pane that resolved differently would answer "what is
-    /// this character" with something the model has never been sent.
-    /// </remarks>
-    private async Task<(string? Text, string Source)> ResolveCharacterAsync(CancellationToken cancellationToken)
-    {
-        var conversation = await _provider!.RawAsync(_conversation.Id, cancellationToken).ConfigureAwait(false);
-
-        var text = await TextLibrary.ResolveAsync(
-                _library.Characters,
-                conversation?.CharacterDefinition,
-                conversation?.CharacterName,
-                cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-
-        return (text, Describe(conversation?.CharacterDefinition, conversation?.CharacterName, null));
-    }
-
-    /// <summary>Resolves the persona exactly as a turn would.</summary>
-    private async Task<(string? Text, string Source)> ResolvePersonaAsync(CancellationToken cancellationToken)
-    {
-        var conversation = await _provider!.RawAsync(_conversation.Id, cancellationToken).ConfigureAwait(false);
-        var fallback = _options?.CurrentValue.DefaultPersona;
-
-        var text = await TextLibrary.ResolveAsync(
-                _library.Personas,
-                conversation?.Persona,
-                conversation?.PersonaName,
-                fallback,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        return (text, Describe(conversation?.Persona, conversation?.PersonaName, fallback));
-    }
-
-    /// <summary>Says which of the three branches the text came from.</summary>
-    /// <remarks>
-    /// Worth a line of its own. "I edited the file and it had no effect" is almost always a
-    /// conversation holding its own copy, or naming a different file than the one being edited,
-    /// and neither is visible from anywhere else.
-    /// </remarks>
-    private static string Describe(string? own, string? named, string? fallback)
-        => !string.IsNullOrWhiteSpace(own) ? "written for this conversation"
-        : !string.IsNullOrWhiteSpace(named) ? $"from the file {named}"
-        : !string.IsNullOrWhiteSpace(fallback) ? $"the default, {fallback}"
-        : "nothing resolved";
-
-    /// <summary>Shows what is being injected as true right now.</summary>
-    private ViewAction ShowFacts()
-        => ViewAction.Run("Facts", async ct =>
-        {
-            var facts = await _provider!.FactsAsync(_conversation.Id, ct).ConfigureAwait(false);
-            var live = facts.Where(static f => f.ValidToSequence is null).ToList();
-
-            if (live.Count == 0)
-            {
-                return ViewAction.Status(
-                    "Nothing is being injected as true yet. /fact <statement> writes one.",
-                    StatusKind.Info);
-            }
-
-            var lines = new List<string>();
-
-            foreach (var group in live.GroupBy(static f => f.Subject).OrderBy(static g => g.Key))
-            {
-                lines.Add(group.Key);
-
-                foreach (var fact in group.OrderBy(static f => f.ValidFromSequence))
-                {
-                    lines.Add("  · " + fact.Text);
-                }
-
-                lines.Add(string.Empty);
-            }
-
-            var retired = facts.Count - live.Count;
-
-            return ViewAction.Push(new TextPaneView(
-                "Facts",
-                retired > 0 ? $"{live.Count} live, {retired} retired" : $"{live.Count} live",
-                lines));
-        });
-
-    /// <summary>Shows the meters and their values.</summary>
-    private ViewAction ShowTrackers()
-        => ViewAction.Run("Trackers", async ct =>
-        {
-            var meters = await _provider!.TrackersAsync(_conversation.Id, ct).ConfigureAwait(false);
-
-            if (meters.Count == 0)
-            {
-                return ViewAction.Status(
-                    "This conversation keeps no meters. /tracker <name> <value> starts one.",
-                    StatusKind.Info);
-            }
-
-            var lines = new List<string>();
-
-            foreach (var meter in meters)
-            {
-                lines.Add($"{meter.Name}  {meter.Value:0.##} / {meter.Max:0.##}"
-                    + (meter.Delta != 0 ? $"   last moved {meter.Delta:+0.##;-0.##}" : string.Empty));
-
-                if (!string.IsNullOrWhiteSpace(meter.Note))
-                {
-                    lines.Add("  " + meter.Note);
-                }
-
-                lines.Add(string.Empty);
-            }
-
-            return ViewAction.Push(new TextPaneView("Trackers", $"{meters.Count} meter(s)", lines));
-        });
-
-    /// <summary>Shows what the recent turns cost, layer by layer.</summary>
-    private ViewAction ShowAudit()
-        => ViewAction.Run("Audit", async ct =>
-        {
-            var turns = await _provider!.AuditAsync(_conversation.Id, ct).ConfigureAwait(false);
-            var asides = await _provider!.AsidesAsync(_conversation.Id, ct).ConfigureAwait(false);
-
-            if (turns.Count == 0 && asides.Count == 0)
-            {
-                return ViewAction.Status("Nothing has been generated in this conversation yet.", StatusKind.Info);
-            }
-
-            var lines = new List<string>();
-
-            foreach (var turn in turns.OrderByDescending(static t => t.Sequence).Take(12))
-            {
-                lines.Add($"#{turn.Sequence}{(turn.Hidden ? "  (rolled back)" : string.Empty)}"
-                    + $"   {turn.PromptTokens?.ToString("N0", CultureInfo.CurrentCulture) ?? "?"} in, "
-                    + $"{turn.CompletionTokens?.ToString("N0", CultureInfo.CurrentCulture) ?? "?"} out"
-                    + $"   served by {turn.Provider ?? "unknown"}");
-
-                if (!string.IsNullOrWhiteSpace(turn.Context))
-                {
-                    lines.Add("  " + turn.Context);
-                }
-
-                lines.Add(string.Empty);
-            }
-
-            // Asides are billed and store no message, so they appear nowhere else. Leaving them
-            // out is how a per-chat cost quietly stops adding up.
-            if (asides.Count > 0)
-            {
-                lines.Add("Questions asked out of character");
-
-                foreach (var aside in asides.Take(8))
-                {
-                    lines.Add($"  · {aside.Question}");
-                    lines.Add($"    {aside.PromptTokens?.ToString("N0", CultureInfo.CurrentCulture) ?? "?"} in, "
-                        + $"{aside.CompletionTokens?.ToString("N0", CultureInfo.CurrentCulture) ?? "?"} out"
-                        + $"   served by {aside.Provider ?? "unknown"}");
-                }
-            }
-
-            return ViewAction.Push(new TextPaneView(
-                "Audit",
-                asides.Count > 0 ? $"{turns.Count} turn(s), {asides.Count} question(s)" : $"{turns.Count} turn(s)",
-                lines));
-        });
-
-    /// <summary>
-    /// Shows what this story has cost, and what it bought.
-    /// </summary>
-    /// <remarks>
-    /// The header carries one figure because one is all a header should carry. This is where the
-    /// figure comes apart: which kinds of call it went on, how much of the prompt the provider
-    /// served from cache, and what was paid for replies that were then rerolled away — the only
-    /// line of spending here that bought nothing at all.
-    /// </remarks>
+    /// <summary>Shows what this story has cost, and brings the header's figure up to date with it.</summary>
     private ViewAction ShowCost()
         => ViewAction.Run("Cost", async ct =>
         {
-            var report = await _provider!
-                .SpendAsync(conversationId: _conversation.Id, cancellationToken: ct)
+            var report = await StoryReports.CostAsync(_provider!, _conversation.Id, _conversation.Name, ct)
                 .ConfigureAwait(false);
 
-            if (report.Conversations.FirstOrDefault() is not { } spend)
-            {
-                return ViewAction.Status("Nothing has been spent on this story yet.", StatusKind.Info);
-            }
+            await RefreshSpendAsync(ct).ConfigureAwait(false);
 
-            _spent = spend;
-
-            var lines = new List<string>
-            {
-                $"{spend.Cost:$0.0000}   over {spend.Calls} billed call(s)",
-                string.Empty,
-            };
-
-            foreach (var kind in spend.ByKind)
-            {
-                lines.Add($"  {Name(kind.Kind),-14}{kind.Cost:$0.0000}   {kind.Calls} call(s)");
-            }
-
-            lines.Add(string.Empty);
-            lines.Add($"  {"tokens",-14}{spend.PromptTokens:N0} in, {spend.CompletionTokens:N0} out");
-
-            lines.Add(spend.CachedShare is { } share
-                ? $"  {"cached",-14}{share:P0} of the prompt was served from cache"
-                : $"  {"cached",-14}the provider never said");
-
-            if (spend.DiscardedCost > 0)
-            {
-                lines.Add(string.Empty);
-                lines.Add($"  {spend.DiscardedCost:$0.0000} went on {spend.DiscardedCalls} reply(ies) "
-                    + "you regenerated away. They are still in the audit.");
-            }
-
-            if (spend.Unpriced > 0)
-            {
-                lines.Add(string.Empty);
-                lines.Add($"  {spend.Unpriced} call(s) came back with no price, so this is a floor.");
-            }
-
-            lines.Add(string.Empty);
-            lines.Add("  Embeddings are not counted; the whole corpus costs under a cent.");
-
-            return ViewAction.Push(new TextPaneView("Cost", _conversation.Name, lines));
+            return report.IsEmpty
+                ? ViewAction.Status(report.Subtitle, StatusKind.Info)
+                : ViewAction.Push(new TextPaneView(report.Title, report.Subtitle, report.Lines));
         });
-
-    /// <summary>What a kind of billed work is called on screen.</summary>
-    private static string Name(Airp.Infrastructure.Storage.Local.SpendKind kind) => kind switch
-    {
-        Airp.Infrastructure.Storage.Local.SpendKind.Reply => "replies",
-        Airp.Infrastructure.Storage.Local.SpendKind.Aside => "questions",
-        Airp.Infrastructure.Storage.Local.SpendKind.Summary => "compression",
-        Airp.Infrastructure.Storage.Local.SpendKind.Facts => "extraction",
-        _ => kind.ToString().ToLowerInvariant(),
-    };
 
     /// <summary>Runs the in-chat search that <c>/</c> in navigation mode opens.</summary>
     private ViewAction Find(string query)
@@ -471,34 +248,6 @@ internal sealed partial class ConversationView
         return ViewAction.Status($"{hits} message(s) match. N for the next one.", StatusKind.Success);
     }
 
-    /// <summary>The command list, as the pane shows it.</summary>
-    private static IReadOnlyList<string> HelpLines()
-    {
-        var lines = new List<string>();
-
-        foreach (var group in SlashCommands.All.GroupBy(static c => c.Cost))
-        {
-            lines.Add(group.Key switch
-            {
-                CommandCost.Billed => "Billed — these call the model",
-                CommandCost.Write => "These write to the conversation",
-                _ => "Free — these only read what is already here",
-            });
-
-            foreach (var command in group)
-            {
-                lines.Add($"  {command.Usage}");
-                lines.Add($"      {command.Summary}");
-            }
-
-            lines.Add(string.Empty);
-        }
-
-        lines.Add("A message that genuinely starts with a slash is sent by doubling it: //like this.");
-
-        return lines;
-    }
-
     // ------------------------------------------------------------ the writes
 
     /// <summary>Pins a statement as true.</summary>
@@ -520,32 +269,15 @@ internal sealed partial class ConversationView
         });
     }
 
-    /// <summary>
-    /// Sets a meter's value.
-    /// </summary>
-    /// <remarks>
-    /// The value is the last word, not the first, so a meter whose name is two words still
-    /// works: <c>/tracker her patience 40</c>. Splitting the other way would have made the name
-    /// a single token and quietly created a second meter the first time one was typed with a
-    /// space in it.
-    /// </remarks>
+    /// <summary>Sets a meter's value; the value is the last word, so a name can be two.</summary>
     private ViewAction SetTracker(string argument)
     {
-        var cut = argument.LastIndexOf(' ');
-
-        if (cut <= 0
-            || !double.TryParse(
-                argument[(cut + 1)..],
-                NumberStyles.Float,
-                CultureInfo.InvariantCulture,
-                out var value))
+        if (SlashCommands.SplitTracker(argument) is not var (name, value))
         {
             return ViewAction.Status(
                 "/tracker <name> <value> — the value has to be a number.",
                 StatusKind.Warning);
         }
-
-        var name = argument[..cut].Trim();
 
         return ViewAction.Run("Setting", async ct =>
         {
@@ -585,37 +317,10 @@ internal sealed partial class ConversationView
         }
 
         _branching = true;
-        _branchName.Value = Suggest(_conversation.Name);
+        _branchName.Value = SlashCommands.BranchName(_conversation.Name);
 
 
         return ViewAction.None;
-    }
-
-    /// <summary>A name that will not collide with the one already in the list.</summary>
-    /// <remarks>
-    /// Numbered rather than suffixed with the turn, because a reader branching twice from the
-    /// same message would otherwise get the same name twice — and the turn number means nothing
-    /// once the copy has grown its own turns.
-    /// </remarks>
-    /// <param name="name">The name of the conversation being branched.</param>
-    /// <returns>The suggestion.</returns>
-    private static string Suggest(string name)
-    {
-        var trimmed = name.Trim();
-        var open = trimmed.LastIndexOf(" (", StringComparison.Ordinal);
-
-        if (open > 0
-            && trimmed.EndsWith(')')
-            && int.TryParse(
-                trimmed.AsSpan(open + 2, trimmed.Length - open - 3),
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var number))
-        {
-            return string.Create(CultureInfo.InvariantCulture, $"{trimmed[..open]} ({number + 1})");
-        }
-
-        return string.Create(CultureInfo.InvariantCulture, $"{trimmed} (2)");
     }
 
     /// <summary>Handles a key while the name is being typed.</summary>
@@ -671,35 +376,4 @@ internal sealed partial class ConversationView
         _branchName.Handle(stroke);
         return ViewAction.None;
     }
-}
-
-/// <summary>
-/// The wording sent to the model for the directions a command can carry.
-/// </summary>
-/// <remarks>
-/// A direction cannot go to the model bare. Every layer above it has spent its words telling
-/// the model to stay in character and to leave the reader's turn alone, and a bare
-/// <c>have Mariana leave</c> arriving after all of that reads as something the reader said out
-/// loud. The frame says whose instruction this is and restates the one rule it is most likely
-/// to be read as suspending.
-/// </remarks>
-internal static class LocalDirections
-{
-    /// <summary>Frames a free-form direction for the next turn.</summary>
-    /// <param name="direction">What the reader typed.</param>
-    /// <returns>The directive.</returns>
-    public static string Direction(string direction)
-        => "A direction for this reply, from the reader, out of character. It is not something "
-        + "anyone said aloud and nobody in the scene knows it was given. Write the next turn "
-        + "following it, and still never write the user's words, actions or thoughts.\n\n"
-        + direction.Trim();
-
-    /// <summary>Frames a hand-off to a named character.</summary>
-    /// <param name="who">The name the reader typed.</param>
-    /// <returns>The directive.</returns>
-    public static string Focus(string who)
-        => "A direction for this reply, from the reader, out of character. Give this turn to "
-        + who.Trim()
-        + ". Let them carry it — what they do, say and notice — and keep everyone else to what "
-        + "they need for that. Still never write the user's words, actions or thoughts.";
 }
