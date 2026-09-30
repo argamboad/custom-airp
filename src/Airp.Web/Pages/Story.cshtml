@@ -85,6 +85,9 @@
     }
 </ol>
 
+@* Where a page drawn in answer to the box opens: the answer, the error, the box itself. *@
+<div id="respond"></div>
+
 @if (Model.Aside is not null)
 {
     <section class="aside-answer">
@@ -102,7 +105,7 @@
 
         @if (Model.Answer is not null)
         {
-            <form method="post" asp-page-handler="Pin">
+            <form method="post" asp-page-handler="Pin" asp-fragment="respond">
                 <input type="hidden" name="answer" value="@Model.Answer">
                 <button type="submit" class="quiet">Pin as fact</button>
             </form>
@@ -115,7 +118,12 @@
     <p class="error" role="alert">@Model.Error</p>
 }
 
-<form method="post" asp-page-handler="Send" class="composer">
+@if (Model.Notice is not null)
+{
+    <p class="notice" role="status">@Model.Notice</p>
+}
+
+<form method="post" asp-page-handler="Send" asp-fragment="respond" class="composer">
     <textarea name="Draft" rows="4" placeholder="Your turn. /help for commands.">@Model.Draft</textarea>
     <div class="composer-buttons">
         @if (Model.CanContinue)
@@ -128,10 +136,18 @@
 
     @if (Model.Snippets.Count > 0)
     {
-        <details class="snippets">
-            <summary>Snippets</summary>
-            <p>Type one as <code>:name</code>; it becomes its text when you send. <code>:name:</code> does the same for an emoji.</p>
-            <p>@string.Join("  ", Model.Snippets.Select(static s => ":" + s))</p>
-        </details>
+        @* Insert puts the snippet at the end of the box and hands it back, still editable —
+           nothing is sent. Send with one picked does the same, rather than sending a page the
+           reader has not seen. :name in the text still works, expanded on Send. *@
+        <div class="snippet-picker">
+            <select name="Snippet" aria-label="Snippet">
+                <option value="">Snippet…</option>
+                @foreach (var name in Model.Snippets)
+                {
+                    <option value="@name">@name</option>
+                }
+            </select>
+            <button type="submit" class="quiet" asp-page-handler="Insert" asp-fragment="respond">Insert</button>
+        </div>
     }
 </form>
