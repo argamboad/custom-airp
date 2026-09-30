@@ -74,6 +74,7 @@ table and survive re-enabling a disabled dial.
 | `BaseUrl` | `https://openrouter.ai/api/v1` | any OpenAI-compatible endpoint |
 | `Name` | `deepseek/deepseek-v4-flash` | criterion #1: the model must not refuse the story's content ([ADR 0008](adr/0008-uncensored-model-first.md)); prose second, cost a distant third |
 | `ApiKeyName` | `OPENROUTER_API_KEY` | the **name** of a secret in `ISecretStore` (`airp secret set`), never the key |
+| `Choices` | null → ten shipped roleplay finetunes (`ModelOptions.ShippedChoices`) | the models a story can be switched to, besides `Name`. Null rather than pre-filled because the binder appends a file's array to one that already has items. A choice is still checked against the provider's list before it is saved |
 | `BackgroundModel` | null → `Name` | summariser + extractor. Must be as permissive as the reply model — a summariser that refuses is a character that forgets |
 | `EmbeddingModel` | `openai/text-embedding-3-small` | 1536 dims, ~$0.02/M |
 | `EmbeddingBaseUrl` | null → `BaseUrl` | what makes going direct-to-DeepSeek survivable: DeepSeek has no `/embeddings`, and without the split retrieval dies silently |
@@ -83,7 +84,7 @@ table and survive re-enabling a disabled dial.
 | `RecallPercent` | `10` (0–50) | share of the budget the memories layer may take; a count is not a size, and four long turns once filled a 60,000-token prompt |
 | `Temperature` | `1.0` | fallback when the Creativity dial is unset (dial: 0.6–1.4; summaries pinned at 0.3, facts 0.2 regardless) |
 | `MaxTokens` | `1024` | reply ceiling fallback (dial: 200–2600) |
-| `ContextBudget` | `32000` | prompt ceiling, far under the model's window on purpose — attention thins, and every token is paid on every turn |
+| `ContextBudget` | `32000` | prompt ceiling, far under the model's window on purpose — attention thins, and every token is paid on every turn. A story on its own model whose window is smaller gets `window − reply ceiling` instead (`ModelOptions.WithWindow`), for the summariser, the retriever and the builder alike |
 | `TimeoutSeconds` | `180` | per call |
 | `IgnoreProviders` | `[]` | host **slugs** never to route to (`deepinfra`, not `DeepInfra`). A wrong slug is dropped silently — verify with the audit's *served by* |
 | `PreferProviders` | `[]` | hosts to try first; the largest saving available, since whether a host caches the prefix decides most of a 60k-token turn's cost |

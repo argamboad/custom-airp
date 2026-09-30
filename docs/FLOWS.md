@@ -291,6 +291,10 @@ sequenceDiagram
     end
 ```
 
+A story on its own model is asked through that model (`CompleteForStoryAsync`), and when the
+provider no longer serves it the default writes the turn and the reply records `FellBackFrom`;
+the page and the terminal say so while that reply is the newest.
+
 The other handlers go straight to the provider, each ending in a redirect when it wrote:
 
 | From the page | Handler | Goes to |
@@ -301,7 +305,7 @@ The other handlers go straight to the provider, each ending in a redirect when i
 | Branch from here | `?handler=Branch` | `BranchAsync`, then into the copy |
 | Delete from here | `/story/{id}/delete-from/{messageId}` | a confirmation, then `DeleteFromAsync` |
 | Export | `?handler=Export&format=…` | `IExportService.Render`, as a download |
-| Settings | `/story/{id}/dials` | `IDialService`, values through `DialEngine.Parse` |
+| Settings | `/story/{id}/dials` | `SetModelAsync` for the model; `IDialService`, values through `DialEngine.Parse`, for the dials |
 | Rename, delete a story | `/?handler=Rename`, `/story/{id}/delete` | `RenameConversationAsync`, `DeleteConversationAsync` |
 | New | `/new` | `CreateAsync`, names only from the shelves |
 

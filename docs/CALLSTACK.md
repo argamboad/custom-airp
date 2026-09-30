@@ -71,12 +71,16 @@ ComposeAsync(store, conversation, instruction, ct)
 │                    in force, rendered in the screen's own words (DialEngine.cs:54)
 ├─ 876  sampler    = DialEngine.Sampler(pack, values)      temperature / ceiling /
 │                    frequency penalty, from the sampler-lever dials (DialEngine.cs:124)
+├─      settings   = settings.WithWindow(ModelContext − reply ceiling) when the story
+│                    has its own model with a smaller window — ONE copy, handed to the
+│                    summariser, the retriever and the builder, so they cannot disagree
 ├─ 887  prepared   = ConversationSummariser.PrepareAsync(...)   ← §3, may compress
 ├─ 905  live       = FactExtractor.LiveAsync AGAIN — extraction may have just run,
 │                    and a fact established in the compressed stretch must reach
 │                    THIS turn's prompt, not the next one's
-├─ 911  budget     = prepared.CompressionFailed ? int.MaxValue : ContextBudget
-│                    — going over budget costs cents; dropping turns costs the story
+├─ 911  budget     = prepared.CompressionFailed ? (model window ?? int.MaxValue) : ContextBudget
+│                    — going over budget costs cents; dropping turns costs the story;
+│                    a model's own window is a wall, not a target
 ├─ 918  memories   = RecallAsync(...)                            ← §4
 └─ 924  LocalPrompt.Build(named arguments, every one)            ← §5
 ```
@@ -189,7 +193,10 @@ ReplyAsync(store, conversation, pending, instruction, progress, ct)
 │                composed.Sampler — the dial engine's temperature (0.6..1.4),
 │                ceiling (200..2600) and frequency penalty, each falling back
 │                to the configured default when its dial is unset)
-├─ 731  _model.CompleteAsync(messages, conversation.Model ?? choice.Model, ...)
+├─ 731  CompleteForStoryAsync → _model.CompleteAsync(messages, conversation.Model ?? choice.Model, ...)
+│         · the story's model refused as NoSuchModel (404, "not a valid model") →
+│           the same call on choice.Model; the reply records FellBackFrom
+│         · any other refusal is not retried on the default
 │         OpenRouterClient (OpenRouterClient.cs:56):
 │         · payload is plain OpenAI; "provider" routing object only when
 │           Prefer/IgnoreProviders are set (line 178), omitted otherwise
