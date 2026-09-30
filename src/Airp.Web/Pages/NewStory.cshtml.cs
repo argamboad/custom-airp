@@ -1,4 +1,5 @@
 using System.Text;
+using Airp.Application.Abstractions;
 using Airp.Application.Options;
 using Airp.Domain.Conversations;
 using Airp.Infrastructure;
@@ -46,6 +47,26 @@ public sealed class NewStoryModel(
     /// <summary>The persona a story gets when none is picked, if one is configured.</summary>
     public string? DefaultPersona => options.CurrentValue.DefaultPersona;
 
+    /// <summary>The model a story uses when it has none of its own.</summary>
+    public string DefaultModel => options.CurrentValue.Model.Name;
+
+    /// <summary>The models a story can start on besides the default.</summary>
+    public IReadOnlyList<string> ModelChoices => [.. options.CurrentValue.Model.EffectiveChoices
+        .Where(c => !string.Equals(c, DefaultModel, StringComparison.OrdinalIgnoreCase))];
+
+    /// <summary>What the provider's list says about each model, for the prices beside a choice.</summary>
+    public IReadOnlyDictionary<string, ModelInfo> Models { get; private set; } = new Dictionary<string, ModelInfo>();
+
+    /// <summary>A model as the list offers it: its id, and its prices against the default's when known.</summary>
+    /// <param name="id">The model.</param>
+    /// <returns>The label.</returns>
+    public string Label(string id)
+        => Models.TryGetValue(id, out var info) ? info.Describe(Models.GetValueOrDefault(DefaultModel)) : id;
+
+    /// <summary>The model picked; empty for the default.</summary>
+    [BindProperty]
+    public string? Model { get; set; }
+
     /// <summary>What the story list will call it; the character's name when left empty.</summary>
     [BindProperty]
     public string? Name { get; set; }
@@ -83,6 +104,7 @@ public sealed class NewStoryModel(
         }
 
         Opening = (await TextLibrary.ReadAsync(library.Openings, Character, cancellationToken).ConfigureAwait(false))?.TrimEnd();
+        Models = await conversations.ModelsAsync(cancellationToken).ConfigureAwait(false);
         return Page();
     }
 
@@ -121,6 +143,18 @@ public sealed class NewStoryModel(
             .ConfigureAwait(false);
 
         // Straight into it, and by redirect, so a reload cannot start the same story twice.
+        // Started whatever becomes of the model: an unavailable one leaves the story on the
+        // default, and the story's page says so once, when it opens.
+        if (!string.IsNullOrWhiteSpace(Model))
+        {
+            var change = await conversations.SetModelAsync(chat.Id, Model, cancellationToken).ConfigureAwait(false);
+
+            if (!change.Saved)
+            {
+                TempData[StoryModel.NoticeKey] = change.Message;
+            }
+        }
+
         return Redirect(StoryModel.Latest(chat.Id));
     }
 

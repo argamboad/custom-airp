@@ -28,6 +28,13 @@ internal sealed class ChatSettingsView : ViewBase
     private readonly IDialService _dials;
     private readonly string _conversationId;
     private readonly string _title;
+    private readonly Airp.Infrastructure.Providers.LocalConversationProvider? _provider;
+    private readonly string? _defaultModel;
+    private readonly IReadOnlyList<string> _modelChoices;
+    private readonly Action<string?>? _modelChanged;
+
+    /// <summary>The key the model's row goes by among the dials; no pack can declare it.</summary>
+    internal const string ModelKey = "__model";
 
     private IReadOnlyList<DialDefinition> _rows = [];
     private Dictionary<string, string> _applied = new(StringComparer.OrdinalIgnoreCase);
@@ -40,11 +47,26 @@ internal sealed class ChatSettingsView : ViewBase
     /// <param name="dials">The pack and the conversation's choices.</param>
     /// <param name="conversationId">The conversation being adjusted.</param>
     /// <param name="title">The conversation's name, shown in the header.</param>
-    public ChatSettingsView(IDialService dials, string conversationId, string title)
+    /// <param name="provider">The store, for the story's model; null leaves the model row out.</param>
+    /// <param name="defaultModel">The configured model, which the model row's first choice clears back to.</param>
+    /// <param name="modelChoices">The models the story can be switched to.</param>
+    /// <param name="modelChanged">Told the story's model after a change, null for the default.</param>
+    public ChatSettingsView(
+        IDialService dials,
+        string conversationId,
+        string title,
+        Airp.Infrastructure.Providers.LocalConversationProvider? provider = null,
+        string? defaultModel = null,
+        IReadOnlyList<string>? modelChoices = null,
+        Action<string?>? modelChanged = null)
     {
         _dials = dials;
         _conversationId = conversationId;
         _title = title;
+        _provider = provider;
+        _defaultModel = defaultModel;
+        _modelChoices = modelChoices ?? [];
+        _modelChanged = modelChanged;
     }
 
     /// <inheritdoc />
@@ -228,6 +250,42 @@ internal sealed class ChatSettingsView : ViewBase
             : Draw.Literal("Nothing changed.", theme.Muted)));
 
         return new Rows(rows);
+    }
+
+    /// <summary>The model's row, drawn and stepped as a choice among the default and the list.</summary>
+    /// <param name="own">The story's model, which stays offered even when it is not on the list.</param>
+    /// <param name="listed">What the provider's list says about each model, for the prices; empty when unread.</param>
+    private DialDefinition ModelRow(string? own, IReadOnlyDictionary<string, Airp.Application.Abstractions.ModelInfo> listed)
+    {
+        var baseline = listed.GetValueOrDefault(_defaultModel!);
+
+        string Label(string id) => listed.TryGetValue(id, out var info) ? info.Describe(baseline) : id;
+
+        var models = _modelChoices
+            .Where(c => !string.Equals(c, _defaultModel, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (own is not null && !models.Contains(own, StringComparer.OrdinalIgnoreCase))
+        {
+            models.Insert(0, own);
+        }
+
+        return new DialDefinition
+        {
+            Key = ModelKey,
+            Kind = DialKind.Choice,
+            Title = "Model",
+            Help = "What writes this story's replies and answers. Summaries and facts stay on the default. "
+                + "A model with a smaller window than the budget shrinks the story's budget to fit.",
+            Options =
+            [
+                new DialOption(_defaultModel!, "Default — " + Label(_defaultModel!), "the configured model"),
+                .. models.Select(m => new DialOption(
+                    m,
+                    Label(m),
+                    "checked against the provider's list when applied; prices are list prices, to compare by")),
+            ],
+        };
     }
 
     /// <summary>The first sentence of a dial's help, for the line beside its name.</summary>
@@ -437,7 +495,18 @@ internal sealed class ChatSettingsView : ViewBase
 
         _rows = [.. pack.Dials.Where(static d => d.Enabled)];
         _applied = new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase);
-        _staged = new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase);
+
+        // The model is a row like the dials, first because it decides more about a reply than
+        // any of them, stepped through the same ‹ › and applied by the same Enter.
+        if (_provider is not null && _defaultModel is not null)
+        {
+            var own = (await _provider.GetAsync(_conversationId, ct).ConfigureAwait(false))?.Model;
+            var listed = await _provider.ModelsAsync(ct).ConfigureAwait(false);
+            _rows = [ModelRow(own, listed), .. _rows];
+            _applied[ModelKey] = own ?? _defaultModel;
+        }
+
+        _staged = new Dictionary<string, string>(_applied, StringComparer.OrdinalIgnoreCase);
         _selected = Math.Clamp(_selected, 0, Math.Max(0, _rows.Count - 1));
         _loaded = true;
 
@@ -457,13 +526,36 @@ internal sealed class ChatSettingsView : ViewBase
 
         return ViewAction.Run("Applying the settings", async ct =>
         {
+            string? refused = null;
+
             foreach (var key in changed)
             {
+                if (key == ModelKey)
+                {
+                    var change = await _provider!.SetModelAsync(_conversationId, _staged[key], ct).ConfigureAwait(false);
+
+                    if (!change.Saved)
+                    {
+                        // Not saved, so the row goes back to what the story really has.
+                        refused = change.Message;
+                        _staged[key] = change.Model ?? _defaultModel!;
+                        continue;
+                    }
+
+                    _modelChanged?.Invoke(change.Model);
+                    continue;
+                }
+
                 await _dials.SetAsync(_conversationId, key, _staged.GetValueOrDefault(key), ct)
                     .ConfigureAwait(false);
             }
 
             _applied = new Dictionary<string, string>(_staged, StringComparer.OrdinalIgnoreCase);
+
+            if (refused is not null)
+            {
+                return ViewAction.Status(refused, StatusKind.Warning);
+            }
 
             var parts = changed
                 .Select(key => _rows.First(d => d.Key == key) is var dial

@@ -308,6 +308,45 @@ public sealed class CharacterInAFileTests : IDisposable
         (await store.Summaries.CountAsync(s => s.ConversationId == id)).ShouldBe(0);
         _model.Calls.Count.ShouldBe(1);
     }
+
+    [Fact]
+    public async Task A_story_on_a_model_with_a_small_window_compresses_to_that_window_and_drops_nothing()
+    {
+        // Twenty turns fit the configured budget beside the character, and do not fit a model
+        // whose window is smaller. The shrunk budget has to reach the summariser as well as the
+        // builder: the day those two disagreed about the budget, a real story lost twenty-four
+        // turns with nothing written down about them.
+        var roomy = await SeedAsync(20);
+        var small = await SeedAsync(20);
+
+        await using (var store = _factory.CreateDbContext())
+        {
+            var story = await store.Conversations.SingleAsync(c => c.Id == small);
+            story.Model = "small/model";
+            story.ModelContext = 4000;
+            await store.SaveChangesAsync();
+        }
+
+        _model.Says("Fine.");
+        await Provider().SendAsync(roomy, "Hello.");
+
+        _model.Summarises("They met at the dock.").Says("Fine.");
+        await Provider().SendAsync(small, "Hello.");
+
+        await using var check = _factory.CreateDbContext();
+
+        (await check.Summaries.CountAsync(s => s.ConversationId == roomy)).ShouldBe(0);
+        (await check.Summaries.CountAsync(s => s.ConversationId == small)).ShouldBeGreaterThan(0);
+
+        var reply = await check.Messages
+            .Where(m => m.ConversationId == small && m.ContextAudit != null)
+            .OrderBy(m => m.Sequence)
+            .LastAsync();
+
+        reply.ContextAudit.ShouldNotBeNull().ShouldContain("(the story's model)");
+        reply.ContextAudit.ShouldNotContain("dropped", Case.Sensitive);
+        reply.EstimatedPromptTokens.ShouldNotBeNull().ShouldBeLessThanOrEqualTo(4000 - 200);
+    }
 }
 
 /// <summary>

@@ -81,6 +81,8 @@ internal static partial class Program
                     .ConfigureAwait(false),
                 "ask" => await AskAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
+                "model" => await StoryModelAsync(host.Services, args, lifetime.ApplicationStopping)
+                    .ConfigureAwait(false),
                 "models" => await ListModelsAsync(host.Services, args, lifetime.ApplicationStopping)
                     .ConfigureAwait(false),
                 "secret" => await SecretAsync(host.Services, args, lifetime.ApplicationStopping)
@@ -490,6 +492,8 @@ internal static partial class Program
         AnsiConsole.MarkupLine("  airp ask \"message\"      Send one message to the model and print the reply");
         AnsiConsole.MarkupLine("  airp ask \"…\" --model <id>   …using a different model than the configured one");
         AnsiConsole.MarkupLine("  airp ask \"…\" --system \"…\"   …with a character definition in front of it");
+        AnsiConsole.MarkupLine("  airp model              The model a story is played on, and the ones it can be");
+        AnsiConsole.MarkupLine("  airp model <id>         …switch the story to one  (--default to go back)");
         AnsiConsole.MarkupLine("  airp models             List the models the API offers");
         AnsiConsole.MarkupLine("  airp models --find deepseek  …filtered");
         AnsiConsole.MarkupLine("  airp secret set         Store an API key, encrypted for this account");

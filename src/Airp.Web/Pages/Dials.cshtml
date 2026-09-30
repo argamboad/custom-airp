@@ -17,6 +17,25 @@
     <p class="error" role="alert">@Model.Error</p>
 }
 
+@* The model first: it decides more about a reply than any dial. *@
+<form method="post" asp-page-handler="Model" class="dials story-model">
+    <label>
+        <span class="dial-title">Model</span>
+        <span class="aside">
+            What writes this story's replies and answers. Summaries and facts stay on the default.
+            A model with a smaller window than the budget shrinks the story's budget to fit.
+        </span>
+        <select name="model">
+            <option value="">Default — @Model.Label(Model.DefaultModel)</option>
+            @foreach (var choice in Model.ModelChoices)
+            {
+                <option value="@choice" selected="@(string.Equals(choice, Model.Chat!.Model, StringComparison.OrdinalIgnoreCase))">@Model.Label(choice)</option>
+            }
+        </select>
+    </label>
+    <button type="submit">Use this model</button>
+</form>
+
 <form method="post" class="dials">
     @foreach (var dial in Model.Rows)
     {

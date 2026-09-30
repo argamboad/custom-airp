@@ -29,6 +29,20 @@
     <p class="empty">Nothing has been said yet.</p>
 }
 
+@if (Model.Arrival is not null)
+{
+    <p class="notice" role="status">@Model.Arrival</p>
+}
+
+@if (Model.FellBackFrom is not null)
+{
+    @* Read from the reply itself, so it is said for as long as it is the newest turn. *@
+    <p class="notice" role="status">
+        @Model.FellBackFrom was not available, so the default (@Model.DefaultModel) wrote the newest reply.
+        The story still asks for @Model.FellBackFrom and will try it again next turn; change it in Settings.
+    </p>
+}
+
 <ol class="turns">
     @for (var i = 0; i < Model.Shown.Count; i++)
     {

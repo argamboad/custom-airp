@@ -398,3 +398,10 @@ public static class StoryReports
             + (end < flat.Length ? "…" : string.Empty);
     }
 }
+
+/// <summary>What became of a request to change a story's model.</summary>
+/// <param name="Saved">Whether the story's model changed.</param>
+/// <param name="Model">The story's model now, or null for the default.</param>
+/// <param name="Context">That model's window, when known.</param>
+/// <param name="Message">What to tell the reader — including, when nothing was saved, why and what the story stays on.</param>
+public sealed record ModelChange(bool Saved, string? Model, int? Context, string Message);

@@ -120,7 +120,8 @@ It returns the reply, the model, which provider served it and how long it took. 
 everything else works.
 
 The default is `deepseek/deepseek-v4-flash`. To see others, `airp models --find deepseek`; to
-try one without changing anything, `airp ask "…" --model <id>`.
+try one without changing anything, `airp ask "…" --model <id>`. A story can be played on a model
+of its own — see [A model per story](#a-model-per-story).
 
 ### 3. The library
 
@@ -672,6 +673,49 @@ Scales, toggles and choices are adjusted with `←→` in the `S` view; the type
 reply language — are set with `--set` (`--set veils=graphic violence,character death`,
 `--set language=Spanish`).
 
+### A model per story
+
+Every story is played on the default model unless you give it one of its own, and you can change
+it at any turn — the prompt is rebuilt from the story on every send, so nothing already written
+belongs to the model that wrote it. Where to change it:
+
+- **In a conversation**, `S`: the first row is the model. `←→` steps through the list, Enter
+  applies it with the dials.
+- **Starting a story**, `N`: a Model field under Persona.
+- **In the browser**, ⋯ in the bar → Settings, and a Model list on New.
+- **At a shell**: `airp model --chat <name>` says what the story is on and what it can switch to;
+  `airp model <id>` switches it, `airp model --default` goes back.
+
+Each choice shows OpenRouter's list prices and how its prompt price compares with the default's —
+`anthracite-org/magnum-v4-72b — $2.50 / $5.00 per M · ≈31× the default` — since the prompt is
+where a long story's money goes. They are for choosing by; what a turn actually cost is in
+`airp cost`, from what OpenRouter charged ([ADR 0019](adr/0019-a-storys-model.md)).
+
+The list is the default and `model.choices` in `airp.json`. Unset, it is ten open-weight
+roleplay finetunes picked to be more willing than the default, not less: Dolphin Mistral 24B
+Venice, Cydonia 24B, Magnum v4 72B, both Euryale 70Bs, UnslopNemo 12B, Skyfall 36B, Aion 2.0,
+Aion-RP 8B and Hermes 3 70B. Only the first two say they are uncensored; the rest are there on
+reputation, and a host can filter what a model would not — the audit's *served by* column says
+which host wrote a reply. Try one on a throwaway story before a real one.
+
+**A model is checked before it is saved.** airp reads OpenRouter's list of models and saves one
+only if it is on it, with the size of its context window. One that is not listed — or cannot be
+checked, because the list could not be read — is not saved, and you are told what the story
+stays on.
+
+**A small window shrinks the story's budget.** If the model holds less than your budget plus the
+reply, the story's budget becomes what it can hold: older turns are summarised sooner, and the
+audit says `budget … (the story's model)`. Magnum and Skyfall take 32k; the default takes a
+million.
+
+**If the story's model disappears**, a turn is not lost: the default writes that reply, the
+screen says so, and the story keeps asking for its own model on the next turn, since a model
+missing from OpenRouter is often missing for an hour. Only "no such model" does this — a rejected
+key or an empty account fails the same way on any model, so it is reported instead.
+
+**Summaries and facts stay on the default** (or `backgroundModel`), whatever the story is played
+on, so every story's memory is written the same way.
+
 ### A pack of your own
 
 ```bash
@@ -1015,8 +1059,8 @@ Do not put it behind Funnel or any public tunnel: the database holds every story
 - **Reroll** under the newest reply: why it was wrong, and optionally what should be different.
 - **⋯ under any turn**: Branch from here, into a copy named as the terminal would name it, which
   the page then opens; or Delete from here, on a page that says how many messages would go.
-- **⋯ in the bar**: the dials — every one the pack declares, inner thoughts included, applied
-  together — and the transcript as Markdown, JSON or text. The download is named by the date
+- **⋯ in the bar**: Settings — the story's model, then the dials, every one the pack declares,
+  inner thoughts included, applied together — and the transcript as Markdown, JSON or text. The download is named by the date
   alone, so a phone's download notice does not say what it is.
 
 **What stays in the terminal:** the library itself, and copying with one key — on a phone, press

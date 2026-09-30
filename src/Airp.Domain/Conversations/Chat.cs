@@ -40,6 +40,9 @@ public sealed record Chat
     /// <summary>Absolute or site-relative URL of the conversation.</summary>
     public string? Url { get; init; }
 
+    /// <summary>The model this story asks for, or null for the configured default.</summary>
+    public string? Model { get; init; }
+
     /// <summary>
     /// Raw provider payload retained for diagnostics and for fields this model does not yet
     /// understand. Keys are provider-defined.

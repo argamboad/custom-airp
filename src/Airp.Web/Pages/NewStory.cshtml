@@ -68,6 +68,16 @@ else
             </select>
         </label>
         <label>
+            <span>Model <span class="aside">what writes the replies; can be changed later in Settings</span></span>
+            <select name="Model">
+                <option value="">Default — @Model.Label(Model.DefaultModel)</option>
+                @foreach (var choice in Model.ModelChoices)
+                {
+                    <option value="@choice" selected="@(string.Equals(choice, Model.Model, StringComparison.OrdinalIgnoreCase))">@Model.Label(choice)</option>
+                }
+            </select>
+        </label>
+        <label>
             <span>Opening <span class="aside">optional</span></span>
             <textarea name="Opening" rows="10">@Model.Opening</textarea>
         </label>

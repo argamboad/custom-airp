@@ -200,6 +200,12 @@ internal interface IView
     /// </summary>
     string Summary { get; }
 
+    /// <summary>
+    /// The model writing what this view shows, when it is not the configured one — a story's
+    /// own. The header names it; null leaves the configured model there.
+    /// </summary>
+    string? Model { get; }
+
     /// <summary>Shown in the footer legend.</summary>
     IReadOnlyList<KeyHint> KeyHints { get; }
 
@@ -256,6 +262,9 @@ internal abstract class ViewBase : IView
 
     /// <inheritdoc />
     public virtual string Summary => string.Empty;
+
+    /// <inheritdoc />
+    public virtual string? Model => null;
 
     /// <inheritdoc />
     public virtual IReadOnlyList<KeyHint> KeyHints => [];

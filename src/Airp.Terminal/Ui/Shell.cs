@@ -797,7 +797,9 @@ internal sealed class Shell
         return BuildHeaderRows(
             theme: theme,
             identity: $"[{theme.Badge.ToMarkup()}] Local [/]",
-            detail: Markup.Escape(options.Model.Name),
+            // A story on its own model says so: the model writing the replies is the one the
+            // header names, not the one the configuration would have used.
+            detail: Markup.Escape(_stack.Count > 0 && _stack[^1].Model is { } own ? own : options.Model.Name),
             breadcrumb: breadcrumbLine,
             version: Markup.Escape(AppVersion.Short));
     }

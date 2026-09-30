@@ -93,6 +93,7 @@ public sealed class NewChatFlowTests : IDisposable
         await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
         await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
         await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
+        await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
         await TypeAsync(view, "I am cleaning a knife by the fire.");
 
         var action = await view.HandleKeyAsync(Pressed(ConsoleKey.S, control: true), Context(), CancellationToken.None);
@@ -179,7 +180,7 @@ public sealed class NewChatFlowTests : IDisposable
         var view = View(provider);
 
         await TypeAsync(view, "Two paragraphs");
-        foreach (var _ in Enumerable.Range(0, 4))
+        foreach (var _ in Enumerable.Range(0, 5))
         {
             await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
         }
@@ -228,7 +229,7 @@ public sealed class NewChatFlowTests : IDisposable
         var view = View(provider);
 
         await TypeAsync(view, "Mine");
-        foreach (var _ in Enumerable.Range(0, 4))
+        foreach (var _ in Enumerable.Range(0, 5))
         {
             await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
         }
@@ -434,7 +435,8 @@ public sealed class NewChatFlowTests : IDisposable
 
         Screen(view).ShouldContain("Cornish");
 
-        // Tab past the persona and into the opening.
+        // Tab past the persona and the model, into the opening.
+        await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
         await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
         await view.HandleKeyAsync(Pressed(ConsoleKey.Tab), Context(), CancellationToken.None);
 

@@ -149,7 +149,7 @@ internal sealed partial class ConversationView
             await RefreshSpendAsync(ct).ConfigureAwait(false);
 
             return Visible.Count(static m => m.Role == ChatRole.Assistant) > before
-                ? ViewAction.Status("Reply received.", StatusKind.Success)
+                ? Arrived("Reply received.")
                 : ViewAction.Status("No reply came back.", StatusKind.Warning);
         });
     }
