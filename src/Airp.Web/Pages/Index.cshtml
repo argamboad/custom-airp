@@ -3,12 +3,12 @@
 
 @section Header {
     <h1>Stories</h1>
-    <span class="aside">@Model.Chats.Count</span>
+    <a class="action" href="/new">New</a>
 }
 
 @if (Model.Chats.Count == 0)
 {
-    <p class="empty">No stories yet.</p>
+    <p class="empty">No stories yet. <a href="/new">Start one.</a></p>
 }
 else
 {

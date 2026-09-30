@@ -48,6 +48,13 @@ a { color: var(--accent); }
 
 .bar .aside { color: var(--muted); }
 
+.bar .action {
+    margin: -0.75rem -0.5rem;
+    padding: 0.75rem 0.5rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
 /* A thumb-sized target, not a glyph-sized one. */
 .bar .back {
     display: inline-block;
@@ -128,12 +135,12 @@ main {
 /* The newest turn's anchor clears the sticky bar when a page returns to it. */
 .turn { scroll-margin-top: 3.5rem; }
 
-textarea, select, button {
+textarea, select, input, button {
     font: inherit;
     color: inherit;
 }
 
-textarea, select {
+textarea, select, input {
     width: 100%;
     padding: 0.625rem 0.75rem;
     background: var(--surface);
@@ -207,4 +214,40 @@ button {
     margin: 0;
     color: var(--muted);
     font-size: 0.875rem;
+}
+
+/* ── Starting ────────────────────────────────────────────────────────────────────────── */
+
+.world { margin-top: 1rem; }
+
+.world summary {
+    padding: 0.5rem 0;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.world p { margin: 0 0 0.75rem; }
+
+.new-story {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.new-story label {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+}
+
+.new-story label .aside { font-size: 0.875rem; }
+
+.new-story button { justify-self: end; }
+
+.new-story .cost {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-align: right;
 }

@@ -36,7 +36,7 @@
                     <summary>Reroll</summary>
                     <form method="post" asp-page-handler="Reroll">
                         <label>
-                            What was wrong with it
+                            <span>What was wrong with it</span>
                             <select name="reason">
                                 @foreach (var reason in RegenerateReasons.All)
                                 {
@@ -45,7 +45,7 @@
                             </select>
                         </label>
                         <label>
-                            What should be different <span class="aside">optional</span>
+                            <span>What should be different <span class="aside">optional</span></span>
                             <textarea name="instructions" rows="2"></textarea>
                         </label>
                         <button type="submit">Replace this reply</button>
