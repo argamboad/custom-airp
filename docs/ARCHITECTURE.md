@@ -606,10 +606,17 @@ Infrastructure rather than here, because the web pages need the same answer
 
 ## The web pages
 
-`Airp.Web` is Razor Pages with no script: the story list, a story from its newest turns back, a
-composer, reroll, and starting a story from the character shelf. Like the proxy it only
-translates — every write goes through `LocalConversationProvider`, and a typed message through
-`FrontEndTurn`, so a command means the same thing in both and a typo is refused in both.
+`Airp.Web` is Razor Pages with no script, doing to a story what the terminal does — every
+composer command, carry on, reroll, branch, delete from a turn, the dials, export — plus
+renaming, deleting and starting one. Like the proxy it only translates — every write goes
+through `LocalConversationProvider`, and a typed message through `FrontEndTurn`, so a command
+means the same thing in both and a typo is refused in both.
+
+What the reading commands answer comes from `StoryReports`
+([StoryReports.cs](../src/Airp.Infrastructure/Providers/StoryReports.cs)), which the terminal's
+panes read too: three front ends, one account of what "the facts" or "what this story cost"
+says. The card and persona come from `LocalConversationProvider.IdentityAsync`, resolved by the
+same rule and library as the prompt.
 
 - **No password; the tailnet decides.** `tailscale serve` passes the asking account in
   `Tailscale-User-Login`, and `Gate.Admits` lets one configured login through

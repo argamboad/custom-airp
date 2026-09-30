@@ -13,7 +13,17 @@ namespace Airp.Infrastructure.Providers;
 /// <c>/ask</c> or <c>/recap</c> is shown once and kept nowhere, so a page must show it rather
 /// than expect to find it in the transcript.
 /// </param>
-public readonly record struct FrontEndOutcome(string Text, bool Refused, bool Stored = false);
+/// <param name="Answer">
+/// The bare answer to an <c>/ask</c>, without the out-of-character frame, so a front end can
+/// offer to pin it as a fact exactly as the terminal's answer pane does. Null for anything else.
+/// </param>
+/// <param name="Matches">What a <c>/search</c> found, for a front end that can link to the turns; null otherwise.</param>
+public readonly record struct FrontEndOutcome(
+    string Text,
+    bool Refused,
+    bool Stored = false,
+    string? Answer = null,
+    IReadOnlyList<SearchMatch>? Matches = null);
 
 /// <summary>
 /// Carries out one message typed outside the terminal: a turn of the story, or one of the
@@ -33,9 +43,9 @@ public readonly record struct FrontEndOutcome(string Text, bool Refused, bool St
 /// read differently — once as a refusal, once as a permanent turn.
 /// </para>
 /// <para>
-/// Anything that starts with a slash and is not run here is refused, never stored: an unknown
-/// name, and the commands that only the terminal can show. A doubled slash is the way to send
-/// prose that opens with one, exactly as in the composer.
+/// Every command the composer has is run here, with the same meaning, plus <c>/recap</c>.
+/// Anything else that starts with a slash is refused, never stored. A doubled slash is the way
+/// to send prose that opens with one, exactly as in the composer.
 /// </para>
 /// </remarks>
 public static class FrontEndTurn
@@ -105,27 +115,69 @@ public static class FrontEndTurn
             "do" => await DirectAsync(conversations, chat, argument, cancellationToken).ConfigureAwait(false),
             "focus" => await ContinueAsync(conversations, chat, LocalDirections.Focus(argument), cancellationToken).ConfigureAwait(false),
             "ask" => await AskAsync(conversations, chat, argument, cancellationToken).ConfigureAwait(false),
+
+            "card" => Show(await StoryReports.CharacterAsync(conversations, chat.Id, cancellationToken).ConfigureAwait(false)),
+            "persona" => Show(await StoryReports.PersonaAsync(conversations, chat.Id, cancellationToken).ConfigureAwait(false)),
+            "facts" => Show(await StoryReports.FactsAsync(conversations, chat.Id, cancellationToken).ConfigureAwait(false)),
+            "trackers" => Show(await StoryReports.TrackersAsync(conversations, chat.Id, cancellationToken).ConfigureAwait(false)),
+            "audit" => Show(await StoryReports.AuditAsync(conversations, chat.Id, cancellationToken).ConfigureAwait(false)),
+            "cost" => Show(await StoryReports.CostAsync(conversations, chat.Id, chat.Name, cancellationToken).ConfigureAwait(false)),
+            "search" => await SearchAsync(conversations, chat, argument, cancellationToken).ConfigureAwait(false),
             "help" => new FrontEndOutcome(Help(), Refused: false),
+
+            "fact" => await PinAsync(conversations, chat, argument, cancellationToken).ConfigureAwait(false),
+            "tracker" => await SetTrackerAsync(conversations, chat, argument, cancellationToken).ConfigureAwait(false),
+
             _ => Refuse(
                 $"/{command.Name} only works in the terminal, so nothing was stored. "
                 + "Type /help for what works here."),
         };
     }
 
-    /// <summary>What a front end can type, for <c>/help</c>.</summary>
+    /// <summary>What a front end can type, for <c>/help</c>: the composer's commands and <c>/recap</c>.</summary>
     /// <returns>The list, as plain text.</returns>
     public static string Help()
-        => """
-           Commands, out of character. None of them is stored as part of the story.
+        => "Commands, out of character. None of them becomes a turn of the story.\n\n"
+            + string.Join('\n', StoryReports.HelpLines(
+            [
+                "Only here, not in the terminal",
+                "  /recap [turns]",
+                "      The story so far: the latest summary, then the last few turns word for word",
+            ]));
 
-           /recap [turns] — the story so far: the latest summary, then the last few turns word for word. Free.
-           /do <direction> — steer the next turn. Alone it writes the next beat; with your message after a blank line, it steers the reply to that message.
-           /focus <who> — hand the next turn to a named character.
-           /ask <question> — ask about the story out of character. The answer is shown, never stored.
-           /help — this list.
+    /// <summary>
+    /// Records a statement as true for this story, pinned so the extractor cannot retire it.
+    /// </summary>
+    /// <param name="conversations">The store.</param>
+    /// <param name="chat">The story.</param>
+    /// <param name="statement">What is true.</param>
+    /// <param name="cancellationToken">Token used to abort the write.</param>
+    /// <returns>What was recorded, and under whom.</returns>
+    public static async Task<FrontEndOutcome> PinAsync(
+        LocalConversationProvider conversations,
+        Chat chat,
+        string statement,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(conversations);
+        ArgumentNullException.ThrowIfNull(chat);
 
-           //… sends a message that starts with a slash as part of the story.
-           """;
+        var text = (statement ?? string.Empty).Trim();
+
+        if (text.Length == 0)
+        {
+            return Refuse("There is nothing to pin.");
+        }
+
+        // Filed under the character, as the terminal files it: a fact is about someone, and the
+        // one this story is about is the one a reader means when they do not say.
+        var subject = chat.Speaker ?? chat.Name;
+        await conversations.AddFactAsync(chat.Id, subject, text, cancellationToken).ConfigureAwait(false);
+
+        return new FrontEndOutcome(
+            $"Pinned under {subject}. It is in every prompt from the next turn on, and the extractor cannot retire it.",
+            Refused: false);
+    }
 
     /// <summary>Lays out a recap: the latest summary, then the last turns in full.</summary>
     /// <param name="speaker">What to call the replies' author.</param>
@@ -243,7 +295,8 @@ public static class FrontEndTurn
 
         return new FrontEndOutcome(
             "(Out of character — not part of the story, and never stored in it.)\n\n" + answer.Answer.Trim(),
-            Refused: false);
+            Refused: false,
+            Answer: answer.Answer.Trim());
     }
 
     /// <summary>Everything after the command's name.</summary>
@@ -258,6 +311,41 @@ public static class FrontEndTurn
         }
 
         return text[end..].Trim();
+    }
+
+    private static FrontEndOutcome Show(StoryReport report) => new(report.ToText(), Refused: false);
+
+    private static async Task<FrontEndOutcome> SearchAsync(
+        LocalConversationProvider conversations,
+        Chat chat,
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var turns = await conversations.GetMessagesAsync(chat.Id, cancellationToken).ConfigureAwait(false);
+        var matches = StoryReports.Search(turns, query);
+
+        return new FrontEndOutcome(
+            StoryReports.SearchReport(matches, query, chat.Speaker ?? chat.Name).ToText(),
+            Refused: false,
+            Matches: matches);
+    }
+
+    private static async Task<FrontEndOutcome> SetTrackerAsync(
+        LocalConversationProvider conversations,
+        Chat chat,
+        string argument,
+        CancellationToken cancellationToken)
+    {
+        if (SlashCommands.SplitTracker(argument) is not var (name, value))
+        {
+            return Refuse("/tracker <name> <value> — the value has to be a number, so nothing was stored.");
+        }
+
+        await conversations
+            .SetTrackerAsync(chat.Id, name, value: value, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        return new FrontEndOutcome($"{name} is now {value:0.##}.", Refused: false);
     }
 
     private static FrontEndOutcome Refuse(string reason) => new(reason, Refused: true);

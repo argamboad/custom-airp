@@ -132,4 +132,19 @@ public class SlashCommandTests
             .Count()
             .ShouldBe(SlashCommands.All.Count);
     }
+
+    [Fact]
+    public void SplitTracker_TakesTheLastWordAsTheValueSoANameCanBeTwoWords()
+        => SlashCommands.SplitTracker("her patience 40").ShouldBe(("her patience", 40d));
+
+    [Fact]
+    public void SplitTracker_RefusesAValueThatIsNotANumber()
+        => SlashCommands.SplitTracker("patience high").ShouldBeNull();
+
+    [Fact]
+    public void BranchName_NumbersTheCopyAndCountsOnFromANumberAlreadyThere()
+    {
+        SlashCommands.BranchName("Vardhal").ShouldBe("Vardhal (2)");
+        SlashCommands.BranchName("Vardhal (2)").ShouldBe("Vardhal (3)");
+    }
 }

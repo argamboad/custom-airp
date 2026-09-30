@@ -1,7 +1,11 @@
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging.Abstractions;
+using Airp.Application.Abstractions;
+using Airp.Application.Services;
 using Airp.Domain.Conversations;
+using Airp.Infrastructure;
 using Airp.Infrastructure.Providers;
 using Airp.Web.Pages;
 using Shouldly;
@@ -21,8 +25,25 @@ public sealed class WebStoryTests : IDisposable
 {
     private readonly SharedContextFactory _factory = new();
     private readonly ScriptedModel _model = new();
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "airp-web-story-" + Guid.NewGuid().ToString("N"));
+    private readonly TextLibrary _library;
 
-    public void Dispose() => _factory.Dispose();
+    public WebStoryTests()
+    {
+        _library = new TextLibrary(_root);
+        _library.EnsureCreated();
+        File.WriteAllText(Path.Combine(_library.Snippets, "storm.txt"), "Rain hammers the lamp room glass.\n");
+    }
+
+    public void Dispose()
+    {
+        _factory.Dispose();
+
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
 
     private LocalConversationProvider Provider() => new(
         _factory,
@@ -30,7 +51,11 @@ public sealed class WebStoryTests : IDisposable
         TestOptions.Default(),
         NullLogger<LocalConversationProvider>.Instance);
 
-    private StoryModel Page(string? draft = null) => new(Provider(), TestOptions.Default()) { Draft = draft };
+    private StoryModel Page(string? draft = null) => new(
+        Provider(),
+        _library,
+        new ExportService(TestOptions.Default(), NullLogger<ExportService>.Instance),
+        TestOptions.Default()) { Draft = draft };
 
     private async Task<Chat> StoryAsync()
     {
@@ -55,6 +80,17 @@ public sealed class WebStoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Snippets_and_emoji_are_expanded_when_the_turn_is_sent()
+    {
+        var chat = await StoryAsync();
+        _model.Says("She looks at the window.");
+
+        await Page(":storm I wait :fire:").OnPostSendAsync(chat.Id, CancellationToken.None);
+
+        (await TurnsAsync(chat))[^2].Text.ShouldBe("Rain hammers the lamp room glass. I wait \U0001F525");
+    }
+
+    [Fact]
     public async Task A_typo_is_refused_on_the_page_and_the_draft_is_kept()
     {
         var chat = await StoryAsync();
@@ -72,7 +108,7 @@ public sealed class WebStoryTests : IDisposable
     }
 
     [Fact]
-    public async Task An_answer_that_is_not_a_turn_is_shown_on_the_page_and_nowhere_else()
+    public async Task An_answer_that_is_not_a_turn_is_shown_on_the_page_and_can_be_pinned_as_a_fact()
     {
         var chat = await StoryAsync();
         var turns = (await TurnsAsync(chat)).Count;
@@ -85,6 +121,48 @@ public sealed class WebStoryTests : IDisposable
         page.Aside.ShouldNotBeNull().ShouldContain("She knows you came up the outside stair.");
         page.Draft.ShouldBeNull();
         (await TurnsAsync(chat)).Count.ShouldBe(turns);
+
+        var pinned = Page();
+        await pinned.OnPostPinAsync(chat.Id, page.Answer, CancellationToken.None);
+
+        pinned.Aside.ShouldNotBeNull().ShouldContain("Pinned under Elena");
+        (await Provider().FactsAsync(chat.Id)).ShouldHaveSingleItem().Text.ShouldBe("She knows you came up the outside stair.");
+    }
+
+    [Fact]
+    public async Task A_search_links_each_turn_where_it_is_on_the_page_or_among_the_earlier_ones()
+    {
+        var chat = await StoryAsync();
+
+        for (var i = 0; i < StoryModel.Recent; i++)
+        {
+            _model.Says($"Reply {i}.");
+            await Provider().SendAsync(chat.Id, $"Turn {i}.");
+        }
+
+        var page = Page("/search rain");
+        await page.OnPostSendAsync(chat.Id, CancellationToken.None);
+
+        var match = page.Matches.ShouldNotBeNull().ShouldHaveSingleItem();
+        match.Number.ShouldBe(1);
+        page.LinkTo(match.Number).ShouldBe($"/story/{chat.Id}?all=true#t1");
+        page.LinkTo(page.Hidden + 1).ShouldBe($"/story/{chat.Id}#t{page.Hidden + 1}");
+        page.LinkTo(page.Hidden + page.Shown.Count).ShouldBe($"/story/{chat.Id}#latest");
+    }
+
+    [Fact]
+    public async Task Carry_on_adds_a_reply_with_nothing_from_the_reader_and_moves_on_to_it()
+    {
+        var chat = await StoryAsync();
+        var yours = (await TurnsAsync(chat)).Count(static m => m.Role == ChatRole.User);
+        _model.Says("The lamp turns once more.");
+
+        var result = await Page().OnPostContinueAsync(chat.Id, CancellationToken.None);
+
+        result.ShouldBeOfType<RedirectResult>().Url.ShouldBe($"/story/{chat.Id}#latest");
+        var after = await TurnsAsync(chat);
+        after.Count(static m => m.Role == ChatRole.User).ShouldBe(yours);
+        after[^1].Text.ShouldContain("The lamp turns once more.");
     }
 
     [Fact]
@@ -102,6 +180,47 @@ public sealed class WebStoryTests : IDisposable
         after.Count.ShouldBe(turns);
         after[^1].Text.ShouldBe("Elena does not look up.");
         _model.Calls[^1].ShouldContain(m => m.Content.Contains("colder"));
+    }
+
+    [Fact]
+    public async Task Branch_copies_the_story_up_to_a_turn_and_goes_into_the_copy()
+    {
+        var chat = await StoryAsync();
+        var first = (await TurnsAsync(chat))[0];
+
+        var result = await Page().OnPostBranchAsync(chat.Id, first.Id, "Vardhal (2)", CancellationToken.None);
+
+        var copy = (await Provider().ListAsync()).Single(c => c.Id != chat.Id);
+        copy.Name.ShouldBe("Vardhal (2)");
+        result.ShouldBeOfType<RedirectResult>().Url.ShouldBe($"/story/{copy.Id}#latest");
+        (await Provider().GetMessagesAsync(copy.Id)).ShouldHaveSingleItem().Text.ShouldBe("I come in from the rain.");
+        (await TurnsAsync(chat)).Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_branch_without_a_name_copies_nothing()
+    {
+        var chat = await StoryAsync();
+        var page = Page();
+
+        await page.OnPostBranchAsync(chat.Id, (await TurnsAsync(chat))[0].Id, "  ", CancellationToken.None);
+
+        page.Error.ShouldNotBeNull().ShouldContain("Nothing was copied");
+        (await Provider().ListAsync()).ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Export_downloads_the_transcript_under_a_name_that_does_not_say_what_it_is()
+    {
+        var chat = await StoryAsync();
+
+        var result = await Page().OnGetExportAsync(chat.Id, ExportFormat.PlainText, CancellationToken.None);
+
+        var file = result.ShouldBeOfType<FileContentResult>();
+        file.FileDownloadName.ShouldStartWith("story-");
+        file.FileDownloadName.ShouldEndWith(".txt");
+        file.FileDownloadName.ShouldNotContain("Vardhal");
+        Encoding.UTF8.GetString(file.FileContents).ShouldContain("Elena looks up from the log.");
     }
 
     [Fact]

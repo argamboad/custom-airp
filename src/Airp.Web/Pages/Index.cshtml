@@ -6,13 +6,18 @@
     <a class="action" href="/new">New</a>
 }
 
+@if (Model.Error is not null)
+{
+    <p class="error" role="alert">@Model.Error</p>
+}
+
 @if (Model.Chats.Count == 0)
 {
     <p class="empty">No stories yet. <a href="/new">Start one.</a></p>
 }
 else
 {
-    <ul class="stories">
+    <ul class="stories with-tools">
         @foreach (var chat in Model.Chats)
         {
             @* Straight to the start of the newest turn, which is where a reader picks a story up. *@
@@ -22,6 +27,20 @@ else
                     <span class="age">@Ages.Describe(chat.LastMessageAtUtc, Model.Now)</span>
                     <span class="latest">@IndexModel.Preview(chat.LatestMessage)</span>
                 </a>
+
+                @* What the terminal's list does with F2 and Del. *@
+                <details class="row-tools">
+                    <summary aria-label="Rename or delete">⋯</summary>
+                    <form method="post" asp-page-handler="Rename">
+                        <input type="hidden" name="id" value="@chat.Id">
+                        <label>
+                            <span>Rename</span>
+                            <input name="name" value="@chat.Name" autocomplete="off">
+                        </label>
+                        <button type="submit">Rename</button>
+                    </form>
+                    <a class="danger" href="/story/@Uri.EscapeDataString(chat.Id)/delete">Delete this story…</a>
+                </details>
             </li>
         }
     </ul>

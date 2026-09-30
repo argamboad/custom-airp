@@ -247,9 +247,11 @@ sequenceDiagram
             Note over P: flows 1–3 run exactly as from the terminal —<br/>the front end's truncated history is discarded
         else /ask
             FT->>P: AskAsync — shown, never stored
-        else /recap or /help
-            Note over FT: read from disk — no model call
-        else unknown or terminal-only command
+        else /recap, /help or a reading command (/card /facts /cost …)
+            Note over FT: StoryReports, read from disk — no model call
+        else /fact or /tracker
+            FT->>P: AddFactAsync / SetTrackerAsync — state, never a turn
+        else unknown command
             FT-->>PX: refused — nothing stored, nothing billed
         end
         alt stream: true
@@ -278,19 +280,30 @@ sequenceDiagram
     B->>TS: POST /story/{id}?handler=Send (tailnet only)
     TS->>W: + Tailscale-User-Login, to 127.0.0.1
     W->>W: Gate.Admits — 403 "Not available." for any other login
+    W->>W: ShortcodeScanner.ExpandAll — snippets and :emoji: become their text
     W->>FT: RunAsync(chat, draft)
     alt stored (a message, /do, /focus)
         W-->>B: 302 to /story/{id}#latest — a reload cannot send it twice
-    else answered, not stored (/ask, /recap, /help)
-        W-->>B: the page, with the answer set apart
+    else answered, not stored (/ask, /recap, a reading command, /fact, /tracker)
+        W-->>B: the page, with the answer set apart —<br/>search matches linked, an /ask answer pinnable
     else refused
         W-->>B: the page, error shown, draft kept
     end
 ```
 
-Reroll posts to `?handler=Reroll` and goes straight to `RegenerateAsync`; starting a story posts
-to `/new` and goes to `CreateAsync`, with character and persona names accepted only if a file of
-that name is on the shelf.
+The other handlers go straight to the provider, each ending in a redirect when it wrote:
+
+| From the page | Handler | Goes to |
+|---|---|---|
+| Carry on | `?handler=Continue` | `ContinueAsync` with no instruction |
+| Reroll | `?handler=Reroll` | `RegenerateAsync` |
+| Pin as fact | `?handler=Pin` | `FrontEndTurn.PinAsync` → `AddFactAsync` |
+| Branch from here | `?handler=Branch` | `BranchAsync`, then into the copy |
+| Delete from here | `/story/{id}/delete-from/{messageId}` | a confirmation, then `DeleteFromAsync` |
+| Export | `?handler=Export&format=…` | `IExportService.Render`, as a download |
+| Settings | `/story/{id}/dials` | `IDialService`, values through `DialEngine.Parse` |
+| Rename, delete a story | `/?handler=Rename`, `/story/{id}/delete` | `RenameConversationAsync`, `DeleteConversationAsync` |
+| New | `/new` | `CreateAsync`, names only from the shelves |
 
 ---
 

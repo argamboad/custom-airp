@@ -101,7 +101,8 @@ public sealed class FrontEndTurnTests : IDisposable
 
     [Theory]
     [InlineData("/sumary")]
-    [InlineData("/facts")]
+    [InlineData("/tracker patience high")]
+    [InlineData("/search")]
     [InlineData("/ask")]
     [InlineData("/do")]
     public async Task Anything_with_a_slash_that_is_not_run_here_is_refused_and_stores_nothing(string said)
@@ -133,6 +134,60 @@ public sealed class FrontEndTurnTests : IDisposable
         outcome.Text.ShouldContain("Out of character");
         outcome.Stored.ShouldBeFalse();
         outcome.Text.ShouldContain("She knows you came up the outside stair.");
+        (await TurnsAsync(chat)).Count.ShouldBe(turns);
+
+        // Bare, so a front end can offer to pin it without pinning the frame around it.
+        outcome.Answer.ShouldBe("She knows you came up the outside stair.");
+    }
+
+    [Theory]
+    [InlineData("/card", "no character definition")]
+    [InlineData("/persona", "no persona")]
+    [InlineData("/facts", "Nothing is being injected as true yet")]
+    [InlineData("/trackers", "keeps no meters")]
+    [InlineData("/audit", "#2")]
+    [InlineData("/cost", "1 billed call(s)")]
+    public async Task The_reading_commands_answer_here_and_neither_store_nor_call_anything(string said, string expected)
+    {
+        var chat = await StoryAsync();
+        var turns = (await TurnsAsync(chat)).Count;
+        var calls = _model.Calls.Count;
+
+        var outcome = await RunAsync(chat, said);
+
+        outcome.Refused.ShouldBeFalse();
+        outcome.Stored.ShouldBeFalse();
+        outcome.Text.ShouldContain(expected);
+        (await TurnsAsync(chat)).Count.ShouldBe(turns);
+        _model.Calls.Count.ShouldBe(calls);
+    }
+
+    [Fact]
+    public async Task Search_finds_the_turn_by_its_position_among_the_visible_ones()
+    {
+        var chat = await StoryAsync();
+
+        var outcome = await RunAsync(chat, "/search RAIN");
+
+        outcome.Matches.ShouldNotBeNull().ShouldHaveSingleItem().Number.ShouldBe(1);
+        outcome.Text.ShouldContain("#1 You: I come in from the rain.");
+    }
+
+    [Fact]
+    public async Task Fact_pins_a_statement_under_the_character_and_tracker_sets_a_meter_by_its_last_word()
+    {
+        var chat = await StoryAsync();
+        var turns = (await TurnsAsync(chat)).Count;
+
+        (await RunAsync(chat, "/fact The lamp has been out since Tuesday.")).Text.ShouldContain("Pinned under Elena");
+        (await RunAsync(chat, "/tracker her patience 40")).Text.ShouldBe("her patience is now 40.");
+
+        var fact = (await Provider().FactsAsync(chat.Id)).ShouldHaveSingleItem();
+        fact.Subject.ShouldBe("Elena");
+        fact.Text.ShouldBe("The lamp has been out since Tuesday.");
+        (await Provider().TrackersAsync(chat.Id)).ShouldHaveSingleItem().Value.ShouldBe(40);
+
+        // Written to the story's state, never to its transcript.
         (await TurnsAsync(chat)).Count.ShouldBe(turns);
     }
 

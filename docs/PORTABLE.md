@@ -185,8 +185,8 @@ airp is a terminal application, so SSH is the answer for everything it does. A m
 Tailscale is what makes the addresses stable and the connection private without opening a port
 to the internet.
 
-For only playing — reading a story, writing a turn, rerolling, starting one — a phone can use
-the browser pages instead, served over the same tailnet: see
+A phone can use the browser pages instead, served over the same tailnet — everything the
+terminal does to a story, without a terminal: see
 [Playing from a browser](MANUAL.md#playing-from-a-browser).
 
 ```bash

@@ -2091,6 +2091,54 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The character and persona a turn of this conversation would send, and where each came from.
+    /// </summary>
+    /// <remarks>
+    /// Resolved by the same rule and the same library as the prompt, so <c>/card</c> and
+    /// <c>/persona</c> can never show something the model is not being sent. The source matters
+    /// as much as the text: "I edited the file and nothing changed" is almost always a
+    /// conversation holding its own copy, or naming a different file from the one edited.
+    /// </remarks>
+    /// <param name="conversationId">The conversation.</param>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>Both texts, null where nothing resolves, each with a line naming its source.</returns>
+    public async Task<StoryIdentity> IdentityAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var store = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var conversation = await RequireAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+        var fallback = _options.CurrentValue.DefaultPersona;
+
+        var character = await TextLibrary.ResolveAsync(
+                _library.Characters,
+                conversation.CharacterDefinition,
+                conversation.CharacterName,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var persona = await TextLibrary.ResolveAsync(
+                _library.Personas,
+                conversation.Persona,
+                conversation.PersonaName,
+                fallback,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return new StoryIdentity(
+            Character: character,
+            CharacterSource: Source(conversation.CharacterDefinition, conversation.CharacterName, fallback: null),
+            Persona: persona,
+            PersonaSource: Source(conversation.Persona, conversation.PersonaName, fallback));
+
+        static string Source(string? own, string? named, string? fallback)
+            => !string.IsNullOrWhiteSpace(own) ? "written for this conversation"
+            : !string.IsNullOrWhiteSpace(named) ? $"from the file {named}"
+            : !string.IsNullOrWhiteSpace(fallback) ? $"the default, {fallback}"
+            : "nothing resolved";
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────────────────
 
     private static async Task<ConversationRecord> RequireAsync(
