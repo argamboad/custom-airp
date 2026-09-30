@@ -381,14 +381,15 @@ button.danger {
     gap: 0.5rem;
 }
 
-.snippets summary {
-    display: inline-block;
-    padding: 0.25rem 0;
-    color: var(--muted);
-    cursor: pointer;
+.snippet-picker {
+    display: flex;
+    gap: 0.5rem;
 }
 
-.snippets p { margin: 0.25rem 0; color: var(--muted); font-size: 0.9375rem; }
+.snippet-picker select { flex: 1; min-width: 0; }
+
+/* Clears the sticky bar when a page opens at the answer area. */
+#respond { scroll-margin-top: 3.5rem; }
 
 .matches {
     margin: 0.75rem 0 0;

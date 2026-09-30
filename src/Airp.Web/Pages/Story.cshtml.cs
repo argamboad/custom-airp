@@ -46,6 +46,13 @@ public sealed class StoryModel(
     [BindProperty]
     public string? Draft { get; set; }
 
+    /// <summary>The snippet picked from the list, to be put into the box.</summary>
+    [BindProperty]
+    public string? Snippet { get; set; }
+
+    /// <summary>What the last action did, when it changed only what is on the page.</summary>
+    public string? Notice { get; private set; }
+
     /// <summary>Why the last action did nothing, when it did nothing.</summary>
     public string? Error { get; private set; }
 
@@ -155,7 +162,14 @@ public sealed class StoryModel(
             return NotFound();
         }
 
-        var said = ShortcodeScanner.ExpandAll(Draft ?? string.Empty, Snippet);
+        // A snippet picked but not inserted is inserted now rather than sent: the reader has not
+        // seen it in the box, and a sent page is permanent.
+        if (!string.IsNullOrWhiteSpace(Snippet))
+        {
+            return InsertPicked();
+        }
+
+        var said = ShortcodeScanner.ExpandAll(Draft ?? string.Empty, SnippetText);
         var limit = options.CurrentValue.MessageCharacterLimit;
 
         if (limit > 0 && said.Trim().Length > limit)
@@ -203,6 +217,53 @@ public sealed class StoryModel(
         Aside = outcome.Text;
         Answer = outcome.Answer;
         Matches = outcome.Matches;
+        return Page();
+    }
+
+    /// <summary>Puts the picked snippet at the end of the box and hands the box back, unsent.</summary>
+    /// <remarks>
+    /// The terminal expands a snippet into the composer, where it can still be edited before
+    /// anything is sent. Without a script the cursor's position is not known, so the end of what
+    /// is written is the only place it can go.
+    /// </remarks>
+    /// <param name="id">The story's id.</param>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>The page, with the snippet in the box.</returns>
+    public async Task<IActionResult> OnPostInsertAsync(string id, CancellationToken cancellationToken)
+        => await LoadAsync(id, all: false, cancellationToken).ConfigureAwait(false) ? InsertPicked() : NotFound();
+
+    /// <summary>Adds a snippet's text to a draft: straight on if it is empty or ends in space, after a space otherwise.</summary>
+    /// <param name="draft">What is in the box.</param>
+    /// <param name="text">The snippet's text.</param>
+    /// <returns>The draft with the snippet at its end.</returns>
+    public static string AppendSnippet(string? draft, string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var written = draft ?? string.Empty;
+
+        return written.Length == 0 || char.IsWhiteSpace(written[^1])
+            ? written + text
+            : written + " " + text;
+    }
+
+    private PageResult InsertPicked()
+    {
+        var name = Snippet?.Trim() ?? string.Empty;
+
+        if (name.Length == 0)
+        {
+            Error = "Pick a snippet first.";
+            return Page();
+        }
+
+        if (SnippetText(name) is not { } text)
+        {
+            Error = $"There is no snippet called \"{name}\" on the shelf any more. Nothing was added.";
+            return Page();
+        }
+
+        Draft = AppendSnippet(Draft, text);
+        Notice = $"Added {name} to the end of your message. Nothing has been sent.";
         return Page();
     }
 
@@ -416,7 +477,7 @@ public sealed class StoryModel(
     }
 
     /// <summary>A snippet's text by name, trimmed as the terminal inserts it; null when there is none.</summary>
-    private string? Snippet(string name)
+    private string? SnippetText(string name)
         => TextLibrary.Find(library.Snippets, name) is { } path
             ? System.IO.File.ReadAllText(path).TrimEnd()
             : null;
