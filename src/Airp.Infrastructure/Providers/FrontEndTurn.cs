@@ -107,7 +107,7 @@ public static class FrontEndTurn
             "ask" => await AskAsync(conversations, chat, argument, cancellationToken).ConfigureAwait(false),
             "help" => new FrontEndOutcome(Help(), Refused: false),
             _ => Refuse(
-                $"/{command.Name} works in airp but not through the proxy, so nothing was stored. "
+                $"/{command.Name} only works in the terminal, so nothing was stored. "
                 + "Type /help for what works here."),
         };
     }

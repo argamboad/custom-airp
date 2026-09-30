@@ -16,13 +16,14 @@ classes that matter in each. The companion documents go deeper on specific quest
 
 ## The map
 
-Five projects. Dependencies point downward only; nothing below knows what sits above it.
+Six projects. Dependencies point downward only; nothing below knows what sits above it.
 
 ```mermaid
 flowchart TB
     subgraph Presentation
         Terminal["Airp.Terminal\nSpectre.Console TUI + CLI verbs"]
         Proxy["Airp.Proxy\nOpenAI-compatible endpoint"]
+        Web["Airp.Web\nRazor Pages, for a phone"]
     end
 
     subgraph Application["Airp.Application — knows nothing about HTTP"]
@@ -45,6 +46,7 @@ flowchart TB
     Terminal --> Services
     Terminal --> Abstractions
     Proxy --> LCP
+    Web --> LCP
     Services --> Abstractions
     LCP -. implements .-> Abstractions
     ORC -. implements .-> Abstractions
@@ -593,7 +595,33 @@ front end's site.
 - `stream: true` is honoured by chunking the finished reply as SSE — the reply is complete
   before the first byte goes out, split by text element so no surrogate pair is cut.
 
-What has never run: this proxy against real Janitor.
+Played against real Janitor on a phone on 2026-09-29. The request comes from the phone itself,
+not from Janitor's servers, so a tailnet address is enough.
+
+What a typed message means — a turn, a command, or a refusal — is `FrontEndTurn`, in
+Infrastructure rather than here, because the web pages need the same answer
+([FrontEndTurn.cs](../src/Airp.Infrastructure/Providers/FrontEndTurn.cs)).
+
+---
+
+## The web pages
+
+`Airp.Web` is Razor Pages with no script: the story list, a story from its newest turns back, a
+composer, reroll, and starting a story from the character shelf. Like the proxy it only
+translates — every write goes through `LocalConversationProvider`, and a typed message through
+`FrontEndTurn`, so a command means the same thing in both and a typo is refused in both.
+
+- **No password; the tailnet decides.** `tailscale serve` passes the asking account in
+  `Tailscale-User-Login`, and `Gate.Admits` lets one configured login through
+  ([Gate.cs](../src/Airp.Web/Gate.cs)). A header is only evidence if nothing else can send it,
+  so the process refuses to start without a login or on anything but loopback
+  (`Gate.OnlyLoopback`).
+- **A stored turn ends in a redirect**, so a reload cannot send it twice; an answer that is not
+  a turn (`/ask`, `/recap`) is drawn on the page that answers it, since it is stored nowhere.
+- **Names only from the shelves.** Starting a story stores a character and persona only if a
+  file of that name exists — a name matching no file is a story with an empty character layer.
+- Every response carries a strict CSP, `no-store`, `no-referrer` and `noindex`; the tab title is
+  "Stories" on every page.
 
 ---
 
