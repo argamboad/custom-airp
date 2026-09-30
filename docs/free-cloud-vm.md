@@ -20,8 +20,9 @@ console's defaults break several of them; where that happens this page says so.
 5. [Reaching it with Tailscale](#reaching-it-with-tailscale)
 6. [Install and run airp](#install-and-run-airp)
 7. [Keeping it up to date](#keeping-it-up-to-date)
-8. [Check that it is free](#check-that-it-is-free)
-9. [A safety net](#a-safety-net)
+8. [The stories in a browser](#the-stories-in-a-browser)
+9. [Check that it is free](#check-that-it-is-free)
+10. [A safety net](#a-safety-net)
 
 ---
 
@@ -354,6 +355,82 @@ journalctl -u airp-update.service -n 20
 
 An hourly check is one small request to GitHub's API, well inside the sixty an hour it allows
 without a login; the download, about 45 MB, happens only when there is something new.
+
+---
+
+## The stories in a browser
+
+Optional: the stories as web pages, for playing from a phone without a terminal — what they do
+is in the manual, [Playing from a browser](MANUAL.md#playing-from-a-browser). On this machine
+they run as a service beside airp and are reached the same private way.
+
+The releases do not carry the pages, and the updater above does not touch them. Build them on a
+machine with the .NET SDK, from a clone of the repository, and copy the folder over:
+
+```bash
+dotnet publish src/Airp.Web -c Release -r linux-x64 --self-contained -o airp-web
+```
+
+```bash
+scp -r airp-web USER@100.x.y.z:
+```
+
+On the VM, put it in place:
+
+```bash
+sudo rm -rf /usr/local/lib/airp-web && sudo mv ~/airp-web /usr/local/lib/airp-web && sudo chmod +x /usr/local/lib/airp-web/airp-web
+```
+
+The pages need the model key for the turns they send. A service does not read `~/.bashrc`, so
+the key goes in a file only your user can read, written without passing through your shell
+history:
+
+```bash
+mkdir -p ~/.config/airp-web && read -rs -p "OpenRouter key: " k && printf 'OPENROUTER_API_KEY=%s\n' "$k" > ~/.config/airp-web/env && unset k && chmod 600 ~/.config/airp-web/env
+```
+
+The service, as `/etc/systemd/system/airp-web.service` — with your user, and your Tailscale
+login as the one account let in:
+
+```ini
+[Unit]
+Description=airp web pages (localhost only, reached through tailscale serve)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=USER
+WorkingDirectory=/usr/local/lib/airp-web
+Environment=Airp__Web__Login=you@example.com
+EnvironmentFile=/home/USER/.config/airp-web/env
+ExecStart=/usr/local/lib/airp-web/airp-web --urls http://127.0.0.1:5291
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now airp-web
+```
+
+And give it an address on your tailnet — on 8443, so 443 stays free for anything else:
+
+```bash
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:5291
+```
+
+`https://<vm-name>.<tailnet>.ts.net:8443/` on the phone, with Tailscale on, is your stories.
+`journalctl -u airp-web -n 20` says why when it is not: it refuses to start without a login
+to let in, and turns away anyone else with "Not available."
+
+**It fits, not by much.** The pages hold about 170 MB of the `e2-micro`'s 1 GB while running.
+With airp open in `tmux` beside them there is still room; add the Janitor proxy as well and
+there is about 250 MB to spare.
+
+To update them, publish and copy again, move the folder into place, then
+`sudo systemctl restart airp-web`.
 
 ---
 

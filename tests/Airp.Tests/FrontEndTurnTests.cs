@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Airp.Application.Text;
 using Airp.Domain.Conversations;
 using Airp.Infrastructure.Providers;
-using Airp.Proxy;
 using Shouldly;
 
 namespace Airp.Tests;
@@ -15,7 +14,7 @@ namespace Airp.Tests;
 /// how many times the model was called. The last two are the point. Before this, a command
 /// typed in Janitor was stored as a turn of the story, permanent and billed.
 /// </remarks>
-public sealed class ProxyTurnTests : IDisposable
+public sealed class FrontEndTurnTests : IDisposable
 {
     private readonly SharedContextFactory _factory = new();
     private readonly ScriptedModel _model = new();
@@ -41,8 +40,8 @@ public sealed class ProxyTurnTests : IDisposable
 
     private async Task<IReadOnlyList<ChatMessage>> TurnsAsync(Chat chat) => await Provider().GetMessagesAsync(chat.Id);
 
-    private Task<ProxyOutcome> RunAsync(Chat chat, string said)
-        => ProxyTurn.RunAsync(Provider(), chat, said, CancellationToken.None);
+    private Task<FrontEndOutcome> RunAsync(Chat chat, string said)
+        => FrontEndTurn.RunAsync(Provider(), chat, said, CancellationToken.None);
 
     [Fact]
     public async Task A_plain_message_is_a_turn()
@@ -52,7 +51,7 @@ public sealed class ProxyTurnTests : IDisposable
 
         var outcome = await RunAsync(chat, "I sit across from her.");
 
-        outcome.ShouldBe(new ProxyOutcome("She closes the book.", Refused: false));
+        outcome.ShouldBe(new FrontEndOutcome("She closes the book.", Refused: false, Stored: true));
         (await TurnsAsync(chat)).Select(static m => m.Text).TakeLast(2)
             .ShouldBe(["I sit across from her.", "She closes the book."]);
     }
@@ -79,6 +78,7 @@ public sealed class ProxyTurnTests : IDisposable
 
         outcome.Refused.ShouldBeFalse();
         outcome.Text.ShouldContain("nothing stored, nothing billed");
+        outcome.Stored.ShouldBeFalse();
         outcome.Text.ShouldContain("You:\nI come in from the rain.");
         outcome.Text.ShouldContain("Elena:\nElena looks up from the log.");
 
@@ -131,6 +131,7 @@ public sealed class ProxyTurnTests : IDisposable
 
         outcome.Refused.ShouldBeFalse();
         outcome.Text.ShouldContain("Out of character");
+        outcome.Stored.ShouldBeFalse();
         outcome.Text.ShouldContain("She knows you came up the outside stair.");
         (await TurnsAsync(chat)).Count.ShouldBe(turns);
     }
@@ -144,7 +145,7 @@ public sealed class ProxyTurnTests : IDisposable
 
         var outcome = await RunAsync(chat, "/do skip to the evening");
 
-        outcome.ShouldBe(new ProxyOutcome("Evening falls over the headland.", Refused: false));
+        outcome.ShouldBe(new FrontEndOutcome("Evening falls over the headland.", Refused: false, Stored: true));
 
         // A reply and nothing of the reader's: the direction is not a turn.
         var after = await TurnsAsync(chat);

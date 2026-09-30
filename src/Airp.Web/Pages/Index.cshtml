@@ -1,0 +1,28 @@
+@page
+@model IndexModel
+
+@section Header {
+    <h1>Stories</h1>
+    <a class="action" href="/new">New</a>
+}
+
+@if (Model.Chats.Count == 0)
+{
+    <p class="empty">No stories yet. <a href="/new">Start one.</a></p>
+}
+else
+{
+    <ul class="stories">
+        @foreach (var chat in Model.Chats)
+        {
+            @* Straight to the start of the newest turn, which is where a reader picks a story up. *@
+            <li>
+                <a href="/story/@Uri.EscapeDataString(chat.Id)#latest">
+                    <span class="name">@chat.Name</span>
+                    <span class="age">@Ages.Describe(chat.LastMessageAtUtc, Model.Now)</span>
+                    <span class="latest">@IndexModel.Preview(chat.LatestMessage)</span>
+                </a>
+            </li>
+        }
+    </ul>
+}

@@ -170,7 +170,7 @@ app.MapPost("/v1/chat/completions", async (HttpContext context, CancellationToke
 
     try
     {
-        var outcome = await ProxyTurn.RunAsync(conversations, chat, said, cancellationToken).ConfigureAwait(false);
+        var outcome = await FrontEndTurn.RunAsync(conversations, chat, said, cancellationToken).ConfigureAwait(false);
 
         if (outcome.Refused)
         {

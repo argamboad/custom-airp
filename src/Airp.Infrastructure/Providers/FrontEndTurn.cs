@@ -2,18 +2,22 @@ using System.Globalization;
 using System.Text;
 using Airp.Application.Text;
 using Airp.Domain.Conversations;
-using Airp.Infrastructure.Providers;
 
-namespace Airp.Proxy;
+namespace Airp.Infrastructure.Providers;
 
-/// <summary>What the proxy answers a message with, and whether it is a refusal.</summary>
+/// <summary>What a front end answers a message with, and whether it is a refusal.</summary>
 /// <param name="Text">The reply to show, or the reason for refusing.</param>
 /// <param name="Refused">Whether nothing was done, so the front end should show an error.</param>
-public readonly record struct ProxyOutcome(string Text, bool Refused);
+/// <param name="Stored">
+/// Whether the story gained a turn. A reply to a message or a <c>/do</c> did; an answer to
+/// <c>/ask</c> or <c>/recap</c> is shown once and kept nowhere, so a page must show it rather
+/// than expect to find it in the transcript.
+/// </param>
+public readonly record struct FrontEndOutcome(string Text, bool Refused, bool Stored = false);
 
 /// <summary>
-/// Carries out one message from a front end: a turn of the story, or one of the composer's
-/// commands, or a refusal.
+/// Carries out one message typed outside the terminal: a turn of the story, or one of the
+/// composer's commands, or a refusal.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,12 +28,17 @@ public readonly record struct ProxyOutcome(string Text, bool Refused);
 /// asked a question nobody in the scene heard.
 /// </para>
 /// <para>
+/// Here rather than in the proxy because two front ends need it: the proxy, for Janitor, and
+/// the web pages. Two copies of what counts as a command would be two places for a typo to be
+/// read differently — once as a refusal, once as a permanent turn.
+/// </para>
+/// <para>
 /// Anything that starts with a slash and is not run here is refused, never stored: an unknown
 /// name, and the commands that only the terminal can show. A doubled slash is the way to send
 /// prose that opens with one, exactly as in the composer.
 /// </para>
 /// </remarks>
-public static class ProxyTurn
+public static class FrontEndTurn
 {
     /// <summary>The one command a front end has that the composer does not.</summary>
     /// <remarks>
@@ -51,7 +60,7 @@ public static class ProxyTurn
     /// <param name="said">The reader's newest message, unlabelled.</param>
     /// <param name="cancellationToken">Token used to abort the work.</param>
     /// <returns>What to answer with.</returns>
-    public static async Task<ProxyOutcome> RunAsync(
+    public static async Task<FrontEndOutcome> RunAsync(
         LocalConversationProvider conversations,
         Chat chat,
         string said,
@@ -72,7 +81,7 @@ public static class ProxyTurn
                     .SendAsync(chat.Id, parsed.Text, instruction: null, progress: null, cancellationToken)
                     .ConfigureAwait(false);
 
-                return new ProxyOutcome(added.LastOrDefault()?.Text ?? string.Empty, Refused: false);
+                return new FrontEndOutcome(added.LastOrDefault()?.Text ?? string.Empty, Refused: false, Stored: true);
 
             case SlashParseKind.Unknown when parsed.Text.Equals(Recap, StringComparison.OrdinalIgnoreCase):
                 return await RecapAsync(conversations, chat, ArgumentOf(said), cancellationToken).ConfigureAwait(false);
@@ -96,9 +105,9 @@ public static class ProxyTurn
             "do" => await DirectAsync(conversations, chat, argument, cancellationToken).ConfigureAwait(false),
             "focus" => await ContinueAsync(conversations, chat, LocalDirections.Focus(argument), cancellationToken).ConfigureAwait(false),
             "ask" => await AskAsync(conversations, chat, argument, cancellationToken).ConfigureAwait(false),
-            "help" => new ProxyOutcome(Help(), Refused: false),
+            "help" => new FrontEndOutcome(Help(), Refused: false),
             _ => Refuse(
-                $"/{command.Name} works in airp but not through the proxy, so nothing was stored. "
+                $"/{command.Name} only works in the terminal, so nothing was stored. "
                 + "Type /help for what works here."),
         };
     }
@@ -157,7 +166,7 @@ public static class ProxyTurn
         return text.ToString();
     }
 
-    private static async Task<ProxyOutcome> RecapAsync(
+    private static async Task<FrontEndOutcome> RecapAsync(
         LocalConversationProvider conversations,
         Chat chat,
         string argument,
@@ -174,12 +183,12 @@ public static class ProxyTurn
         var turns = await conversations.GetMessagesAsync(chat.Id, cancellationToken).ConfigureAwait(false);
         var summaries = await conversations.SummariesAsync(chat.Id, cancellationToken).ConfigureAwait(false);
 
-        return new ProxyOutcome(
+        return new FrontEndOutcome(
             FormatRecap(chat.Speaker ?? chat.Name, summaries.LastOrDefault()?.Text, turns, count),
             Refused: false);
     }
 
-    private static async Task<ProxyOutcome> DirectAsync(
+    private static async Task<FrontEndOutcome> DirectAsync(
         LocalConversationProvider conversations,
         Chat chat,
         string argument,
@@ -202,10 +211,10 @@ public static class ProxyTurn
             .SendAsync(chat.Id, message, instruction: LocalDirections.Direction(direction), progress: null, cancellationToken)
             .ConfigureAwait(false);
 
-        return new ProxyOutcome(added.LastOrDefault()?.Text ?? string.Empty, Refused: false);
+        return new FrontEndOutcome(added.LastOrDefault()?.Text ?? string.Empty, Refused: false, Stored: true);
     }
 
-    private static async Task<ProxyOutcome> ContinueAsync(
+    private static async Task<FrontEndOutcome> ContinueAsync(
         LocalConversationProvider conversations,
         Chat chat,
         string instruction,
@@ -218,11 +227,11 @@ public static class ProxyTurn
             .ConfigureAwait(false);
 
         return transcript.Count > before && transcript[^1].Role == ChatRole.Assistant
-            ? new ProxyOutcome(transcript[^1].Text, Refused: false)
+            ? new FrontEndOutcome(transcript[^1].Text, Refused: false, Stored: true)
             : Refuse("No reply came back, and nothing was added. It is safe to try again.");
     }
 
-    private static async Task<ProxyOutcome> AskAsync(
+    private static async Task<FrontEndOutcome> AskAsync(
         LocalConversationProvider conversations,
         Chat chat,
         string question,
@@ -232,7 +241,7 @@ public static class ProxyTurn
             .AskAsync(chat.Id, question, progress: null, cancellationToken)
             .ConfigureAwait(false);
 
-        return new ProxyOutcome(
+        return new FrontEndOutcome(
             "(Out of character — not part of the story, and never stored in it.)\n\n" + answer.Answer.Trim(),
             Refused: false);
     }
@@ -251,5 +260,5 @@ public static class ProxyTurn
         return text[end..].Trim();
     }
 
-    private static ProxyOutcome Refuse(string reason) => new(reason, Refused: true);
+    private static FrontEndOutcome Refuse(string reason) => new(reason, Refused: true);
 }

@@ -18,10 +18,11 @@ For how the code is put together — diagrams, call stacks, the schema — start
 8. [What it costs](#what-it-costs)
 9. [Seeing what is going on](#seeing-what-is-going-on)
 10. [Importing old transcripts](#importing-old-transcripts)
-11. [Playing from Janitor](#playing-from-janitor)
-12. [Configuration](#configuration)
-13. [When something breaks](#when-something-breaks)
-14. [All the commands](#all-the-commands)
+11. [Playing from a browser](#playing-from-a-browser)
+12. [Playing from Janitor](#playing-from-janitor)
+13. [Configuration](#configuration)
+14. [When something breaks](#when-something-breaks)
+15. [All the commands](#all-the-commands)
 
 ---
 
@@ -959,6 +960,58 @@ repository. This one only ever reads the files.
 
 ---
 
+## Playing from a browser
+
+Optional. Your stories as web pages, for a phone: the list, a story from its newest turns back,
+a box to write in, reroll, and starting a story from the library. Plain pages, no scripts, over
+your own private network.
+
+It is a separate program beside the terminal, reading the same database. Build it from source
+(the releases carry only `airp`), and tell it which Tailscale account may come in — the login
+Tailscale shows for you, usually an email address:
+
+```bash
+Airp__Web__Login=you@example.com dotnet run --project src/Airp.Web --urls http://127.0.0.1:5291
+```
+
+Then, on the same machine:
+
+```bash
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:5291
+```
+
+and open that address — `https://<machine>.<tailnet>.ts.net:8443/` — on the phone, with
+Tailscale on.
+
+**Who gets in is decided by Tailscale, not by a password.** `tailscale serve` tells the pages
+which account is asking, and anyone else is turned away with a plain "Not available." That only
+means something if nothing can reach the pages except through `tailscale serve`, so the program
+refuses to start listening anywhere but loopback, and refuses to start without a login to allow.
+Do not put it behind Funnel or any public tunnel: the database holds every story in the clear.
+
+**What it does:**
+
+- **The list**, newest first, with the latest line of each. A story opens at its newest turn,
+  with a link to the earlier ones.
+- **Writing a turn.** Send, and the page moves on to the reply. Reloading afterwards does not
+  send it again.
+- **The same commands as Janitor** — `/recap`, `/do`, `/focus`, `/ask`, `/help` — with the same
+  meaning: an answer that is not part of the story is shown on the page and stored nowhere, and
+  a typo is refused with your text still in the box, never sent. See
+  [Commands in Janitor](#commands-in-janitor).
+- **Reroll** under the newest reply: why it was wrong, and optionally what should be different.
+- **New**, top right in the list: pick a character from the shelf, and the form comes with that
+  character's opening already in it. Name falls back to the character, the persona to your
+  default. Starting costs nothing; the model is first asked on your first turn.
+
+**What stays in the terminal:** the dials, branching, deleting turns, the library itself,
+snippets, trackers and the facts. The pages are for playing, not for managing.
+
+**Private by design.** The tab says "Stories" and nothing else, and the pages tell the browser
+not to keep them, not to send where they came from to any link, and not to be indexed.
+
+---
+
 ## Playing from Janitor
 
 Optional. It is for playing **your local conversations** from your phone, with Janitor's
@@ -1024,8 +1077,8 @@ the proxy — with any bot — goes into that story. The way to live with that:
   terminal.
 - **The bot does not change the replies** — the proxy uses airp's card, persona and dials — but
   the matching one keeps the name and picture right.
-- **A new story starts in airp** — `N` in the chat list, or `airp new`. The proxy only writes to
-  a story that already exists.
+- **A new story starts in airp** — `N` in the chat list, `airp new`, or **New** in the
+  [browser pages](#playing-from-a-browser). The proxy only writes to a story that already exists.
 
 Janitor sends its own truncated history; the proxy **discards it** and builds the prompt from
 your store. Only your newest message is taken from the request.
