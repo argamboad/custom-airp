@@ -70,10 +70,10 @@ else
         <label>
             <span>Model <span class="aside">what writes the replies; can be changed later in Settings</span></span>
             <select name="Model">
-                <option value="">Default — @Model.DefaultModel</option>
+                <option value="">Default — @Model.Label(Model.DefaultModel)</option>
                 @foreach (var choice in Model.ModelChoices)
                 {
-                    <option value="@choice" selected="@(string.Equals(choice, Model.Model, StringComparison.OrdinalIgnoreCase))">@choice</option>
+                    <option value="@choice" selected="@(string.Equals(choice, Model.Model, StringComparison.OrdinalIgnoreCase))">@Model.Label(choice)</option>
                 }
             </select>
         </label>

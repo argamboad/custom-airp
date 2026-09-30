@@ -48,6 +48,10 @@ internal sealed class NewChatView : ViewBase
     private readonly IReadOnlyList<string?> _models;
 
     private readonly string _defaultModel;
+
+    /// <summary>What the provider's list says about each model, read on arrival; empty until then or when unread.</summary>
+    private IReadOnlyDictionary<string, Airp.Application.Abstractions.ModelInfo> _listed =
+        new Dictionary<string, Airp.Application.Abstractions.ModelInfo>();
     private readonly string? _defaultPersona;
 
     private readonly TextDocument _opening = TextDocument.FromText(null);
@@ -275,7 +279,9 @@ internal sealed class NewChatView : ViewBase
         rows.Add(new Markup(
             Label(ModelField, "Model")
             + Draw.Literal(
-                Value(_models[_model] ?? $"(default: {_defaultModel})"),
+                Value(_models[_model] is { } picked
+                    ? ModelLabel(picked)
+                    : $"(default: {ModelLabel(_defaultModel)})"),
                 _models[_model] is null ? theme.Muted : theme.Text)
             + Draw.Literal(_focus == ModelField && !phone ? "  ←→" : string.Empty, theme.Muted)));
 
@@ -395,6 +401,22 @@ internal sealed class NewChatView : ViewBase
 
         return new Rows(rows);
     }
+
+    /// <summary>A model with its list prices and how they compare with the default's, when the list has been read.</summary>
+    private string ModelLabel(string id)
+        => _listed.TryGetValue(id, out var info) ? info.Describe(_listed.GetValueOrDefault(_defaultModel)) : id;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The prices beside the models come from the provider's list, read once on arrival and
+    /// never waited for: the form works without them, and says only the ids.
+    /// </remarks>
+    public override ValueTask<ViewAction> OnActivatedAsync(CancellationToken cancellationToken)
+        => ValueTask.FromResult(ViewAction.Run("Reading the model list", async ct =>
+        {
+            _listed = await _provider.ModelsAsync(ct).ConfigureAwait(false);
+            return ViewAction.None;
+        }));
 
     /// <summary>How many rows the panel under the rule gets: what the five fields, the rule and the frame leave.</summary>
     private static int Panel(RenderContext context) => Math.Max(3, context.Height - 13);

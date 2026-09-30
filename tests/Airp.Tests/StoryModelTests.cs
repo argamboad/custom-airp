@@ -302,4 +302,12 @@ public sealed class StoryModelTests : IDisposable
 
         story.FellBackFrom.ShouldBe("gone/model");
     }
+
+    [Fact]
+    public async Task Prices_beside_the_choices_are_left_out_rather_than_failing_when_the_list_cannot_be_read()
+    {
+        _model.CatalogueFailure = new ModelUnavailableException("Could not reach the provider.");
+
+        (await Provider().ModelsAsync()).ShouldBeEmpty();
+    }
 }

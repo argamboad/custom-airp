@@ -26,10 +26,10 @@
             A model with a smaller window than the budget shrinks the story's budget to fit.
         </span>
         <select name="model">
-            <option value="">Default — @Model.DefaultModel</option>
+            <option value="">Default — @Model.Label(Model.DefaultModel)</option>
             @foreach (var choice in Model.ModelChoices)
             {
-                <option value="@choice" selected="@(string.Equals(choice, Model.Chat!.Model, StringComparison.OrdinalIgnoreCase))">@choice</option>
+                <option value="@choice" selected="@(string.Equals(choice, Model.Chat!.Model, StringComparison.OrdinalIgnoreCase))">@Model.Label(choice)</option>
             }
         </select>
     </label>

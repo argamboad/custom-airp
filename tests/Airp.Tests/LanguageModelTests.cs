@@ -362,12 +362,14 @@ public class OpenRouterClientTests
     public async Task Listing_models_returns_the_identifiers_and_the_context_each_accepts()
     {
         const string body = """
-            { "data": [ { "id": "deepseek/deepseek-v4-flash", "context_length": 1048576 }, { "id": "local/plain" } ] }
+            { "data": [
+                { "id": "deepseek/deepseek-v4-flash", "context_length": 1048576, "pricing": { "prompt": "0.00000008", "completion": "0.00000016" } },
+                { "id": "local/plain" } ] }
             """;
 
         var models = await Build(new ScriptedHandler(HttpStatusCode.OK, body)).ListModelsAsync();
 
-        models.ShouldBe([new ModelInfo("deepseek/deepseek-v4-flash", 1048576), new ModelInfo("local/plain", null)]);
+        models.ShouldBe([new ModelInfo("deepseek/deepseek-v4-flash", 1048576, 0.08m, 0.16m), new ModelInfo("local/plain", null)]);
     }
 
     [Theory]
@@ -383,4 +385,19 @@ public class OpenRouterClientTests
 
         refused.NoSuchModel.ShouldBe(noSuchModel);
     }
+
+    [Theory]
+    [InlineData(2.50, 5.00, "anthracite-org/magnum-v4-72b — $2.50 / $5.00 per M · ≈31× the default")]
+    [InlineData(0.10, 0.20, "anthracite-org/magnum-v4-72b — $0.10 / $0.20 per M · about the default")]
+    [InlineData(0.02, 0.03, "anthracite-org/magnum-v4-72b — $0.02 / $0.03 per M · ≈1/4 of the default")]
+    public void A_choice_is_described_by_its_list_prices_against_the_defaults(double input, double output, string expected)
+    {
+        var baseline = new ModelInfo("deepseek/deepseek-v4-flash", 1048576, 0.08m, 0.16m);
+
+        new ModelInfo("anthracite-org/magnum-v4-72b", 32768, (decimal)input, (decimal)output).Describe(baseline).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void A_model_the_list_gives_no_price_for_is_described_by_its_id_alone()
+        => new ModelInfo("local/plain", null).Describe(new ModelInfo("x", null, 1m, 1m)).ShouldBe("local/plain");
 }

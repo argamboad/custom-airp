@@ -105,7 +105,50 @@ public sealed record ModelReply
 /// The most tokens a request to it may hold, prompt and reply together, or null when the list
 /// does not say — OpenRouter's does; a plain OpenAI-shaped list does not.
 /// </param>
-public sealed record ModelInfo(string Id, int? ContextLength);
+/// <param name="InputPerMillion">The list price of a million prompt tokens, in dollars, when the list says.</param>
+/// <param name="OutputPerMillion">The list price of a million reply tokens, in dollars, when the list says.</param>
+/// <remarks>
+/// The prices are for choosing between models and nothing else. What a call cost is read from
+/// the response that call got — a host's own price and cache discount decide it, and a list
+/// price would be wrong about both.
+/// </remarks>
+public sealed record ModelInfo(string Id, int? ContextLength, decimal? InputPerMillion = null, decimal? OutputPerMillion = null)
+{
+    /// <summary>
+    /// A line to choose this model by: its id, its list prices, and how its prompt price
+    /// compares with the default's.
+    /// </summary>
+    /// <remarks>
+    /// Compared on the prompt price because that is where a turn's money goes: a long story
+    /// sends tens of thousands of tokens for a reply of under a thousand.
+    /// </remarks>
+    /// <param name="baseline">The default model's entry, to compare against; null to leave the comparison out.</param>
+    /// <returns>For example <c>anthracite-org/magnum-v4-72b — $2.50 / $5.00 per M · ≈31× the default</c>.</returns>
+    public string Describe(ModelInfo? baseline = null)
+    {
+        if (InputPerMillion is not { } input || OutputPerMillion is not { } output)
+        {
+            return Id;
+        }
+
+        var line = string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"{Id} — ${input:0.00} / ${output:0.00} per M");
+
+        if (baseline?.InputPerMillion is not { } reference || reference <= 0 || ReferenceEquals(baseline, this) || baseline.Id == Id)
+        {
+            return line;
+        }
+
+        var ratio = input / reference;
+
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+
+        return line + (ratio >= 1.5m ? string.Create(invariant, $" · ≈{ratio:0}× the default")
+            : ratio <= 0.67m ? string.Create(invariant, $" · ≈1/{1 / ratio:0} of the default")
+            : " · about the default");
+    }
+}
 
 /// <summary>Calls an OpenAI-compatible chat completions endpoint.</summary>
 public interface ILanguageModelClient

@@ -254,8 +254,13 @@ internal sealed class ChatSettingsView : ViewBase
 
     /// <summary>The model's row, drawn and stepped as a choice among the default and the list.</summary>
     /// <param name="own">The story's model, which stays offered even when it is not on the list.</param>
-    private DialDefinition ModelRow(string? own)
+    /// <param name="listed">What the provider's list says about each model, for the prices; empty when unread.</param>
+    private DialDefinition ModelRow(string? own, IReadOnlyDictionary<string, Airp.Application.Abstractions.ModelInfo> listed)
     {
+        var baseline = listed.GetValueOrDefault(_defaultModel!);
+
+        string Label(string id) => listed.TryGetValue(id, out var info) ? info.Describe(baseline) : id;
+
         var models = _modelChoices
             .Where(c => !string.Equals(c, _defaultModel, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -274,8 +279,11 @@ internal sealed class ChatSettingsView : ViewBase
                 + "A model with a smaller window than the budget shrinks the story's budget to fit.",
             Options =
             [
-                new DialOption(_defaultModel!, "Default — " + _defaultModel, "the configured model"),
-                .. models.Select(static m => new DialOption(m, m, "checked against the provider's list when applied")),
+                new DialOption(_defaultModel!, "Default — " + Label(_defaultModel!), "the configured model"),
+                .. models.Select(m => new DialOption(
+                    m,
+                    Label(m),
+                    "checked against the provider's list when applied; prices are list prices, to compare by")),
             ],
         };
     }
@@ -493,7 +501,8 @@ internal sealed class ChatSettingsView : ViewBase
         if (_provider is not null && _defaultModel is not null)
         {
             var own = (await _provider.GetAsync(_conversationId, ct).ConfigureAwait(false))?.Model;
-            _rows = [ModelRow(own), .. _rows];
+            var listed = await _provider.ModelsAsync(ct).ConfigureAwait(false);
+            _rows = [ModelRow(own, listed), .. _rows];
             _applied[ModelKey] = own ?? _defaultModel;
         }
 

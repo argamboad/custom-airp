@@ -213,7 +213,11 @@ public sealed class OpenRouterClient : ILanguageModelClient
 
         return body?["data"]?.AsArray()
             .Select(static m => m?["id"]?.GetValue<string>() is { } id
-                ? new ModelInfo(id, ContextLength(m["context_length"]))
+                ? new ModelInfo(
+                    id,
+                    ContextLength(m["context_length"]),
+                    PerMillion(m["pricing"]?["prompt"]),
+                    PerMillion(m["pricing"]?["completion"]))
                 : null)
             .OfType<ModelInfo>()
             .ToArray() ?? [];
@@ -223,6 +227,16 @@ public sealed class OpenRouterClient : ILanguageModelClient
         static int? ContextLength(JsonNode? node)
             => node is JsonValue value && value.TryGetValue<long>(out var length) && length > 0
                 ? (int)Math.Min(length, int.MaxValue)
+                : null;
+
+        // OpenRouter quotes a price per token, as a string: "0.0000025". Kept per million,
+        // which is how anyone compares them; a list that does not say gives null.
+        static decimal? PerMillion(JsonNode? node)
+            => node is JsonValue value
+               && value.TryGetValue<string>(out var text)
+               && decimal.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var perToken)
+               && perToken >= 0
+                ? perToken * 1_000_000m
                 : null;
     }
 

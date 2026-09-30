@@ -48,10 +48,15 @@ internal static partial class Program
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[grey]It can be switched to:[/]");
 
+            var listed = await local.ModelsAsync(cancellationToken).ConfigureAwait(false);
+            var baseline = listed.GetValueOrDefault(settings.Name);
+
             foreach (var choice in settings.EffectiveChoices)
             {
-                AnsiConsole.MarkupLine($"  {Markup.Escape(choice)}");
+                AnsiConsole.MarkupLine($"  {Markup.Escape(listed.TryGetValue(choice, out var info) ? info.Describe(baseline) : choice)}");
             }
+
+            AnsiConsole.MarkupLine("[grey]List prices, to compare by; what a turn actually costs is in airp cost.[/]");
 
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[grey]airp model <id> [[--chat <name>]] switches it; --default goes back. "

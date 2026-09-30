@@ -2264,6 +2264,27 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
     }
 
     /// <summary>
+    /// The provider's models by id, for labelling a choice with its price; empty when the list
+    /// cannot be read, since a label is never worth failing a page over.
+    /// </summary>
+    /// <param name="cancellationToken">Token used to abort the read.</param>
+    /// <returns>What the list says about each model it names.</returns>
+    public async Task<IReadOnlyDictionary<string, ModelInfo>> ModelsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return (await CatalogueAsync(cancellationToken).ConfigureAwait(false))
+                .GroupBy(static m => m.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(static g => g.Key, static g => g.First(), StringComparer.OrdinalIgnoreCase);
+        }
+        catch (ModelUnavailableException ex)
+        {
+            _logger.LogInformation(ex, "The model list could not be read; choices are shown without prices.");
+            return new Dictionary<string, ModelInfo>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
     /// The provider's list of models, read at most once every ten minutes.
     /// </summary>
     /// <remarks>

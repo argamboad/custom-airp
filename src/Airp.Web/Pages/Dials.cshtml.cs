@@ -32,6 +32,15 @@ public sealed class DialsModel(
     /// <summary>The model a story uses when it has none of its own.</summary>
     public string DefaultModel => options.CurrentValue.Model.Name;
 
+    /// <summary>What the provider's list says about each model, for the prices beside a choice.</summary>
+    public IReadOnlyDictionary<string, ModelInfo> Models { get; private set; } = new Dictionary<string, ModelInfo>();
+
+    /// <summary>A model as the list offers it: its id, and its prices against the default's when known.</summary>
+    /// <param name="id">The model.</param>
+    /// <returns>The label.</returns>
+    public string Label(string id)
+        => Models.TryGetValue(id, out var info) ? info.Describe(Models.GetValueOrDefault(DefaultModel)) : id;
+
     /// <summary>
     /// The models the story can be switched to: the configured list, and the story's own model
     /// when it is not on it, so the page never shows a choice it cannot display.
@@ -200,6 +209,7 @@ public sealed class DialsModel(
 
         var pack = await dials.PackAsync(cancellationToken).ConfigureAwait(false);
         Rows = [.. pack.Dials.Where(static d => d.Enabled)];
+        Models = await conversations.ModelsAsync(cancellationToken).ConfigureAwait(false);
         Stored = await dials.ValuesAsync(id, cancellationToken).ConfigureAwait(false);
         return true;
     }

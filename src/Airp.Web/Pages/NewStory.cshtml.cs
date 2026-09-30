@@ -1,4 +1,5 @@
 using System.Text;
+using Airp.Application.Abstractions;
 using Airp.Application.Options;
 using Airp.Domain.Conversations;
 using Airp.Infrastructure;
@@ -53,6 +54,15 @@ public sealed class NewStoryModel(
     public IReadOnlyList<string> ModelChoices => [.. options.CurrentValue.Model.EffectiveChoices
         .Where(c => !string.Equals(c, DefaultModel, StringComparison.OrdinalIgnoreCase))];
 
+    /// <summary>What the provider's list says about each model, for the prices beside a choice.</summary>
+    public IReadOnlyDictionary<string, ModelInfo> Models { get; private set; } = new Dictionary<string, ModelInfo>();
+
+    /// <summary>A model as the list offers it: its id, and its prices against the default's when known.</summary>
+    /// <param name="id">The model.</param>
+    /// <returns>The label.</returns>
+    public string Label(string id)
+        => Models.TryGetValue(id, out var info) ? info.Describe(Models.GetValueOrDefault(DefaultModel)) : id;
+
     /// <summary>The model picked; empty for the default.</summary>
     [BindProperty]
     public string? Model { get; set; }
@@ -94,6 +104,7 @@ public sealed class NewStoryModel(
         }
 
         Opening = (await TextLibrary.ReadAsync(library.Openings, Character, cancellationToken).ConfigureAwait(false))?.TrimEnd();
+        Models = await conversations.ModelsAsync(cancellationToken).ConfigureAwait(false);
         return Page();
     }
 
