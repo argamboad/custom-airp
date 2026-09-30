@@ -399,6 +399,7 @@ public sealed class MessageRecord
         Role = Role,
         Text = Text,
         SentAtUtc = SentAtUtc,
+        Generated = Model is not null,
     };
 }
 

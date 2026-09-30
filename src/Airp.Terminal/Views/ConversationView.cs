@@ -655,6 +655,12 @@ internal sealed partial class ConversationView : ViewBase
                 return ValueTask.FromResult(ViewAction.Status(
                     "Settings are not available in this session.", StatusKind.Warning));
 
+            // A written opening is the reader's page, not a guess to be had again.
+            case AppCommand.Generate when _messages.Count > 0
+                                          && _messages[^1].Role == ChatRole.Assistant
+                                          && !RegenerateReasons.CanReplace(_messages):
+                return ValueTask.FromResult(ViewAction.Status(RegenerateReasons.OpeningRefusal, StatusKind.Info));
+
             // The site offers this on the newest reply only, so the cursor's position does
             // not choose the target — the view says which reply it will replace.
             case AppCommand.Generate when _messages.LastOrDefault(static m => m.Role == ChatRole.Assistant) is { } reply:
