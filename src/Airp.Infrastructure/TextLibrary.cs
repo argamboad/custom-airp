@@ -1,4 +1,20 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Airp.Infrastructure;
+
+/// <summary>What became of a save.</summary>
+public enum LibrarySave
+{
+    /// <summary>The text is on disk, or already was.</summary>
+    Saved = 0,
+
+    /// <summary>The file changed after the reader opened it; nothing was written.</summary>
+    Changed,
+
+    /// <summary>There is no entry by that name; nothing was written.</summary>
+    Missing,
+}
 
 /// <summary>
 /// The character and persona descriptions kept as files on disk.
@@ -393,6 +409,88 @@ public sealed class TextLibrary
 
         File.Delete(path);
         return path;
+    }
+
+    /// <summary>A short fingerprint of an entry's text, to tell whether it changed since it was read.</summary>
+    /// <remarks>
+    /// Taken by a page when it shows the text and handed back when it saves, so a save made on a
+    /// phone cannot quietly undo an edit made on the laptop in between.
+    /// </remarks>
+    /// <param name="text">The text as read.</param>
+    /// <returns>Sixteen hex characters.</returns>
+    public static string VersionOf(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
+    }
+
+    /// <summary>
+    /// Replaces an entry's text, keeping the one it replaces beside it as <c>.bak</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The only operation here that overwrites, so it is careful in three ways. It refuses when
+    /// the file is no longer the version the reader started from. It copies what is there to
+    /// <c>name.txt.bak</c> first — one step back from a bad edit made on a phone keyboard, and
+    /// invisible to the shelves, which list <c>*.txt</c>. And it writes a temporary file and
+    /// moves it into place, so a dropped connection or a full disk leaves the old text whole
+    /// rather than half a card.
+    /// </para>
+    /// <para>
+    /// A browser sends a text box's line breaks as <c>\r\n</c> whatever it was given; the file
+    /// keeps the line endings it already had. Saving the text unchanged writes nothing, so it
+    /// does not replace the backup with a copy of itself.
+    /// </para>
+    /// </remarks>
+    /// <param name="folder">The shelf.</param>
+    /// <param name="name">The entry's name.</param>
+    /// <param name="text">The new text.</param>
+    /// <param name="version">
+    /// <see cref="VersionOf"/> of the text the reader started from, or null to overwrite whatever
+    /// is there.
+    /// </param>
+    /// <param name="cancellationToken">Token used to abort the write.</param>
+    /// <returns>Whether it was written, and why not when it was not.</returns>
+    public static async Task<LibrarySave> SaveAsync(
+        string folder,
+        string name,
+        string text,
+        string? version,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        if (Find(folder, name) is not { } path)
+        {
+            return LibrarySave.Missing;
+        }
+
+        var current = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+
+        if (version is not null && !string.Equals(VersionOf(current), version, StringComparison.OrdinalIgnoreCase))
+        {
+            return LibrarySave.Changed;
+        }
+
+        var replacement = text.ReplaceLineEndings("\n");
+
+        if (current.Contains("\r\n", StringComparison.Ordinal))
+        {
+            replacement = replacement.Replace("\n", "\r\n", StringComparison.Ordinal);
+        }
+
+        if (string.Equals(replacement, current, StringComparison.Ordinal))
+        {
+            return LibrarySave.Saved;
+        }
+
+        File.Copy(path, path + ".bak", overwrite: true);
+
+        var temporary = path + ".saving";
+        await File.WriteAllTextAsync(temporary, replacement, cancellationToken).ConfigureAwait(false);
+        File.Move(temporary, path, overwrite: true);
+
+        return LibrarySave.Saved;
     }
 
     /// <summary>What a new character file starts as.</summary>

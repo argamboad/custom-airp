@@ -580,7 +580,9 @@ first positional argument, `run` being the TUI
 
 `Airp.Web` is Razor Pages with no script, doing to a story what the terminal does — every
 composer command, carry on, reroll, branch, delete from a turn, the dials, export — plus
-renaming, deleting and starting one. It only translates — every write goes through
+renaming, deleting and starting one — and the library's four shelves, edited in a text box
+(`TextLibrary.SaveAsync`: refused when the file changed since the page was drawn, the replaced
+text kept as `.bak`, never deleted while a story names it). It only translates — every write goes through
 `LocalConversationProvider`, and a typed message through `FrontEndTurn`, which reads commands
 with the composer's own parser, so a command means the same thing in both and a typo is refused
 in both ([FrontEndTurn.cs](../src/Airp.Infrastructure/Providers/FrontEndTurn.cs)).

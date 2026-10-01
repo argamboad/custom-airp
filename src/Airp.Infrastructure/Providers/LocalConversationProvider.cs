@@ -162,9 +162,16 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
     /// <summary>The live conversations that refer to a library entry by name.</summary>
     /// <remarks>
+    /// <para>
     /// What "can I safely rewrite this file" and "can I safely delete it" both need answered.
     /// Only live conversations count: a hidden one keeps its reference, but resolution falling
     /// back to the default in a conversation nobody can open is not a consequence.
+    /// </para>
+    /// <para>
+    /// The persona <c>Airp:DefaultPersona</c> names is also used by every story that names no
+    /// persona and has none of its own: deleting it leaves those with nobody to play as, just
+    /// as surely as deleting one a story names.
+    /// </para>
     /// </remarks>
     /// <param name="persona">True for the persona library, false for characters.</param>
     /// <param name="name">The entry's name, matched without extension or case.</param>
@@ -181,19 +188,23 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
         var wanted = Path.GetFileNameWithoutExtension(name.Trim());
 
+        var fallback = persona ? _options.CurrentValue.DefaultPersona : null;
+        var isDefault = fallback is not null && string.Equals(
+            Path.GetFileNameWithoutExtension(fallback.Trim()),
+            wanted,
+            StringComparison.OrdinalIgnoreCase);
+
         var referenced = await store.Conversations
             .AsNoTracking()
             .Where(c => c.DeletedAtUtc == null)
-            .Select(c => new { c.Name, Uses = persona ? c.PersonaName : c.CharacterName })
-            .Where(c => c.Uses != null)
+            .Select(c => new { c.Name, Uses = persona ? c.PersonaName : c.CharacterName, Own = persona ? c.Persona : c.CharacterDefinition })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         return [.. referenced
-            .Where(c => string.Equals(
-                Path.GetFileNameWithoutExtension(c.Uses!.Trim()),
-                wanted,
-                StringComparison.OrdinalIgnoreCase))
+            .Where(c => c.Uses is { } uses
+                ? string.Equals(Path.GetFileNameWithoutExtension(uses.Trim()), wanted, StringComparison.OrdinalIgnoreCase)
+                : isDefault && string.IsNullOrWhiteSpace(c.Own))
             .Select(c => c.Name)
             .OrderBy(static n => n, StringComparer.OrdinalIgnoreCase)];
     }

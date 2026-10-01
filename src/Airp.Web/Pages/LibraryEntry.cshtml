@@ -1,0 +1,103 @@
+@page "/library/{shelf}/{name}"
+@model LibraryEntryModel
+
+@section Header {
+    <a class="back" href="/library/@(Model.Shelf!.Tabbed ? Model.Shelf.Slug : "characters")" aria-label="Library">‹</a>
+    <h1>@Model.Entry</h1>
+}
+
+@if (Model.Notice is not null)
+{
+    <p class="notice" role="status">@Model.Notice</p>
+}
+
+@if (!Model.Shelf!.Tabbed)
+{
+    <p class="used-by">An opening with no character of the same name: no new story is offered it. Delete it, or add the character.</p>
+}
+
+@if (Model.Shelf.StoriesNameIt)
+{
+    <p class="used-by">
+        @if (Model.UsedBy.Count == 0)
+        {
+            @:No story uses this @Model.Shelf.Kind.
+        }
+        else
+        {
+            @:A change reaches every story that uses it, from its next turn: @string.Join(", ", Model.UsedBy).
+        }
+    </p>
+}
+
+@* The newline after the opening tag is deliberate: a browser drops the first one inside a text
+   box, so without it a file that starts with a blank line would lose it on every save. *@
+<form method="post" class="editor">
+    <input type="hidden" name="Version" value="@Model.Version">
+    <textarea name="Text" rows="24" spellcheck="true" aria-label="@Model.Entry">
+@Model.Text</textarea>
+
+    @if (Model.Error is not null)
+    {
+        <p class="error" role="alert">@Model.Error</p>
+    }
+
+    <button type="submit">Save</button>
+</form>
+
+@if (Model.Current is not null)
+{
+    <details class="current" open>
+        <summary>What the file says now</summary>
+        <pre>@Model.Current</pre>
+    </details>
+}
+
+@if (Model.IsCharacter)
+{
+    <section id="opening" class="opening">
+        <h2>Opening</h2>
+        @if (Model.HasOpening)
+        {
+            <p class="aside">The first message a new story with this character starts from. Stories already started keep theirs.</p>
+            <form method="post" asp-page-handler="Opening" class="editor">
+                <input type="hidden" name="OpeningVersion" value="@Model.OpeningVersion">
+                <textarea name="OpeningText" rows="12" spellcheck="true" aria-label="Opening">
+@Model.OpeningText</textarea>
+
+                @if (Model.OpeningError is not null)
+                {
+                    <p class="error" role="alert">@Model.OpeningError</p>
+                }
+
+                <button type="submit">Save the opening</button>
+            </form>
+            <p class="entry-tools"><a class="danger" href="/library/openings/@Uri.EscapeDataString(Model.Entry!)/delete">Delete the opening…</a></p>
+
+            @if (Model.OpeningCurrent is not null)
+            {
+                <details class="current" open>
+                    <summary>What the opening says now</summary>
+                    <pre>@Model.OpeningCurrent</pre>
+                </details>
+            }
+        }
+        else
+        {
+            @if (Model.OpeningError is not null)
+            {
+                <p class="error" role="alert">@Model.OpeningError</p>
+                <pre class="unsaved">@Model.OpeningText</pre>
+            }
+
+            <form method="post" asp-page-handler="AddOpening" class="editor">
+                <p class="aside">None yet. A new story with this character would start empty.</p>
+                <button type="submit" class="quiet">Write an opening</button>
+            </form>
+        }
+    </section>
+}
+
+<p class="entry-tools">
+    <a class="danger" href="@Shelves.PathOf(Model.Shelf, Model.Entry!)/delete">Delete this @Model.Shelf.Kind…</a>
+</p>

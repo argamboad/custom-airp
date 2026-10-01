@@ -1066,8 +1066,9 @@ repository. This one only ever reads the files.
 
 ## Playing from a browser
 
-Optional. Your stories as web pages, for a phone: everything the terminal does to a story, and
-renaming, deleting and starting one. Plain pages, no scripts, over your own private network.
+Optional. Your stories as web pages, for a phone: everything the terminal does to a story,
+renaming, deleting and starting one, and the library. Plain pages, no scripts, over your own
+private network.
 
 It is a separate program beside the terminal, reading the same database. Build it from source
 (the releases carry only `airp`), and tell it which Tailscale account may come in — the login
@@ -1119,8 +1120,29 @@ Do not put it behind Funnel or any public tunnel: the database holds every story
   inner thoughts included, applied together — and the transcript as Markdown, JSON or text. The download is named by the date
   alone, so a phone's download notice does not say what it is.
 
-**What stays in the terminal:** the library itself, and copying with one key — on a phone, press
-and hold the text instead.
+- **Library**, beside New in the list: characters, personas and snippets as tabs. Open an entry
+  and it is a text box: change it and **Save**, which stays at the bottom of the screen however far
+  down a long card you are. **A character and its opening are one page** — the opening under the
+  card, saved on its own, or **Write an opening** when there is none — because the matching name
+  is the whole association; they stay two files. An opening that matches no character is listed at
+  the bottom of the characters tab, to be fixed or removed. **New** on a shelf starts from the same
+  template the terminal uses, and refuses a name already there rather than replacing it.
+
+  **A save never loses writing.** Each one keeps what it replaced as `<name>.txt.bak` beside the
+  file — one step back from a bad edit, and invisible to the shelves. If the file was changed
+  somewhere else after you opened it — on the laptop, in the terminal — nothing is saved: your text
+  stays in the box and what the file says now is shown under it, and saving again replaces it
+  knowingly, the replaced version going to the `.bak`. A file keeps its own line endings.
+
+  **A character or persona a story uses cannot be deleted** from here. Every turn reads it, so the
+  story would carry on with nothing in its place; the page lists the stories instead. The default
+  persona counts as used by every story that names none. Deleting a character takes its opening
+  with it, and the page says so; an opening can also go on its own, from the character's page.
+  Snippets and openings can always go — a story keeps its own copy of what it took from them. Renaming is not offered here or in the
+  terminal: stories hold the name.
+
+**What stays in the terminal:** copying with one key — on a phone, press and hold the text
+instead.
 
 **Private by design.** The tab says "Stories" and nothing else, and the pages tell the browser
 not to keep them, not to send where they came from to any link, and not to be indexed.

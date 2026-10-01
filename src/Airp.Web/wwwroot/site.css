@@ -438,3 +438,115 @@ button.danger {
     font-size: 0.875rem;
     text-align: right;
 }
+
+/* ── The library ─────────────────────────────────────────────────────────────────────── */
+
+.shelves {
+    display: flex;
+    gap: 0.25rem;
+    margin: 0.75rem 0 0;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--rule);
+}
+
+/* All four across a phone's width, without scrolling sideways to find the last one. */
+.shelves a {
+    flex: 1;
+    padding: 0.625rem 0.25rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+}
+
+.shelves a[aria-current="page"] {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+}
+
+.new-entry { margin-top: 0.75rem; }
+
+.new-entry summary {
+    padding: 0.5rem 0;
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.new-entry form,
+.editor {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.new-entry label {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+}
+
+.new-entry .aside { font-size: 0.875rem; }
+
+.new-entry button,
+.editor button { justify-self: end; }
+
+/* A card is edited, not read, here. The box grows with its text, so the page is the only thing
+   that scrolls — a scroll inside a scroll is where a thumb loses its place in a long card — and
+   the button stays at the bottom of the screen all the way down. */
+.editor textarea {
+    min-height: 60vh;
+    field-sizing: content;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.editor button {
+    position: sticky;
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    box-shadow: 0 0 0 0.5rem var(--ground);
+}
+
+.opening .editor textarea { min-height: 30vh; }
+
+.used-by,
+.opening .aside {
+    margin: 1rem 0 0;
+    color: var(--muted);
+    font-size: 0.9375rem;
+}
+
+.opening { margin-top: 2rem; scroll-margin-top: 3.5rem; }
+
+.opening h2 { font-size: 1.125rem; margin: 0; }
+
+.current { margin-top: 1rem; }
+
+.current summary { color: var(--muted); cursor: pointer; }
+
+.current pre,
+.unsaved {
+    margin: 0.5rem 0 0;
+    padding: 0.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+    font-size: 0.9375rem;
+    background: var(--surface);
+    border-left: 3px solid var(--rule);
+}
+
+.entry-tools {
+    margin: 2rem 0 1rem;
+    text-align: right;
+}
+
+.orphans { margin-top: 2rem; }
+
+.orphans h2 { font-size: 1rem; margin: 0; }
+
+.orphans .aside { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.875rem; }
+
+.opening .entry-tools { margin: 0.75rem 0 0; }
