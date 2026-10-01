@@ -264,6 +264,8 @@ The other handlers go straight to the provider, each ending in a redirect when i
 | Settings | `/story/{id}/dials` | `SetModelAsync` for the model; `IDialService`, values through `DialEngine.Parse`, for the dials |
 | Rename, delete a story | `/?handler=Rename`, `/story/{id}/delete` | `RenameConversationAsync`, `DeleteConversationAsync` |
 | New | `/new` | `CreateAsync`, names only from the shelves |
+| Library | `/library/{shelf}`, `/library/{shelf}/{name}` | `TextLibrary.CreateAsync` from the shelf's template; `TextLibrary.SaveAsync` — refused when the file's `VersionOf` changed since the page was drawn, the replaced text kept as `.bak`, written through a temporary file |
+| Delete an entry | `/library/{shelf}/{name}/delete` | `ConversationsUsingAsync` asked at the moment of deleting; any story naming it (or naming no persona, for the default persona) refuses it |
 
 ---
 

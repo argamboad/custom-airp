@@ -195,7 +195,7 @@ src/
   Airp.Application     Provider interfaces, options, business services, the context builder.
   Airp.Infrastructure  The local store, model clients, secrets.
   Airp.Terminal        Spectre.Console shell, views, host wiring.
-  Airp.Web             The stories as web pages, for a phone, over a tailnet. Optional.
+  Airp.Web             The stories and the library as web pages, for a phone, over a tailnet. Optional.
 tests/
   Airp.Tests           xUnit v3 tests for the business logic.
 ```
@@ -335,7 +335,7 @@ dotnet build
 dotnet test
 ```
 
-946 tests cover the parts worth testing: the editor buffer, fuzzy matching, the LCS diff, the
+959 tests cover the parts worth testing: the editor buffer, fuzzy matching, the LCS diff, the
 context builder's layering and budgets, retrieval, idempotency and the append-only guard, and
 each business service against substituted providers. There are no tests of getters.
 

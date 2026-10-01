@@ -1,0 +1,38 @@
+@page "/library/{shelf}/{name}/delete"
+@model LibraryDeleteModel
+
+@section Header {
+    <a class="back" href="@Shelves.PathOf(Model.Shelf!, Model.Entry!)" aria-label="Back">‹</a>
+    <h1>Delete</h1>
+}
+
+<section class="confirm">
+    <h2>Delete the @Model.Shelf!.Kind "@Model.Entry"?</h2>
+
+    @if (Model.UsedBy.Count > 0)
+    {
+        <p class="error" role="alert">
+            Not while a story uses it — every turn reads it, and without it the story would carry on with
+            nothing in its place. Delete the stories first, or keep it.
+        </p>
+        <ul class="matches">
+            @foreach (var story in Model.UsedBy)
+            {
+                <li>@story</li>
+            }
+        </ul>
+        <p><a href="@Shelves.PathOf(Model.Shelf, Model.Entry!)">Back to it</a></p>
+    }
+    else
+    {
+        <p>
+            The file goes from the shelf. Its last saved-over version, if it has one, stays beside it
+            as <code>@(Model.Entry).txt.bak</code>.
+        </p>
+
+        <form method="post">
+            <a href="@Shelves.PathOf(Model.Shelf, Model.Entry!)">Keep it</a>
+            <button type="submit" class="danger">Delete</button>
+        </form>
+    }
+</section>

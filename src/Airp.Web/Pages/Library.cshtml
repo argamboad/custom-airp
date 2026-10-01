@@ -1,0 +1,50 @@
+@page "/library/{shelf?}"
+@model LibraryModel
+
+@section Header {
+    <a class="back" href="/" aria-label="Stories">‹</a>
+    <h1>Library</h1>
+}
+
+<nav class="shelves">
+    @foreach (var shelf in Model.All)
+    {
+        <a href="/library/@shelf.Slug" aria-current="@(shelf == Model.Shelf ? "page" : null)">@shelf.Title</a>
+    }
+</nav>
+
+@* Folded, like a row's tools: the list is what this page is for. *@
+<details class="new-entry" open="@(Model.Error is not null)">
+    <summary>New @Model.Shelf!.Kind</summary>
+    <form method="post">
+        <label>
+            <span>Name <span class="aside">becomes the file name@(Model.Shelf.Slug == "openings" ? " — the character's, to go with it" : string.Empty)</span></span>
+            <input name="Name" value="@Model.Name" autocomplete="off">
+        </label>
+        <button type="submit">Create</button>
+    </form>
+</details>
+
+@if (Model.Error is not null)
+{
+    <p class="error" role="alert">@Model.Error</p>
+}
+
+@if (Model.Entries.Count == 0)
+{
+    <p class="empty">Nothing on this shelf yet.</p>
+}
+else
+{
+    <ul class="stories">
+        @foreach (var (name, teaser) in Model.Entries)
+        {
+            <li>
+                <a href="@Shelves.PathOf(Model.Shelf, name)">
+                    <span class="name">@name</span>
+                    <span class="latest">@teaser</span>
+                </a>
+            </li>
+        }
+    </ul>
+}
