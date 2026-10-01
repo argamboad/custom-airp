@@ -39,9 +39,9 @@ that fills the budget. And a model that is there today can have no host tomorrow
   measured on the list, every finetune turned to token soup at 1.3 and wrote cleanly up to 0.9.
   Each model's range (`model.temperatures`) is what the dial's five levels are spread over, for
   the story's own model only. The anti-loop penalty and a window filled to 29k needed nothing.
-- **Offered from a list, each one tried.** `model.choices`, unset by default to eight roleplay
-  finetunes that passed a run of one scene at four temperatures — two that refused the scene or
-  answered with their reasoning came off — and chosen to be
+- **Offered from a list, each one tried.** `model.choices`, unset by default to the four roleplay
+  finetunes of ten that came through a run of one scene at four temperatures without refusing,
+  looping, writing the reader's side or answering with their reasoning — and chosen to be
   more willing than the default. Labelled with the provider's list prices, to compare by only: what
   a call cost is still read from its response (ADR 0009).
 

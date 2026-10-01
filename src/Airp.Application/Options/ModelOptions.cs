@@ -83,19 +83,17 @@ public sealed class ModelOptions
 
     /// <summary>
     /// The shipped list: open-weight finetunes for roleplay and creative writing, chosen to be
-    /// more willing than the default rather than less. Only two describe themselves as
-    /// uncensored; the rest are there on their reputation, which a host can still undo.
+    /// more willing than the default rather than less, and the four of ten that came through a
+    /// run on 2026-10-01 without refusing, looping, writing the reader's side or answering with
+    /// their reasoning. Only two describe themselves as uncensored; the other two are there on
+    /// their reputation, which a host can still undo.
     /// </summary>
     public static IReadOnlyList<string> ShippedChoices { get; } =
     [
         "cognitivecomputations/dolphin-mistral-24b-venice-edition",
         "thedrummer/cydonia-24b-v4.1",
         "anthracite-org/magnum-v4-72b",
-        "sao10k/l3.3-euryale-70b",
         "thedrummer/unslopnemo-12b",
-        "thedrummer/skyfall-36b-v2",
-        "aion-labs/aion-rp-llama-3.1-8b",
-        "nousresearch/hermes-3-llama-3.1-70b",
     ];
 
     /// <summary>
@@ -184,7 +182,7 @@ public sealed class ModelOptions
     /// The dial's 0.6–1.4 was tuned on DeepSeek, which stays coherent at all of it. Measured on
     /// 2026-10-01 with one scene sent to each listed model at 0.15, 0.5, 0.9 and 1.3: every
     /// roleplay finetune wrote cleanly up to 0.9 and turned to token soup at 1.3 — a story on
-    /// Dolphin at Creativity 3 (1.2) came back as a dozen scripts of noise. Hermes 3 held at 1.3.
+    /// Dolphin at Creativity 3 (1.2) came back as a dozen scripts of noise.
     /// So the five levels are spread over the range the model holds, and "Wild" means the
     /// wildest that model still writes rather than past the edge of it.
     /// </para>
@@ -202,11 +200,7 @@ public sealed class ModelOptions
             ["cognitivecomputations/dolphin-mistral-24b-venice-edition"] = new() { Min = 0.3, Max = 0.9 },
             ["thedrummer/cydonia-24b-v4.1"] = new() { Min = 0.3, Max = 0.9 },
             ["anthracite-org/magnum-v4-72b"] = new() { Min = 0.3, Max = 0.9 },
-            ["sao10k/l3.3-euryale-70b"] = new() { Min = 0.3, Max = 0.9 },
             ["thedrummer/unslopnemo-12b"] = new() { Min = 0.3, Max = 0.9 },
-            ["thedrummer/skyfall-36b-v2"] = new() { Min = 0.3, Max = 0.9 },
-            ["aion-labs/aion-rp-llama-3.1-8b"] = new() { Min = 0.3, Max = 0.9 },
-            ["nousresearch/hermes-3-llama-3.1-70b"] = new() { Min = 0.5, Max = 1.2 },
         };
 
     /// <summary>The bottom of the Creativity dial's own range, which a model's range is mapped from.</summary>

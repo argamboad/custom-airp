@@ -691,22 +691,33 @@ Each choice shows OpenRouter's list prices and how its prompt price compares wit
 where a long story's money goes. They are for choosing by; what a turn actually cost is in
 `airp cost`, from what OpenRouter charged ([ADR 0019](adr/0019-a-storys-model.md)).
 
-The list is the default and `model.choices` in `airp.json`. Unset, it is eight open-weight
+The list is the default and `model.choices` in `airp.json`. Unset, it is four open-weight
 roleplay finetunes picked to be more willing than the default, not less: Dolphin Mistral 24B
-Venice, Cydonia 24B, Magnum v4 72B, Euryale L3.3 70B, UnslopNemo 12B, Skyfall 36B, Aion-RP 8B
-and Hermes 3 70B. Only the first two say they are uncensored; the rest are there on reputation,
-and a host can filter what a model would not — the audit's *served by* column says which host
-wrote a reply.
+Venice, Cydonia 24B, Magnum v4 72B and UnslopNemo 12B. The first two say they are uncensored; the
+other two are there on reputation, and a host can filter what a model would not — the audit's
+*served by* column says which host wrote a reply.
 
 **Each was tried before it stayed on the list** (2026-10-01): one scene sent to every model at
 four temperatures, a window filled to 29k for the 32k models, and the anti-loop penalty at its
-top. Two came off: Euryale L3.1 answered a scene with a warning that the reader's move was "not
-appropriate", and Aion 2.0 is a reasoning model that answered with its reasoning, or nothing.
+top. Ten were tried and six came off. Euryale L3.1 answered a scene with a warning that the
+reader's move was "not appropriate"; Aion 2.0 answered with its reasoning, or nothing; Hermes 3
+wrote the reader's side in the first person; Skyfall looped a line and garbled the story's
+meters; Aion-RP 8B cost ten times the default for an 8B model's prose; Euryale L3.3 took up to
+46 seconds a reply, was rate-limited by its one host, and wrote the reader's lines. None of the
+four that stayed writes better than the default on that run — the reason to switch is a voice, or
+a willingness the default lacks, and that is what to try them for.
+
+| Model | Window | Speed | Price against the default |
+|---|---|---|---|
+| Dolphin Mistral 24B Venice | 32k | 4–7 s | ≈3× |
+| Cydonia 24B | 131k | 5–17 s | ≈4× |
+| Magnum v4 72B | 32k | 22–33 s | ≈32× |
+| UnslopNemo 12B | 128k | 9–30 s | ≈5× |
 
 **Creativity means something different on each model.** The dial's 0.6–1.4 was tuned on
 DeepSeek, which writes cleanly at all of it. Every finetune on the list wrote cleanly up to 0.9
 and turned to token soup — a dozen scripts of noise — at 1.3. So on those, the dial's five levels
-are spread over 0.3–0.9 instead (Hermes 3, which held at 1.3: 0.5–1.2), and "Wild" means the
+are spread over 0.3–0.9 instead, and "Wild" means the
 wildest that model still writes. `model.temperatures` in `airp.json` adjusts or adds a range. A
 turn the default writes instead keeps the default's temperature.
 
@@ -724,7 +735,7 @@ distilled card of a few thousand tokens plays on it fine.
 
 **A small window shrinks the story's budget.** If the model holds less than your budget plus the
 reply, the story's budget becomes what it can hold: older turns are summarised sooner, and the
-audit says `budget … (the story's model)`. Magnum, Skyfall and Dolphin take 32k; the default
+audit says `budget … (the story's model)`. Magnum and Dolphin take 32k; the default
 takes a million. OpenRouter's list says what a host accepts, not always what a model was trained
 for — it lists Dolphin at 128k — so airp keeps a correction per model, `model.windows` in
 `airp.json`, believed over the list. If a story's card grows past its model after the fact, that
