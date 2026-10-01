@@ -2390,8 +2390,12 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
         if (conversation.Model is not { } own)
         {
-            return (await Ask(choice.Model).ConfigureAwait(false), null);
+            return (await Ask(choice.Model, choice.Temperature).ConfigureAwait(false), null);
         }
+
+        // The story's model at its own temperatures; the default, if it has to step in, at the
+        // default's (Model:Temperatures).
+        var ownTemperature = _options.CurrentValue.Model.TemperatureFor(own, choice.Temperature);
 
         if (composed.Room is { } room && composed.Context.EstimatedTokens > room)
         {
@@ -2402,12 +2406,12 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 composed.Context.EstimatedTokens,
                 room);
 
-            return (await Ask(choice.Model).ConfigureAwait(false), own);
+            return (await Ask(choice.Model, choice.Temperature).ConfigureAwait(false), own);
         }
 
         try
         {
-            return (await Ask(own).ConfigureAwait(false), null);
+            return (await Ask(own, ownTemperature).ConfigureAwait(false), null);
         }
         catch (ModelUnavailableException ex) when (ex.NoSuchModel)
         {
@@ -2417,13 +2421,13 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 conversation.Id,
                 ex.Message);
 
-            return (await Ask(choice.Model).ConfigureAwait(false), own);
+            return (await Ask(choice.Model, choice.Temperature).ConfigureAwait(false), own);
         }
 
-        Task<ModelReply> Ask(string model) => _model.CompleteAsync(
+        Task<ModelReply> Ask(string model, double temperature) => _model.CompleteAsync(
             messages,
             model: model,
-            temperature: choice.Temperature,
+            temperature: temperature,
             maxTokens: choice.MaxTokens,
             frequencyPenalty: choice.FrequencyPenalty,
             cancellationToken: cancellationToken);

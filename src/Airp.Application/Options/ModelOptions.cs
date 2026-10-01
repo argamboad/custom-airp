@@ -92,10 +92,8 @@ public sealed class ModelOptions
         "thedrummer/cydonia-24b-v4.1",
         "anthracite-org/magnum-v4-72b",
         "sao10k/l3.3-euryale-70b",
-        "sao10k/l3.1-euryale-70b",
         "thedrummer/unslopnemo-12b",
         "thedrummer/skyfall-36b-v2",
-        "aion-labs/aion-2.0",
         "aion-labs/aion-rp-llama-3.1-8b",
         "nousresearch/hermes-3-llama-3.1-70b",
     ];
@@ -175,6 +173,76 @@ public sealed class ModelOptions
         }
 
         return listed;
+    }
+
+    /// <summary>
+    /// The temperatures a model writes well between, by model id, which the Creativity dial is
+    /// spread across instead of its own range; null for the shipped ranges.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The dial's 0.6–1.4 was tuned on DeepSeek, which stays coherent at all of it. Measured on
+    /// 2026-10-01 with one scene sent to each listed model at 0.15, 0.5, 0.9 and 1.3: every
+    /// roleplay finetune wrote cleanly up to 0.9 and turned to token soup at 1.3 — a story on
+    /// Dolphin at Creativity 3 (1.2) came back as a dozen scripts of noise. Hermes 3 held at 1.3.
+    /// So the five levels are spread over the range the model holds, and "Wild" means the
+    /// wildest that model still writes rather than past the edge of it.
+    /// </para>
+    /// <para>
+    /// Only the story's own model is scaled: a turn the default writes instead keeps the
+    /// default's temperature.
+    /// </para>
+    /// </remarks>
+    public IDictionary<string, TemperatureRange>? Temperatures { get; set; }
+
+    /// <summary>The ranges measured for the shipped list; a model not named here keeps the dial's own values.</summary>
+    public static IReadOnlyDictionary<string, TemperatureRange> ShippedTemperatures { get; } =
+        new Dictionary<string, TemperatureRange>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cognitivecomputations/dolphin-mistral-24b-venice-edition"] = new() { Min = 0.3, Max = 0.9 },
+            ["thedrummer/cydonia-24b-v4.1"] = new() { Min = 0.3, Max = 0.9 },
+            ["anthracite-org/magnum-v4-72b"] = new() { Min = 0.3, Max = 0.9 },
+            ["sao10k/l3.3-euryale-70b"] = new() { Min = 0.3, Max = 0.9 },
+            ["thedrummer/unslopnemo-12b"] = new() { Min = 0.3, Max = 0.9 },
+            ["thedrummer/skyfall-36b-v2"] = new() { Min = 0.3, Max = 0.9 },
+            ["aion-labs/aion-rp-llama-3.1-8b"] = new() { Min = 0.3, Max = 0.9 },
+            ["nousresearch/hermes-3-llama-3.1-70b"] = new() { Min = 0.5, Max = 1.2 },
+        };
+
+    /// <summary>The bottom of the Creativity dial's own range, which a model's range is mapped from.</summary>
+    public const double DialTemperatureLow = 0.6;
+
+    /// <summary>The top of the Creativity dial's own range, which a model's range is mapped from.</summary>
+    public const double DialTemperatureHigh = 1.4;
+
+    /// <summary>
+    /// The temperature to send a model for one asked on the dial's scale: mapped onto the
+    /// model's range when it has one, unchanged when it does not.
+    /// </summary>
+    /// <remarks>
+    /// Linear, so the dial's five levels land evenly across the model's range, and a cold
+    /// setting below the dial's bottom — a summary's or a question's — lands proportionally
+    /// below the model's, never below a floor that still samples.
+    /// </remarks>
+    /// <param name="model">The model the call goes to.</param>
+    /// <param name="temperature">The temperature on the dial's scale.</param>
+    /// <returns>The temperature to send.</returns>
+    public double TemperatureFor(string model, double temperature)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var range = Temperatures?.FirstOrDefault(t => string.Equals(t.Key, model, StringComparison.OrdinalIgnoreCase)).Value
+            ?? (ShippedTemperatures.TryGetValue(model, out var shipped) ? shipped : null);
+
+        if (range is null || range.Max <= range.Min)
+        {
+            return temperature;
+        }
+
+        var share = (temperature - DialTemperatureLow) / (DialTemperatureHigh - DialTemperatureLow);
+        var mapped = range.Min + (share * (range.Max - range.Min));
+
+        return Math.Round(Math.Clamp(mapped, 0.05, range.Max), 3);
     }
 
     /// <summary>The models a story can pick from, besides the default: the configured list, or the shipped one.</summary>
@@ -326,4 +394,14 @@ public sealed class ModelOptions
     /// <summary>How long to wait for a reply before giving up.</summary>
     [Range(1, 3600)]
     public int TimeoutSeconds { get; set; } = 180;
+}
+
+/// <summary>The temperatures one model writes well between.</summary>
+public sealed class TemperatureRange
+{
+    /// <summary>What the Creativity dial's lowest level sends this model.</summary>
+    public double Min { get; set; }
+
+    /// <summary>What the Creativity dial's highest level sends this model — the most it still writes coherently at.</summary>
+    public double Max { get; set; }
 }

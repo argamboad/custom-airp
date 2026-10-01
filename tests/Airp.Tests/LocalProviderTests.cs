@@ -20,6 +20,9 @@ internal sealed class ScriptedModel : ILanguageModelClient
     /// <summary>The model each call asked for, in order; null where the call named none.</summary>
     public List<string?> Models { get; } = [];
 
+    /// <summary>The temperature each call asked for, in order.</summary>
+    public List<double?> Temperatures { get; } = [];
+
     public double? LastTemperature { get; private set; }
 
     public int? LastMaxTokens { get; private set; }
@@ -137,6 +140,7 @@ internal sealed class ScriptedModel : ILanguageModelClient
     {
         Calls.Add(messages);
         Models.Add(model);
+        Temperatures.Add(temperature);
         LastTemperature = temperature;
         LastMaxTokens = maxTokens;
         LastFrequencyPenalty = frequencyPenalty;

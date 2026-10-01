@@ -194,6 +194,8 @@ ReplyAsync(store, conversation, pending, instruction, progress, ct)
 │                ceiling (200..2600) and frequency penalty, each falling back
 │                to the configured default when its dial is unset)
 ├─ 765  CompleteForStoryAsync → _model.CompleteAsync(messages, conversation.Model ?? choice.Model, ...)
+│         · the story's model is sent its own temperature (Model:Temperatures);
+│           the default, stepping in, is sent the default's
 │         · a prompt larger than the story's model can read (Model:Windows) →
 │           never sent to it; choice.Model writes it, the reply records FellBackFrom
 │         · the story's model refused as NoSuchModel (404, "not a valid model") →

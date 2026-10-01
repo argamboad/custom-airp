@@ -691,12 +691,24 @@ Each choice shows OpenRouter's list prices and how its prompt price compares wit
 where a long story's money goes. They are for choosing by; what a turn actually cost is in
 `airp cost`, from what OpenRouter charged ([ADR 0019](adr/0019-a-storys-model.md)).
 
-The list is the default and `model.choices` in `airp.json`. Unset, it is ten open-weight
+The list is the default and `model.choices` in `airp.json`. Unset, it is eight open-weight
 roleplay finetunes picked to be more willing than the default, not less: Dolphin Mistral 24B
-Venice, Cydonia 24B, Magnum v4 72B, both Euryale 70Bs, UnslopNemo 12B, Skyfall 36B, Aion 2.0,
-Aion-RP 8B and Hermes 3 70B. Only the first two say they are uncensored; the rest are there on
-reputation, and a host can filter what a model would not — the audit's *served by* column says
-which host wrote a reply. Try one on a throwaway story before a real one.
+Venice, Cydonia 24B, Magnum v4 72B, Euryale L3.3 70B, UnslopNemo 12B, Skyfall 36B, Aion-RP 8B
+and Hermes 3 70B. Only the first two say they are uncensored; the rest are there on reputation,
+and a host can filter what a model would not — the audit's *served by* column says which host
+wrote a reply.
+
+**Each was tried before it stayed on the list** (2026-10-01): one scene sent to every model at
+four temperatures, a window filled to 29k for the 32k models, and the anti-loop penalty at its
+top. Two came off: Euryale L3.1 answered a scene with a warning that the reader's move was "not
+appropriate", and Aion 2.0 is a reasoning model that answered with its reasoning, or nothing.
+
+**Creativity means something different on each model.** The dial's 0.6–1.4 was tuned on
+DeepSeek, which writes cleanly at all of it. Every finetune on the list wrote cleanly up to 0.9
+and turned to token soup — a dozen scripts of noise — at 1.3. So on those, the dial's five levels
+are spread over 0.3–0.9 instead (Hermes 3, which held at 1.3: 0.5–1.2), and "Wild" means the
+wildest that model still writes. `model.temperatures` in `airp.json` adjusts or adds a range. A
+turn the default writes instead keeps the default's temperature.
 
 **A model is checked before it is saved.** airp reads OpenRouter's list of models and saves one
 only if it is on it, with the size of its context window. One that is not listed — or cannot be
