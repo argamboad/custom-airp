@@ -59,6 +59,7 @@ public sealed class OpenRouterClient : ILanguageModelClient
         double? temperature = null,
         int? maxTokens = null,
         double? frequencyPenalty = null,
+        bool? reasoning = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
@@ -94,6 +95,13 @@ public sealed class OpenRouterClient : ILanguageModelClient
         if (frequencyPenalty is { } penalty)
         {
             payload["frequency_penalty"] = penalty;
+        }
+
+        // OpenRouter's own field, so only when asked. A model that cannot switch its reasoning
+        // off refuses the call with a 400 that says so.
+        if (reasoning is { } enabled)
+        {
+            payload["reasoning"] = new JsonObject { ["enabled"] = enabled };
         }
 
         if (Routing(settings) is { } routing)
@@ -328,13 +336,6 @@ public sealed class OpenRouterClient : ILanguageModelClient
         }
     }
 
-    /// <summary>Pulls the human-readable part out of an error body, when there is one.</summary>
-    /// <remarks>
-    /// Returns the message alone rather than the whole payload: an error body can echo the
-    /// request back, and the request contains the conversation.
-    /// </remarks>
-    /// <param name="content">The raw error body.</param>
-    /// <returns>A short explanation, or an empty string.</returns>
     /// <summary>
     /// Whether a refusal was about the model named rather than about the request or the account.
     /// </summary>
@@ -349,6 +350,13 @@ public sealed class OpenRouterClient : ILanguageModelClient
         => status == 404
            || (status == 400 && explained.Contains("not a valid model", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Pulls the human-readable part out of an error body, when there is one.</summary>
+    /// <remarks>
+    /// Returns the message alone rather than the whole payload: an error body can echo the
+    /// request back, and the request contains the conversation.
+    /// </remarks>
+    /// <param name="content">The raw error body.</param>
+    /// <returns>A short explanation, or an empty string.</returns>
     private static string Explain(string content)
     {
         try

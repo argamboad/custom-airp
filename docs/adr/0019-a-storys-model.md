@@ -42,8 +42,14 @@ that fills the budget. And a model that is there today can have no host tomorrow
 - **Offered from a list, each one tried.** `model.choices`, unset by default to the four roleplay
   finetunes of ten that came through a run of one scene at four temperatures without refusing,
   looping, writing the reader's side or answering with their reasoning — and chosen to be
-  more willing than the default. Labelled with the provider's list prices, to compare by only: what
-  a call cost is still read from its response (ADR 0009).
+  more willing than the default — and two larger general models of six, DeepSeek V4 Pro and
+  GLM 4.6, which wrote the scene at every temperature once their reasoning was off. Labelled
+  with the provider's list prices, to compare by only: what a call cost is still read from its
+  response (ADR 0009).
+- **What the reader waits on is written without thinking first.** A reply and an `/ask` answer
+  send OpenRouter's `reasoning: { enabled: false }` (`model.thinkBeforeReplying` switches it
+  back). Found by the same run: at a 400-token ceiling the default came back empty three times
+  in five, its whole ceiling spent reasoning, and V4 Pro, V4.1 Flash and GLM 4.7 four in five.
 
 ## Consequences
 

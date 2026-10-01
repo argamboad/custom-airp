@@ -242,6 +242,18 @@ public class OpenRouterClientTests
     }
 
     [Fact]
+    public async Task Reasoning_is_switched_off_when_asked_and_not_mentioned_otherwise()
+    {
+        var handler = new ScriptedHandler(HttpStatusCode.OK, SuccessBody);
+
+        await Build(handler).CompleteAsync([new ModelMessage(ModelRole.User, "Hello.")], reasoning: false);
+        JsonNode.Parse(handler.LastBody!)!["reasoning"]!["enabled"]!.GetValue<bool>().ShouldBeFalse();
+
+        await Build(handler).CompleteAsync([new ModelMessage(ModelRole.User, "Hello.")]);
+        JsonNode.Parse(handler.LastBody!)!.AsObject().ContainsKey("reasoning").ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Reads_the_reply_and_the_usage_back()
     {
         var reply = await Build(new ScriptedHandler(HttpStatusCode.OK, SuccessBody))

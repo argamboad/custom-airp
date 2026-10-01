@@ -23,6 +23,9 @@ internal sealed class ScriptedModel : ILanguageModelClient
     /// <summary>The temperature each call asked for, in order.</summary>
     public List<double?> Temperatures { get; } = [];
 
+    /// <summary>What each call said about reasoning, in order; null where it said nothing.</summary>
+    public List<bool?> Reasonings { get; } = [];
+
     public double? LastTemperature { get; private set; }
 
     public int? LastMaxTokens { get; private set; }
@@ -136,9 +139,11 @@ internal sealed class ScriptedModel : ILanguageModelClient
         double? temperature = null,
         int? maxTokens = null,
         double? frequencyPenalty = null,
+        bool? reasoning = null,
         CancellationToken cancellationToken = default)
     {
         Calls.Add(messages);
+        Reasonings.Add(reasoning);
         Models.Add(model);
         Temperatures.Add(temperature);
         LastTemperature = temperature;

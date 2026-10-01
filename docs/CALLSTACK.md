@@ -203,9 +203,12 @@ ReplyAsync(store, conversation, pending, instruction, progress, ct)
 │         · any other refusal is not retried on the default
 │         OpenRouterClient (OpenRouterClient.cs:56):
 │         · payload is plain OpenAI; "provider" routing object only when
-│           Prefer/IgnoreProviders are set (line 178), omitted otherwise
+│           Prefer/IgnoreProviders are set (line 186), omitted otherwise
+│         · "reasoning": { "enabled": false } on a reply or an aside unless
+│           Model:ThinkBeforeReplying (line 102) — a model thinking first
+│           spends the reply's ceiling before the scene starts
 │         · 200 with no content THROWS, naming finish_reason, host, and
-│           whether only reasoning came back (line 130)
+│           whether only reasoning came back (line 138)
 │         · reads model, provider, usage.cost, cached_tokens, generation id
 │           straight off the response — cost is never computed from a price list
 ├─ 775  on failure: ReplyMissingException carrying the pending turn —

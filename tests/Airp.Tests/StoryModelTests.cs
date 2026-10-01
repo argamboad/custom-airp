@@ -136,6 +136,18 @@ public sealed class StoryModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Replies_and_questions_go_out_with_reasoning_off()
+    {
+        var chat = await StoryAsync();
+        _model.Says("She looks up.").Says("She knows.");
+
+        await Provider().SendAsync(chat.Id, "I come in.");
+        await Provider().AskAsync(chat.Id, "What does she know?");
+
+        _model.Reasonings.ShouldBe([false, false]);
+    }
+
+    [Fact]
     public async Task A_model_that_has_gone_writes_nothing_the_default_writes_the_turn_and_the_reply_says_so()
     {
         var chat = await StoryAsync();

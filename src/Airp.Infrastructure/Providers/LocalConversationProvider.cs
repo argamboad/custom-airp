@@ -2430,6 +2430,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             temperature: temperature,
             maxTokens: choice.MaxTokens,
             frequencyPenalty: choice.FrequencyPenalty,
+            reasoning: choice.Reasoning,
             cancellationToken: cancellationToken);
     }
 

@@ -55,6 +55,30 @@ public sealed class ModelOptions
     /// </remarks>
     public bool? AllowProviderFallbacks { get; set; }
 
+    /// <summary>
+    /// Whether a reply or an answer to <c>/ask</c> may be thought through before it is
+    /// written. Off by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reasoning model spends its output ceiling thinking before it writes, and the thinking
+    /// is billed and never shown. Measured on 2026-10-01, one scene against a 400-token ceiling,
+    /// five tries each: the default, DeepSeek V4 Flash, came back empty three times in five,
+    /// every token spent on reasoning, and V4 Pro, V4.1 Flash and GLM 4.7 did no better. Sent
+    /// OpenRouter's <c>reasoning: { enabled: false }</c>, every one of them wrote the scene, and
+    /// the models that never reason accepted the field and ignored it. A model that cannot
+    /// switch it off refuses the request and says so — GLM 5.3 Flash does — and is not on the
+    /// shipped list.
+    /// </para>
+    /// <para>
+    /// Off means that field is sent; on means nothing is sent and the model does what it
+    /// would. It is OpenRouter's field, like <c>provider</c>: an endpoint that refuses fields
+    /// it does not know needs this on. Summaries and fact extraction never send it — their
+    /// ceilings were raised for reasoning instead, and they are not waited on.
+    /// </para>
+    /// </remarks>
+    public bool ThinkBeforeReplying { get; set; }
+
     /// <summary>Model identifier passed to the API.</summary>
     /// <remarks>
     /// DeepSeek V4 Flash by default: it carries over half the roleplay traffic on OpenRouter
@@ -82,11 +106,13 @@ public sealed class ModelOptions
     public IList<string>? Choices { get; set; }
 
     /// <summary>
-    /// The shipped list: open-weight finetunes for roleplay and creative writing, chosen to be
-    /// more willing than the default rather than less, and the four of ten that came through a
-    /// run on 2026-10-01 without refusing, looping, writing the reader's side or answering with
-    /// their reasoning. Only two describe themselves as uncensored; the other two are there on
-    /// their reputation, which a host can still undo.
+    /// The shipped list, every one tried on 2026-10-01 with one scene at four temperatures.
+    /// First, open-weight finetunes for roleplay and creative writing, chosen to be more
+    /// willing than the default rather than less: the four of ten that came through without
+    /// refusing, looping, writing the reader's side or answering with their reasoning. Only two
+    /// describe themselves as uncensored; the other two are there on their reputation, which a
+    /// host can still undo. Then two larger general models, the two of six that wrote the scene
+    /// at every temperature once their reasoning was off (<see cref="ThinkBeforeReplying"/>).
     /// </summary>
     public static IReadOnlyList<string> ShippedChoices { get; } =
     [
@@ -94,6 +120,8 @@ public sealed class ModelOptions
         "thedrummer/cydonia-24b-v4.1",
         "anthracite-org/magnum-v4-72b",
         "thedrummer/unslopnemo-12b",
+        "deepseek/deepseek-v4-pro",
+        "z-ai/glm-4.6",
     ];
 
     /// <summary>
