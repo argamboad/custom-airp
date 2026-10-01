@@ -1,6 +1,7 @@
 # ADR 0014 — The proxy is passive, and no automated access to JanitorAI exists
 
-**Status**: accepted · 2026-08-18 · **hard limit, not negotiable**
+**Status**: accepted · 2026-08-18 · **hard limit, not negotiable** · the proxy itself retired by
+[ADR 0020](0020-the-proxy-is-retired.md); the limit on JanitorAI stands
 
 ## Context
 

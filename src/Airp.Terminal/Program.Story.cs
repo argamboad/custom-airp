@@ -347,9 +347,8 @@ internal static partial class Program
 
         AnsiConsole.MarkupLine($"[bold]{Markup.Escape(chat.Name)}[/]");
 
-        // The identifier, because this is the only command that can tell you one, and the proxy
-        // needs it: Janitor's Custom Prompt carries [[rp:<id>]] to say which conversation a
-        // request belongs to. Without it printed somewhere, that setup step cannot be followed.
+        // The identifier, because this is the only command that can tell you one: two stories
+        // can share a name, and the id is what tells their logs and audits apart.
         AnsiConsole.MarkupLine($"[grey]{Markup.Escape(chat.Id)}[/]");
         AnsiConsole.WriteLine();
 

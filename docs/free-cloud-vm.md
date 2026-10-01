@@ -425,9 +425,11 @@ sudo tailscale serve --bg --https=8443 http://127.0.0.1:5291
 `journalctl -u airp-web -n 20` says why when it is not: it refuses to start without a login
 to let in, and turns away anyone else with "Not available."
 
-**It fits, not by much.** The pages hold about 170 MB of the `e2-micro`'s 1 GB while running.
-With airp open in `tmux` beside them there is still room; add the Janitor proxy as well and
-there is about 250 MB to spare.
+**It fits, not by much.** The pages hold 100–215 MB of the `e2-micro`'s 1 GB while running, and
+airp open in `tmux` beside them about 270 MB, which leaves around 200 MB. A third .NET process
+does not fit: measured on 2026-10-01, with one more beside them the VM went into swap, spent
+80% of its time waiting on the disk, and a paste in the composer arrived a character at a time.
+If typing ever crawls there, `free -m` and `vmstat 1` say whether this is why.
 
 To update them, publish and copy again, move the folder into place, then
 `sudo systemctl restart airp-web`.

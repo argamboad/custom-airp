@@ -19,10 +19,9 @@ For how the code is put together — diagrams, call stacks, the schema — start
 9. [Seeing what is going on](#seeing-what-is-going-on)
 10. [Importing old transcripts](#importing-old-transcripts)
 11. [Playing from a browser](#playing-from-a-browser)
-12. [Playing from Janitor](#playing-from-janitor)
-13. [Configuration](#configuration)
-14. [When something breaks](#when-something-breaks)
-15. [All the commands](#all-the-commands)
+12. [Configuration](#configuration)
+13. [When something breaks](#when-something-breaks)
+14. [All the commands](#all-the-commands)
 
 ---
 
@@ -1032,7 +1031,7 @@ appears in `airp cost`, under the name `(purged)`.
 airp audit
 ```
 
-Under the conversation's name it prints its identifier — the proxy setup needs it — and for
+Under the conversation's name it prints its identifier — two stories can share a name — and for
 each reply: when it arrived, which provider served it, the estimated tokens against the
 actually reported ones, and the prompt broken down layer by layer:
 
@@ -1125,102 +1124,6 @@ and hold the text instead.
 
 **Private by design.** The tab says "Stories" and nothing else, and the pages tell the browser
 not to keep them, not to send where they came from to any link, and not to be indexed.
-
----
-
-## Playing from Janitor
-
-Optional. It is for playing **your local conversations** from your phone, with Janitor's
-interface but your memory and your model.
-
-The proxy needs a token of its own, different from the model key — it is what you type into
-Janitor. On Windows, `airp secret set AIRP_PROXY_TOKEN`; on Linux and macOS, where that command
-refuses, an environment variable of the same name, exactly as for the model key. Then:
-
-```bash
-dotnet run --project src/Airp.Proxy --urls http://127.0.0.1:5290
-```
-
-**Janitor has to be able to reach it, and that can stay private.** Tried against Janitor on a
-phone: the request came from the phone itself, not from Janitor's servers — so a private network
-the phone is on is enough, and nothing needs to face the internet. With Tailscale, on the machine
-running the proxy:
-
-```bash
-sudo tailscale serve --bg http://127.0.0.1:5290
-```
-
-gives it an HTTPS address only your own devices can reach. In Janitor, point the Proxy URL at
-that address followed by `/v1/chat/completions`, with the token as the API key. A public tunnel
-would work too, and would put a database of all your conversations on the internet behind that
-one token.
-
-**A tag in Janitor's Custom Prompt says which story** — `[[rp:<id>]]`, with the id that
-`airp audit <chat>` prints under the story's name. A request without one writes nothing: the
-proxy refuses it and says why. It never works out a story from a character's name or how a chat
-opens, because a match among your stories is still a guess about a Janitor chat they have never
-seen, and a turn written into the wrong story is permanent and billed.
-
-### Setting it up in Janitor
-
-As Janitor's settings looked on 2026-09-29, on Android. They are Janitor's screens, not ours,
-and can change.
-
-1. **Model settings → Provider: Proxy**, then add a configuration under Proxy Configurations
-   (or edit one with the pencil). The configuration name is yours to choose; the model name can
-   be anything, since the proxy uses airp's model; the proxy URL is your address followed by
-   `/v1/chat/completions`; the API key is the proxy's token.
-2. **Make a prompt holding the tag, on one line** — `[[rp:<id>]]`, and nothing else is needed in
-   it. Name it after the story. A line break between the two closing brackets and it is no
-   longer a tag.
-3. **Select that prompt in both places Janitor has one**: the configuration's own *Prompt
-   (optional)*, and *Instructions → Custom prompt*. Which of the two reaches a proxy has not
-   been pinned down; with the prompt in both, the tag arrives.
-4. **Tick each panel, then Save** at the top of Model settings.
-
-The first attempt here failed with the proxy's "no tag" refusal, and the tag arrived once the
-prompt was on one line, in both fields and saved — three changes at once, so which one mattered
-is not known. The proxy's log says which case you are in: `Request tagged for <id>` when it
-worked, `carries no [[rp:…]] tag` when the tag never arrived.
-
-**The Custom prompt belongs to the model settings, not to a chat.** It applies to every Janitor
-chat that uses that proxy configuration, so while it names a story, whatever you write through
-the proxy — with any bot — goes into that story. The way to live with that:
-
-- **One named prompt per story**, and pick the right one before you play.
-- **One Janitor chat per story**, and come back to it. Its window shows only what was said in
-  Janitor; every reply is built from the whole story, including everything played in the
-  terminal.
-- **The bot does not change the replies** — the proxy uses airp's card, persona and dials — but
-  the matching one keeps the name and picture right.
-- **A new story starts in airp** — `N` in the chat list, `airp new`, or **New** in the
-  [browser pages](#playing-from-a-browser). The proxy only writes to a story that already exists.
-
-Janitor sends its own truncated history; the proxy **discards it** and builds the prompt from
-your store. Only your newest message is taken from the request.
-
-Janitor puts your persona's name in front of each of your messages — `Allan: …`. The proxy takes
-it off before anything else, so it is not stored as part of your turn and does not hide a
-command.
-
-### Commands in Janitor
-
-Janitor's window shows only what was said in it, so a story you have been playing in the
-terminal arrives there looking empty. The replies are built from the whole story regardless,
-and **`/recap`** shows it: the latest summary, then the last four turns word for word — `/recap 10`
-for ten. It is answered by the proxy from what is on disk, so it costs nothing and is stored
-nowhere.
-
-Every one of the composer's commands works here too, with the same meaning — `/do`, `/focus`,
-`/ask` (shown, never stored), the ones that only read (`/card`, `/facts`, `/cost` and the rest),
-and `/fact` and `/tracker`, which write to the story's state but never add a turn. Their answers
-arrive as the reply. `/help` lists them. Anything else that starts with a slash — a typo — is
-refused with an error and stored nowhere, so a mistyped command never becomes a turn the
-character has to answer. To send prose that genuinely begins with a slash, double it.
-
-**Not yet understood by the proxy:** Janitor's reroll resends your last message, and the proxy
-stores it as a new turn — your message twice, answered twice. Regenerate in airp instead. Edits
-and deletions made in Janitor do not reach the store either.
 
 ---
 

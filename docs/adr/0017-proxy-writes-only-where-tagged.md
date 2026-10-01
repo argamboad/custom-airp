@@ -1,6 +1,6 @@
 # ADR 0017 — The proxy writes only where a tag says
 
-**Status**: accepted · 2026-09-29 · narrows the resolver in [ADR 0014](0014-proxy-is-passive.md)
+**Status**: superseded by [ADR 0020](0020-the-proxy-is-retired.md) · accepted 2026-09-29 · narrowed the resolver in [ADR 0014](0014-proxy-is-passive.md)
 
 ## Context
 

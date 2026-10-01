@@ -51,9 +51,8 @@ effect.
 ## What this project will not do
 
 **Nothing here touches JanitorAI.** No authenticating against it, no private endpoints, no
-scraping, no browser automation — their terms prohibit bots, and the only interaction is
-passive: Janitor calls a proxy you run, never the other way round. A pull request that crosses
-that line will be declined however well it is written.
+scraping, no browser automation — their terms prohibit bots, and nothing here talks to Janitor
+at all. A pull request that crosses that line will be declined however well it is written.
 
 ## House style
 

@@ -12,7 +12,7 @@ namespace Airp.Tests;
 /// <remarks>
 /// Every case says three things: what came back, how many turns the story holds afterwards, and
 /// how many times the model was called. The last two are the point. Before this, a command
-/// typed in Janitor was stored as a turn of the story, permanent and billed.
+/// typed into a chat box was stored as a turn of the story, permanent and billed.
 /// </remarks>
 public sealed class FrontEndTurnTests : IDisposable
 {

@@ -73,8 +73,6 @@ the directive is written to get.*
 - The full terminal experience: carry on, regenerate with a reason, rewind, search across
   every conversation, command palette, export, clipboard.
 - **`airp send`** for playing a turn from a script.
-- **An OpenAI-compatible proxy**, so JanitorAI's interface on your phone can be pointed at
-  your memory and your model. Janitor calls the proxy; nothing here ever touches Janitor.
 - **An importer** for ourdream.ai export files, if you want old transcripts in the store.
 
 The ourdream.ai browser client this project grew out of is its own application, in its own
@@ -197,7 +195,6 @@ src/
   Airp.Application     Provider interfaces, options, business services, the context builder.
   Airp.Infrastructure  The local store, model clients, secrets.
   Airp.Terminal        Spectre.Console shell, views, host wiring.
-  Airp.Proxy           An OpenAI-compatible endpoint over the local store. Optional.
   Airp.Web             The stories as web pages, for a phone, over a tailnet. Optional.
 tests/
   Airp.Tests           xUnit v3 tests for the business logic.
@@ -338,7 +335,7 @@ dotnet build
 dotnet test
 ```
 
-962 tests cover the parts worth testing: the editor buffer, fuzzy matching, the LCS diff, the
+946 tests cover the parts worth testing: the editor buffer, fuzzy matching, the LCS diff, the
 context builder's layering and budgets, retrieval, idempotency and the append-only guard, and
 each business service against substituted providers. There are no tests of getters.
 
@@ -358,13 +355,13 @@ and message bodies out of them.
   name of the key, not its value, so no configuration dump can print one.
 - **The conversation store is not encrypted.** The SQLite database sits in your user profile
   under ordinary file permissions, and it holds the entire history in the clear. Treat that
-  directory as sensitive, and never expose the proxy to the internet without a TLS tunnel and
-  its bearer token.
+  directory as sensitive, and never expose the web pages to the internet: they are meant for a
+  tailnet, behind a TLS tunnel.
 
 **On JanitorAI:** this client does not automate it in any way — no sign-in, no private
-endpoints, no scraping, no browser automation. Their terms prohibit bots and scripts. The
-only interaction is passive: Janitor calls the proxy because you configured a Proxy URL in
-your own account. Never the other way round.
+endpoints, no scraping, no browser automation. Their terms prohibit bots and scripts. An
+earlier version shipped a proxy Janitor could call; it was removed on 2026-10-01, and nothing
+here talks to Janitor at all now.
 
 ---
 
