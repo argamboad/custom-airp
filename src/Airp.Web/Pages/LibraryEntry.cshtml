@@ -11,6 +11,15 @@
     <p class="notice" role="status">@Model.Notice</p>
 }
 
+@* A character's page holds two boxes; one tap reaches either. *@
+@if (Model.IsCharacter)
+{
+    <nav class="jump" aria-label="On this page">
+        <a href="#card">Card</a>
+        <a href="#opening">Opening</a>
+    </nav>
+}
+
 @if (!Model.Shelf!.Tabbed)
 {
     <p class="used-by">An opening with no character of the same name: no new story is offered it. Delete it, or add the character.</p>
@@ -32,8 +41,10 @@
 
 @* The newline after the opening tag is deliberate: a browser drops the first one inside a text
    box, so without it a file that starts with a blank line would lose it on every save. *@
-<form method="post" class="editor">
+<form method="post" id="card" class="editor@(Model.IsCharacter ? " card" : string.Empty)">
     <input type="hidden" name="Version" value="@Model.Version">
+    <input type="checkbox" id="full-text" class="size-toggle">
+    <label for="full-text" class="size-switch"><span class="when-fit">Full size</span><span class="when-full">Fit to screen</span></label>
     <textarea name="Text" rows="24" spellcheck="true" aria-label="@Model.Entry">
 @Model.Text</textarea>
 
@@ -62,6 +73,8 @@
             <p class="aside">The first message a new story with this character starts from. Stories already started keep theirs.</p>
             <form method="post" asp-page-handler="Opening" class="editor">
                 <input type="hidden" name="OpeningVersion" value="@Model.OpeningVersion">
+                <input type="checkbox" id="full-opening" class="size-toggle">
+                <label for="full-opening" class="size-switch"><span class="when-fit">Full size</span><span class="when-full">Fit to screen</span></label>
                 <textarea name="OpeningText" rows="12" spellcheck="true" aria-label="Opening">
 @Model.OpeningText</textarea>
 
@@ -99,5 +112,9 @@
 }
 
 <p class="entry-tools">
+    @if (Model.Shelf.Tabbed)
+    {
+        <a href="/library/new/@Model.Shelf.Slug?from=@Uri.EscapeDataString(Model.Entry!)">Duplicate…</a>
+    }
     <a class="danger" href="@Shelves.PathOf(Model.Shelf, Model.Entry!)/delete">Delete this @Model.Shelf.Kind…</a>
 </p>

@@ -76,26 +76,106 @@ public sealed class WebLibraryTests : IDisposable
         new LibraryModel(_library).OnGet("recipes").ShouldBeOfType<NotFoundResult>();
     }
 
+    private LibraryNewModel Draft() => WithTempData(new LibraryNewModel(_library));
+
     [Fact]
-    public async Task A_new_entry_starts_from_the_terminals_template_and_opens_in_the_editor()
+    public async Task A_new_entry_is_a_draft_from_the_template_and_nothing_is_written_until_it_is_saved()
     {
-        var page = new LibraryModel(_library) { Name = "Mira" };
+        var page = Draft();
+        (await page.OnGetAsync("characters", from: null, CancellationToken.None)).ShouldBeOfType<PageResult>();
 
-        var result = await page.OnPostAsync("characters", CancellationToken.None);
+        page.Text.ShouldBe(TextLibrary.CharacterSkeleton);
+        page.OpeningText.ShouldBe(TextLibrary.OpeningSkeleton);
+        TextLibrary.Names(_library.Characters).ShouldBe(["Vardhal"]);
 
-        result.ShouldBeOfType<RedirectResult>().Url.ShouldBe("/library/characters/Mira");
-        Read(_library.Characters, "Mira").ShouldBe(TextLibrary.CharacterSkeleton);
+        var save = Draft();
+        save.Name = "Mira";
+        save.Text = "A harbour.\r\n";
+        save.OpeningText = "*Gulls.*";
+
+        (await save.OnPostAsync("characters", from: null, CancellationToken.None))
+            .ShouldBeOfType<RedirectResult>().Url.ShouldBe("/library/characters/Mira");
+
+        Read(_library.Characters, "Mira").ShouldBe("A harbour.\n");
+        Read(_library.Openings, "Mira").ShouldBe("*Gulls.*");
     }
 
     [Fact]
-    public async Task A_name_already_on_the_shelf_is_refused_rather_than_overwritten()
+    public async Task Duplicating_copies_the_text_and_the_opening_into_a_draft_named_as_a_copy()
     {
-        var page = new LibraryModel(_library) { Name = "vardhal" };
+        var page = Draft();
+        await page.OnGetAsync("characters", from: "vardhal", CancellationToken.None);
 
-        (await page.OnPostAsync("characters", CancellationToken.None)).ShouldBeOfType<PageResult>();
+        page.From.ShouldBe("Vardhal");
+        page.Name.ShouldBe("Vardhal copy");
+        page.Text.ShouldBe("=== THE WORLD ===\nA lighthouse on a headland.\n");
+        page.OpeningText.ShouldBe("*Rain against the glass.*\n");
+        TextLibrary.Names(_library.Characters).ShouldBe(["Vardhal"]);
 
-        page.Error.ShouldNotBeNull().ShouldContain("already exists");
+        var save = Draft();
+        save.Name = page.Name;
+        save.Text = page.Text;
+        save.OpeningText = page.OpeningText;
+        (await save.OnPostAsync("characters", from: "Vardhal", CancellationToken.None)).ShouldBeOfType<RedirectResult>();
+
+        TextLibrary.Names(_library.Characters).ShouldBe(["Vardhal", "Vardhal copy"]);
+        Read(_library.Openings, "Vardhal copy").ShouldBe("*Rain against the glass.*\n");
+    }
+
+    [Fact]
+    public async Task A_draft_with_an_empty_opening_writes_no_opening()
+    {
+        var save = Draft();
+        save.Name = "Allan copy";
+        save.Text = "A traveller.";
+        (await save.OnPostAsync("personas", from: "Allan", CancellationToken.None)).ShouldBeOfType<RedirectResult>();
+
+        var character = Draft();
+        character.Name = "Quiet";
+        character.Text = "Nobody speaks.";
+        character.OpeningText = "   ";
+        await character.OnPostAsync("characters", from: null, CancellationToken.None);
+
+        Read(_library.Personas, "Allan copy").ShouldBe("A traveller.");
+        TextLibrary.Find(_library.Openings, "Quiet").ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task A_name_already_on_the_shelf_is_refused_and_the_draft_is_kept()
+    {
+        var save = Draft();
+        save.Name = "vardhal";
+        save.Text = "Typed on the phone.";
+
+        (await save.OnPostAsync("characters", from: null, CancellationToken.None)).ShouldBeOfType<PageResult>();
+
+        save.Error.ShouldNotBeNull().ShouldContain("already exists");
+        save.Text.ShouldBe("Typed on the phone.");
         Read(_library.Characters, "Vardhal").ShouldBe("=== THE WORLD ===\nA lighthouse on a headland.\n");
+    }
+
+    [Fact]
+    public async Task A_character_whose_opening_name_is_taken_writes_neither_file()
+    {
+        File.WriteAllText(Path.Combine(_library.Openings, "Ghost.txt"), "*Nobody here.*\n");
+
+        var save = Draft();
+        save.Name = "Ghost";
+        save.Text = "A haunted house.";
+        save.OpeningText = "*A door creaks.*";
+
+        (await save.OnPostAsync("characters", from: null, CancellationToken.None)).ShouldBeOfType<PageResult>();
+
+        save.Error.ShouldNotBeNull().ShouldContain("already on the shelf");
+        TextLibrary.Find(_library.Characters, "Ghost").ShouldBeNull();
+        Read(_library.Openings, "Ghost").ShouldBe("*Nobody here.*\n");
+    }
+
+    [Fact]
+    public async Task There_is_no_draft_for_an_opening_alone_or_a_copy_of_nothing()
+    {
+        (await Draft().OnGetAsync("openings", from: null, CancellationToken.None)).ShouldBeOfType<NotFoundResult>();
+        (await Draft().OnGetAsync("characters", from: "Nobody", CancellationToken.None)).ShouldBeOfType<NotFoundResult>();
     }
 
     [Fact]

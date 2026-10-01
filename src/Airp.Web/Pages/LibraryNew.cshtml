@@ -1,0 +1,54 @@
+@page "/library/new/{shelf}"
+@model LibraryNewModel
+
+@section Header {
+    <a class="back" href="@(Model.From is { } from ? Shelves.PathOf(Model.Shelf!, from) : $"/library/{Model.Shelf!.Slug}")" aria-label="Back">‹</a>
+    <h1>@(Model.From is { } original ? $"Copy of {original}" : $"New {Model.Shelf!.Kind}")</h1>
+}
+
+<p class="used-by">Nothing is on the shelf until you save. Leaving this page discards it.</p>
+
+@* One form for both boxes: a character and its opening are saved together, or not at all. The
+   newline after each opening tag keeps a leading blank line, which a browser would drop. *@
+<form method="post" class="draft">
+    <label class="name">
+        <span>Name <span class="aside">becomes the file name</span></span>
+        <input name="Name" value="@Model.Name" autocomplete="off" required>
+    </label>
+
+    @if (Model.IsCharacter)
+    {
+        <nav class="jump" aria-label="On this page">
+            <a href="#card">Card</a>
+            <a href="#opening">Opening</a>
+        </nav>
+    }
+
+    <div id="card" class="editor@(Model.IsCharacter ? " card" : string.Empty)">
+        <input type="checkbox" id="full-text" class="size-toggle">
+        <label for="full-text" class="size-switch"><span class="when-fit">Full size</span><span class="when-full">Fit to screen</span></label>
+        <textarea name="Text" rows="24" spellcheck="true" aria-label="Text">
+@Model.Text</textarea>
+    </div>
+
+    @if (Model.IsCharacter)
+    {
+        <section id="opening" class="opening">
+            <h2>Opening</h2>
+            <p class="aside">The first message a new story with this character starts from. Leave it empty for none.</p>
+            <div class="editor">
+                <input type="checkbox" id="full-opening" class="size-toggle">
+                <label for="full-opening" class="size-switch"><span class="when-fit">Full size</span><span class="when-full">Fit to screen</span></label>
+                <textarea name="OpeningText" rows="12" spellcheck="true" aria-label="Opening">
+@Model.OpeningText</textarea>
+            </div>
+        </section>
+    }
+
+    @if (Model.Error is not null)
+    {
+        <p class="error" role="alert">@Model.Error</p>
+    }
+
+    <button type="submit">Save</button>
+</form>
