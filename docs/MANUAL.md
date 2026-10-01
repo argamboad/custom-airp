@@ -691,12 +691,59 @@ Each choice shows OpenRouter's list prices and how its prompt price compares wit
 where a long story's money goes. They are for choosing by; what a turn actually cost is in
 `airp cost`, from what OpenRouter charged ([ADR 0019](adr/0019-a-storys-model.md)).
 
-The list is the default and `model.choices` in `airp.json`. Unset, it is ten open-weight
-roleplay finetunes picked to be more willing than the default, not less: Dolphin Mistral 24B
-Venice, Cydonia 24B, Magnum v4 72B, both Euryale 70Bs, UnslopNemo 12B, Skyfall 36B, Aion 2.0,
-Aion-RP 8B and Hermes 3 70B. Only the first two say they are uncensored; the rest are there on
-reputation, and a host can filter what a model would not — the audit's *served by* column says
-which host wrote a reply. Try one on a throwaway story before a real one.
+The list is the default and `model.choices` in `airp.json`. Unset, it is six. Four are
+open-weight roleplay finetunes picked to be more willing than the default, not less: Dolphin
+Mistral 24B Venice, Cydonia 24B, Magnum v4 72B and UnslopNemo 12B. The first two say they are
+uncensored; the other two are there on reputation, and a host can filter what a model would not —
+the audit's *served by* column says which host wrote a reply. The other two are larger general
+models from the families roleplay traffic already favours: DeepSeek V4 Pro, the default's bigger
+sibling, and GLM 4.6.
+
+**Each was tried before it stayed on the list** (2026-10-01): one scene sent to every model at
+four temperatures, a window filled to 29k for the 32k models, and the anti-loop penalty at its
+top. Ten were tried and six came off. Euryale L3.1 answered a scene with a warning that the
+reader's move was "not appropriate"; Aion 2.0 answered with its reasoning, or nothing; Hermes 3
+wrote the reader's side in the first person; Skyfall looped a line and garbled the story's
+meters; Aion-RP 8B cost ten times the default for an 8B model's prose; Euryale L3.3 took up to
+46 seconds a reply, was rate-limited by its one host, and wrote the reader's lines. None of the
+four that stayed writes better than the default on that run — the reason to switch is a voice, or
+a willingness the default lacks, and that is what to try them for.
+
+A second round the same day tried six general models the same way. Two stayed. DeepSeek V4.1
+Flash turned to noise at the top temperature; GLM 4.7 wrote nothing there and took up to 47
+seconds; GLM 5.3 Flash cannot be told not to think (below); Kimi K2 stepped out of the scene to
+ask the reader questions, or to argue the card's rules against the Lust dial, in three tries of
+five.
+
+| Model | Window | Speed | Prompt / reply, per million |
+|---|---|---|---|
+| DeepSeek V4 Flash (the default) | 1M | 4–7 s | $0.04 / $0.08 |
+| Dolphin Mistral 24B Venice | 32k | 4–7 s | $0.20 / $0.90 |
+| Cydonia 24B | 131k | 5–17 s | $0.30 / $0.50 |
+| Magnum v4 72B | 32k | 22–33 s | $2.50 / $5.00 |
+| UnslopNemo 12B | 128k | 9–30 s | $0.40 / $0.40 |
+| DeepSeek V4 Pro | 1M | 8–11 s | $0.21 / $0.42 |
+| GLM 4.6 | 200k | 5–7 s | $0.43 / $1.75 |
+
+Prices are OpenRouter's list on 2026-10-01 and move — the default's fell by about half the same day. The
+pickers show the day's.
+
+**Creativity means something different on each model.** The dial's 0.6–1.4 was tuned on
+DeepSeek, which writes cleanly at all of it. Every finetune on the list wrote cleanly up to 0.9
+and turned to token soup — a dozen scripts of noise — at 1.3. So on those, the dial's five levels
+are spread over 0.3–0.9 instead, and "Wild" means the
+wildest that model still writes. DeepSeek V4 Pro and GLM 4.6 held at 1.3 and keep the dial's own
+values. `model.temperatures` in `airp.json` adjusts or adds a range. A turn the default writes
+instead keeps the default's temperature.
+
+**Replies are written without thinking first.** Many models now reason before they answer, and
+the reasoning comes out of the same allowance as the reply: at a 400-token reply the default
+came back empty three times in five, every token spent thinking, and V4 Pro, V4.1 Flash and
+GLM 4.7 four in five. So a reply and an `/ask` answer tell OpenRouter to switch it off, and every
+one of them then wrote the scene; a model that never reasons ignores the request. A model that
+cannot switch it off — GLM 5.3 Flash — refuses the turn and says so. `model.thinkBeforeReplying`
+set to `true` stops asking, for an endpoint other than OpenRouter that refuses what it does not
+know. Summaries and facts are left to think, on allowances raised for it.
 
 **A model is checked before it is saved.** airp reads OpenRouter's list of models and saves one
 only if it is on it, with the size of its context window. One that is not listed — or cannot be
@@ -712,7 +759,7 @@ distilled card of a few thousand tokens plays on it fine.
 
 **A small window shrinks the story's budget.** If the model holds less than your budget plus the
 reply, the story's budget becomes what it can hold: older turns are summarised sooner, and the
-audit says `budget … (the story's model)`. Magnum, Skyfall and Dolphin take 32k; the default
+audit says `budget … (the story's model)`. Magnum and Dolphin take 32k; the default
 takes a million. OpenRouter's list says what a host accepts, not always what a model was trained
 for — it lists Dolphin at 128k — so airp keeps a correction per model, `model.windows` in
 `airp.json`, believed over the list. If a story's card grows past its model after the fact, that

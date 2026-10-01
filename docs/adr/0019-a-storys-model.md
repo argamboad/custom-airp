@@ -35,9 +35,21 @@ that fills the budget. And a model that is there today can have no host tomorrow
   refusal — key, credit, a request the default would refuse too — is reported, not retried.
 - **Memory stays on the default.** Summaries and facts are written by the configured model (or
   `backgroundModel`) whatever the story is played on, so every story's memory is written alike.
-- **Offered from a list.** `model.choices`, unset by default to ten roleplay finetunes chosen to be
-  more willing than the default. Labelled with the provider's list prices, to compare by only: what
-  a call cost is still read from its response (ADR 0009).
+- **The dials' numbers follow the model.** Creativity's temperatures were tuned on DeepSeek;
+  measured on the list, every finetune turned to token soup at 1.3 and wrote cleanly up to 0.9.
+  Each model's range (`model.temperatures`) is what the dial's five levels are spread over, for
+  the story's own model only. The anti-loop penalty and a window filled to 29k needed nothing.
+- **Offered from a list, each one tried.** `model.choices`, unset by default to the four roleplay
+  finetunes of ten that came through a run of one scene at four temperatures without refusing,
+  looping, writing the reader's side or answering with their reasoning — and chosen to be
+  more willing than the default — and two larger general models of six, DeepSeek V4 Pro and
+  GLM 4.6, which wrote the scene at every temperature once their reasoning was off. Labelled
+  with the provider's list prices, to compare by only: what a call cost is still read from its
+  response (ADR 0009).
+- **What the reader waits on is written without thinking first.** A reply and an `/ask` answer
+  send OpenRouter's `reasoning: { enabled: false }` (`model.thinkBeforeReplying` switches it
+  back). Found by the same run: at a 400-token ceiling the default came back empty three times
+  in five, its whole ceiling spent reasoning, and V4 Pro, V4.1 Flash and GLM 4.7 four in five.
 
 ## Consequences
 

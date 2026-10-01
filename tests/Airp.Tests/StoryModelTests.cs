@@ -136,6 +136,18 @@ public sealed class StoryModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Replies_and_questions_go_out_with_reasoning_off()
+    {
+        var chat = await StoryAsync();
+        _model.Says("She looks up.").Says("She knows.");
+
+        await Provider().SendAsync(chat.Id, "I come in.");
+        await Provider().AskAsync(chat.Id, "What does she know?");
+
+        _model.Reasonings.ShouldBe([false, false]);
+    }
+
+    [Fact]
     public async Task A_model_that_has_gone_writes_nothing_the_default_writes_the_turn_and_the_reply_says_so()
     {
         var chat = await StoryAsync();
@@ -333,5 +345,49 @@ public sealed class StoryModelTests : IDisposable
         settings.WindowOf("cognitivecomputations/dolphin-mistral-24b-venice-edition", 8_000).ShouldBe(8_000);
         settings.WindowOf("other/model", 64_000).ShouldBe(64_000);
         settings.WindowOf("other/model", null).ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(0.6, 0.3)]
+    [InlineData(1.0, 0.6)]
+    [InlineData(1.2, 0.75)]
+    [InlineData(1.4, 0.9)]
+    [InlineData(0.4, 0.15)]
+    public void The_dials_temperature_is_spread_across_the_range_the_model_writes_well_in(double asked, double sent)
+        => new ModelOptions().TemperatureFor("cognitivecomputations/dolphin-mistral-24b-venice-edition", asked).ShouldBe(sent);
+
+    [Fact]
+    public void A_model_with_no_measured_range_gets_the_dials_own_temperature()
+        => new ModelOptions().TemperatureFor("deepseek/deepseek-v4-flash", 1.2).ShouldBe(1.2);
+
+    [Fact]
+    public async Task The_storys_model_is_sent_its_own_temperature_and_the_default_stepping_in_is_sent_the_defaults()
+    {
+        // Measured: every roleplay finetune on the list turned to token soup at 1.3, DeepSeek
+        // did not. A story on one at Creativity 3 was being sent 1.2.
+        var options = TestOptions.Default(o =>
+            o.Model.Temperatures = new Dictionary<string, TemperatureRange>
+            {
+                ["gone/model"] = new() { Min = 0.3, Max = 0.9 },
+                ["big/model"] = new() { Min = 0.3, Max = 0.9 },
+            });
+
+        LocalConversationProvider Scaled() => new(_factory, _model, options, NullLogger<LocalConversationProvider>.Instance);
+
+        var chat = await StoryAsync();
+        await Scaled().SetModelAsync(chat.Id, "big/model");
+        _model.Says("She looks up.");
+        await Scaled().SendAsync(chat.Id, "I come in.");
+
+        var ownTemperature = _model.Temperatures[^1];
+
+        await Scaled().SetModelAsync(chat.Id, "gone/model");
+        _model.HasNoSuchModel().Says("The default wrote this.");
+        await Scaled().SendAsync(chat.Id, "I sit down.");
+
+        // The configured reply temperature is 1.0 on the dial's scale: 0.6 on this model's.
+        ownTemperature.ShouldBe(0.6);
+        _model.Models.TakeLast(2).ShouldBe(["gone/model", Default]);
+        _model.Temperatures.TakeLast(2).ShouldBe([0.6, 1.0]);
     }
 }

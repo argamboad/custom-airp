@@ -68,6 +68,7 @@ internal static class Background
                     temperature: choice.Temperature,
                     maxTokens: choice.MaxTokens,
                     frequencyPenalty: choice.FrequencyPenalty,
+                    reasoning: choice.Reasoning,
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -85,6 +86,7 @@ internal static class Background
                 temperature: choice.Temperature,
                 maxTokens: choice.MaxTokens,
                 frequencyPenalty: choice.FrequencyPenalty,
+                reasoning: choice.Reasoning,
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }

@@ -86,6 +86,30 @@ public class ModelRouterTests
     }
 
     [Fact]
+    public void What_the_reader_waits_on_is_written_without_thinking_first()
+    {
+        // Measured against a 400-token ceiling: four models spent all of it reasoning and
+        // wrote nothing. The background work keeps whatever the model does, on ceilings that
+        // were raised for exactly that.
+        ModelRouter.For(ModelTask.Reply, Settings()).Reasoning.ShouldBe(false);
+        ModelRouter.For(ModelTask.Aside, Settings()).Reasoning.ShouldBe(false);
+        ModelRouter.For(ModelTask.Summary, Settings()).Reasoning.ShouldBeNull();
+        ModelRouter.For(ModelTask.Facts, Settings()).Reasoning.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Allowing_thinking_sends_nothing_rather_than_switching_it_on()
+    {
+        // On leaves the model to its own default, and keeps the field off the wire for an
+        // endpoint that refuses fields it does not know.
+        var settings = Settings();
+        settings.ThinkBeforeReplying = true;
+
+        ModelRouter.For(ModelTask.Reply, settings).Reasoning.ShouldBeNull();
+        ModelRouter.For(ModelTask.Aside, settings).Reasoning.ShouldBeNull();
+    }
+
+    [Fact]
     public void Extraction_runs_colder_than_anything_else()
     {
         // A summary that embellishes is read as an account of what happened. A fact that

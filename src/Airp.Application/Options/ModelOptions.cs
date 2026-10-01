@@ -55,6 +55,30 @@ public sealed class ModelOptions
     /// </remarks>
     public bool? AllowProviderFallbacks { get; set; }
 
+    /// <summary>
+    /// Whether a reply or an answer to <c>/ask</c> may be thought through before it is
+    /// written. Off by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reasoning model spends its output ceiling thinking before it writes, and the thinking
+    /// is billed and never shown. Measured on 2026-10-01, one scene against a 400-token ceiling,
+    /// five tries each: the default, DeepSeek V4 Flash, came back empty three times in five,
+    /// every token spent on reasoning, and V4 Pro, V4.1 Flash and GLM 4.7 did no better. Sent
+    /// OpenRouter's <c>reasoning: { enabled: false }</c>, every one of them wrote the scene, and
+    /// the models that never reason accepted the field and ignored it. A model that cannot
+    /// switch it off refuses the request and says so — GLM 5.3 Flash does — and is not on the
+    /// shipped list.
+    /// </para>
+    /// <para>
+    /// Off means that field is sent; on means nothing is sent and the model does what it
+    /// would. It is OpenRouter's field, like <c>provider</c>: an endpoint that refuses fields
+    /// it does not know needs this on. Summaries and fact extraction never send it — their
+    /// ceilings were raised for reasoning instead, and they are not waited on.
+    /// </para>
+    /// </remarks>
+    public bool ThinkBeforeReplying { get; set; }
+
     /// <summary>Model identifier passed to the API.</summary>
     /// <remarks>
     /// DeepSeek V4 Flash by default: it carries over half the roleplay traffic on OpenRouter
@@ -82,22 +106,22 @@ public sealed class ModelOptions
     public IList<string>? Choices { get; set; }
 
     /// <summary>
-    /// The shipped list: open-weight finetunes for roleplay and creative writing, chosen to be
-    /// more willing than the default rather than less. Only two describe themselves as
-    /// uncensored; the rest are there on their reputation, which a host can still undo.
+    /// The shipped list, every one tried on 2026-10-01 with one scene at four temperatures.
+    /// First, open-weight finetunes for roleplay and creative writing, chosen to be more
+    /// willing than the default rather than less: the four of ten that came through without
+    /// refusing, looping, writing the reader's side or answering with their reasoning. Only two
+    /// describe themselves as uncensored; the other two are there on their reputation, which a
+    /// host can still undo. Then two larger general models, the two of six that wrote the scene
+    /// at every temperature once their reasoning was off (<see cref="ThinkBeforeReplying"/>).
     /// </summary>
     public static IReadOnlyList<string> ShippedChoices { get; } =
     [
         "cognitivecomputations/dolphin-mistral-24b-venice-edition",
         "thedrummer/cydonia-24b-v4.1",
         "anthracite-org/magnum-v4-72b",
-        "sao10k/l3.3-euryale-70b",
-        "sao10k/l3.1-euryale-70b",
         "thedrummer/unslopnemo-12b",
-        "thedrummer/skyfall-36b-v2",
-        "aion-labs/aion-2.0",
-        "aion-labs/aion-rp-llama-3.1-8b",
-        "nousresearch/hermes-3-llama-3.1-70b",
+        "deepseek/deepseek-v4-pro",
+        "z-ai/glm-4.6",
     ];
 
     /// <summary>
@@ -175,6 +199,72 @@ public sealed class ModelOptions
         }
 
         return listed;
+    }
+
+    /// <summary>
+    /// The temperatures a model writes well between, by model id, which the Creativity dial is
+    /// spread across instead of its own range; null for the shipped ranges.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The dial's 0.6–1.4 was tuned on DeepSeek, which stays coherent at all of it. Measured on
+    /// 2026-10-01 with one scene sent to each listed model at 0.15, 0.5, 0.9 and 1.3: every
+    /// roleplay finetune wrote cleanly up to 0.9 and turned to token soup at 1.3 — a story on
+    /// Dolphin at Creativity 3 (1.2) came back as a dozen scripts of noise.
+    /// So the five levels are spread over the range the model holds, and "Wild" means the
+    /// wildest that model still writes rather than past the edge of it.
+    /// </para>
+    /// <para>
+    /// Only the story's own model is scaled: a turn the default writes instead keeps the
+    /// default's temperature.
+    /// </para>
+    /// </remarks>
+    public IDictionary<string, TemperatureRange>? Temperatures { get; set; }
+
+    /// <summary>The ranges measured for the shipped list; a model not named here keeps the dial's own values.</summary>
+    public static IReadOnlyDictionary<string, TemperatureRange> ShippedTemperatures { get; } =
+        new Dictionary<string, TemperatureRange>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cognitivecomputations/dolphin-mistral-24b-venice-edition"] = new() { Min = 0.3, Max = 0.9 },
+            ["thedrummer/cydonia-24b-v4.1"] = new() { Min = 0.3, Max = 0.9 },
+            ["anthracite-org/magnum-v4-72b"] = new() { Min = 0.3, Max = 0.9 },
+            ["thedrummer/unslopnemo-12b"] = new() { Min = 0.3, Max = 0.9 },
+        };
+
+    /// <summary>The bottom of the Creativity dial's own range, which a model's range is mapped from.</summary>
+    public const double DialTemperatureLow = 0.6;
+
+    /// <summary>The top of the Creativity dial's own range, which a model's range is mapped from.</summary>
+    public const double DialTemperatureHigh = 1.4;
+
+    /// <summary>
+    /// The temperature to send a model for one asked on the dial's scale: mapped onto the
+    /// model's range when it has one, unchanged when it does not.
+    /// </summary>
+    /// <remarks>
+    /// Linear, so the dial's five levels land evenly across the model's range, and a cold
+    /// setting below the dial's bottom — a summary's or a question's — lands proportionally
+    /// below the model's, never below a floor that still samples.
+    /// </remarks>
+    /// <param name="model">The model the call goes to.</param>
+    /// <param name="temperature">The temperature on the dial's scale.</param>
+    /// <returns>The temperature to send.</returns>
+    public double TemperatureFor(string model, double temperature)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var range = Temperatures?.FirstOrDefault(t => string.Equals(t.Key, model, StringComparison.OrdinalIgnoreCase)).Value
+            ?? (ShippedTemperatures.TryGetValue(model, out var shipped) ? shipped : null);
+
+        if (range is null || range.Max <= range.Min)
+        {
+            return temperature;
+        }
+
+        var share = (temperature - DialTemperatureLow) / (DialTemperatureHigh - DialTemperatureLow);
+        var mapped = range.Min + (share * (range.Max - range.Min));
+
+        return Math.Round(Math.Clamp(mapped, 0.05, range.Max), 3);
     }
 
     /// <summary>The models a story can pick from, besides the default: the configured list, or the shipped one.</summary>
@@ -326,4 +416,14 @@ public sealed class ModelOptions
     /// <summary>How long to wait for a reply before giving up.</summary>
     [Range(1, 3600)]
     public int TimeoutSeconds { get; set; } = 180;
+}
+
+/// <summary>The temperatures one model writes well between.</summary>
+public sealed class TemperatureRange
+{
+    /// <summary>What the Creativity dial's lowest level sends this model.</summary>
+    public double Min { get; set; }
+
+    /// <summary>What the Creativity dial's highest level sends this model — the most it still writes coherently at.</summary>
+    public double Max { get; set; }
 }
