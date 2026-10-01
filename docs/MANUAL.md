@@ -1121,10 +1121,11 @@ Do not put it behind Funnel or any public tunnel: the database holds every story
   alone, so a phone's download notice does not say what it is.
 
 - **Library**, beside New in the list: characters, personas and snippets as tabs. Open an entry
-  and it is a text box: change it and **Save**, which stays at the bottom of the screen however far
-  down a long card you are. **A character and its opening are one page** — the opening under the
-  card, saved on its own, or **Write an opening** when there is none — because the matching name
-  is the whole association; they stay two files. An opening that matches no character is listed at
+  and it is a text box that scrolls on its own, with **Save** right under it; drag its corner to
+  make it taller. **A character and its opening are one page** — the opening under the card, saved
+  on its own, or **Write an opening** when there is none — because the matching name is the whole
+  association; they stay two files. **Card** and **Opening** at the top jump between the two, and
+  the card's box is short enough that the opening's heading shows beneath it. An opening that matches no character is listed at
   the bottom of the characters tab, to be fixed or removed. **New** on a shelf starts from the same
   template the terminal uses, and refuses a name already there rather than replacing it.
 

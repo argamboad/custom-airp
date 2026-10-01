@@ -493,23 +493,43 @@ button.danger {
 .new-entry button,
 .editor button { justify-self: end; }
 
-/* A card is edited, not read, here. The box grows with its text, so the page is the only thing
-   that scrolls — a scroll inside a scroll is where a thumb loses its place in a long card — and
-   the button stays at the bottom of the screen all the way down. */
+/* A box is a window onto the file, not the file laid out at full length: it keeps its height
+   and scrolls inside, so on a character's page the opening is a screen away rather than a whole
+   card away, and Save sits right under the text it saves. The card's box is short enough that
+   the opening's heading shows below it — something visibly there to go to — and the links above
+   jump between the two in a tap. The corner drags either box taller. Reaching the end of a box
+   stops there rather than carrying on into the page, so a fast flick through a card does not
+   throw the box off the screen. svh, not vh: the small viewport, which does not change height
+   when a phone's address bar slides away under a thumb. */
 .editor textarea {
-    min-height: 60vh;
-    field-sizing: content;
+    height: 60svh;
+    min-height: 8rem;
+    resize: vertical;
+    overscroll-behavior: contain;
     font-size: 1rem;
     line-height: 1.5;
 }
 
-.editor button {
-    position: sticky;
-    bottom: max(0.75rem, env(safe-area-inset-bottom));
-    box-shadow: 0 0 0 0.5rem var(--ground);
+.editor.card textarea { height: 50svh; }
+
+.opening .editor textarea { height: 30svh; }
+
+#card { scroll-margin-top: 3.5rem; }
+
+.jump {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0 0;
 }
 
-.opening .editor textarea { min-height: 30vh; }
+.jump a {
+    padding: 0.375rem 0.875rem;
+    color: var(--accent);
+    font-size: 0.875rem;
+    text-decoration: none;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+}
 
 .used-by,
 .opening .aside {
