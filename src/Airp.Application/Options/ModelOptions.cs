@@ -125,6 +125,58 @@ public sealed class ModelOptions
         return fitted;
     }
 
+    /// <summary>
+    /// The context a model can really use, by model id, where it is smaller than the provider
+    /// lists; null for the shipped corrections.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A provider's list says what a host will accept, not what the model was trained to read.
+    /// Dolphin Mistral 24B Venice is listed at 128k and built on Mistral Small 24B 2501, which
+    /// was trained for 32k: given a 35k-token story it answered in token soup from the second
+    /// line. A window here is believed over the list's, so the story's budget is fitted to it
+    /// and a story that cannot fit is refused before it costs anything.
+    /// </para>
+    /// <para>
+    /// Null rather than pre-filled, for the same reason as <see cref="Choices"/>; a configured
+    /// entry is consulted first, then <see cref="ShippedWindows"/>.
+    /// </para>
+    /// </remarks>
+    public IDictionary<string, int>? Windows { get; set; }
+
+    /// <summary>
+    /// The corrections shipped with the list: each a base model's documented context, where
+    /// the provider lists more. Mistral Small 24B 2501 is 32k; Mistral Nemo is 128k.
+    /// </summary>
+    public static IReadOnlyDictionary<string, int> ShippedWindows { get; } =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cognitivecomputations/dolphin-mistral-24b-venice-edition"] = 32_768,
+            ["thedrummer/unslopnemo-12b"] = 131_072,
+        };
+
+    /// <summary>The context a model can really use: a configured correction, a shipped one, or what the list says.</summary>
+    /// <param name="model">The model's id.</param>
+    /// <param name="listed">What the provider's list gave, or null when it did not say.</param>
+    /// <returns>The window to fit a story to, or null when nothing says.</returns>
+    public int? WindowOf(string model, int? listed)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (Windows?.FirstOrDefault(w => string.Equals(w.Key, model, StringComparison.OrdinalIgnoreCase)) is { Key: not null } configured
+            && configured.Value > 0)
+        {
+            return configured.Value;
+        }
+
+        if (ShippedWindows.TryGetValue(model, out var shipped))
+        {
+            return listed is { } length ? Math.Min(length, shipped) : shipped;
+        }
+
+        return listed;
+    }
+
     /// <summary>The models a story can pick from, besides the default: the configured list, or the shipped one.</summary>
     public IReadOnlyList<string> EffectiveChoices
         => Choices is null
