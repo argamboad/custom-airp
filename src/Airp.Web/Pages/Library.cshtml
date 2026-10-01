@@ -13,22 +13,7 @@
     }
 </nav>
 
-@* Folded, like a row's tools: the list is what this page is for. *@
-<details class="new-entry" open="@(Model.Error is not null)">
-    <summary>New @Model.Shelf!.Kind</summary>
-    <form method="post">
-        <label>
-            <span>Name <span class="aside">becomes the file name</span></span>
-            <input name="Name" value="@Model.Name" autocomplete="off">
-        </label>
-        <button type="submit">Create</button>
-    </form>
-</details>
-
-@if (Model.Error is not null)
-{
-    <p class="error" role="alert">@Model.Error</p>
-}
+<p class="new-entry"><a href="/library/new/@Model.Shelf!.Slug">New @Model.Shelf.Kind</a></p>
 
 @if (Model.Entries.Count == 0)
 {

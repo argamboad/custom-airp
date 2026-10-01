@@ -466,31 +466,36 @@ button.danger {
     border-bottom-color: var(--accent);
 }
 
-.new-entry { margin-top: 0.75rem; }
+.new-entry { margin: 0.75rem 0 0; }
 
-.new-entry summary {
-    padding: 0.5rem 0;
-    color: var(--accent);
-    cursor: pointer;
-}
+.new-entry a { display: inline-block; padding: 0.5rem 0; text-decoration: none; }
 
-.new-entry form,
 .editor {
     display: grid;
     gap: 0.5rem;
     margin-top: 0.5rem;
 }
 
-.new-entry label {
+.draft {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.draft .name {
     display: grid;
     gap: 0.25rem;
     color: var(--muted);
     font-size: 0.9375rem;
 }
 
-.new-entry .aside { font-size: 0.875rem; }
+.draft .name .aside { font-size: 0.875rem; }
 
-.new-entry button,
+.draft .editor,
+.draft .opening,
+.draft .jump { margin-top: 0; }
+
+.draft button,
 .editor button { justify-self: end; }
 
 /* A box is a window onto the file, not the file laid out at full length: it keeps its height
@@ -559,8 +564,10 @@ button.danger {
 }
 
 .entry-tools {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1.25rem;
     margin: 2rem 0 1rem;
-    text-align: right;
 }
 
 .orphans { margin-top: 2rem; }
@@ -570,3 +577,47 @@ button.danger {
 .orphans .aside { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.875rem; }
 
 .opening .entry-tools { margin: 0.75rem 0 0; }
+
+/* Full size and back, with no script: a checkbox that is never sent (it has no name), and the
+   box drawn by whether it is ticked. Full grows the box to its whole text, so the page is the
+   one scroll — the way to read a card through or move a long stretch — and then Save follows
+   down the screen, since it is a card's length away. A browser that cannot size a box to its
+   text gives it the whole screen instead. Back to "Fit to screen" after a save, by design: a
+   page that forgets is the cost of having no script. */
+.size-toggle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.size-switch {
+    justify-self: end;
+    margin-bottom: -0.25rem;
+    padding: 0.25rem 0.75rem;
+    color: var(--accent);
+    font-size: 0.8125rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.size-switch .when-full,
+.size-toggle:checked + .size-switch .when-fit { display: none; }
+
+.size-toggle:checked + .size-switch .when-full { display: inline; }
+
+.size-toggle:focus-visible + .size-switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.editor .size-toggle:checked ~ textarea {
+    height: auto;
+    min-height: calc(100svh - 4rem);
+    field-sizing: content;
+}
+
+.editor:has(.size-toggle:checked) > button,
+.draft:has(.size-toggle:checked) > button {
+    position: sticky;
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    box-shadow: 0 0 0 0.5rem var(--ground);
+}
