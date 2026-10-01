@@ -10,6 +10,12 @@ namespace Airp.Web;
 /// <param name="Folder">Where its files are.</param>
 public sealed record Shelf(string Slug, string Title, string Kind, string Skeleton, string Folder)
 {
+    /// <summary>
+    /// Whether this shelf has a tab. Openings do not: an opening belongs to the character it is
+    /// named after, so it is edited on that character's page.
+    /// </summary>
+    public bool Tabbed => Slug != "openings";
+
     /// <summary>Whether stories name entries on this shelf, so deleting one can leave a story without it.</summary>
     /// <remarks>
     /// A story stores a character's and a persona's name and reads the file every turn. Snippets
@@ -36,6 +42,25 @@ public static class Shelves
             new("snippets", "Snippets", "snippet", TextLibrary.SnippetSkeleton, library.Snippets),
             new("openings", "Openings", "opening", TextLibrary.OpeningSkeleton, library.Openings),
         ];
+    }
+
+    /// <summary>The shelves that have a tab: all but openings.</summary>
+    /// <param name="library">The library.</param>
+    /// <returns>Characters, personas, snippets.</returns>
+    public static IReadOnlyList<Shelf> Tabs(TextLibrary library) => [.. All(library).Where(static s => s.Tabbed)];
+
+    /// <summary>
+    /// Openings whose character is not on the shelf — offered to no new story, and reachable
+    /// from no character's page, so listed on their own to be renamed or removed.
+    /// </summary>
+    /// <param name="library">The library.</param>
+    /// <returns>Their names, alphabetically.</returns>
+    public static IReadOnlyList<string> Orphans(TextLibrary library)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+
+        var characters = TextLibrary.Names(library.Characters).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return [.. TextLibrary.Names(library.Openings).Where(o => !characters.Contains(o))];
     }
 
     /// <summary>The shelf an address names, or null for one that does not exist.</summary>

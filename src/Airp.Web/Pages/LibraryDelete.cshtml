@@ -2,7 +2,7 @@
 @model LibraryDeleteModel
 
 @section Header {
-    <a class="back" href="@Shelves.PathOf(Model.Shelf!, Model.Entry!)" aria-label="Back">‹</a>
+    <a class="back" href="@Model.BackTo" aria-label="Back">‹</a>
     <h1>Delete</h1>
 }
 
@@ -21,17 +21,17 @@
                 <li>@story</li>
             }
         </ul>
-        <p><a href="@Shelves.PathOf(Model.Shelf, Model.Entry!)">Back to it</a></p>
+        <p><a href="@Model.BackTo">Back to it</a></p>
     }
     else
     {
         <p>
-            The file goes from the shelf. Its last saved-over version, if it has one, stays beside it
-            as <code>@(Model.Entry).txt.bak</code>.
+            The file goes from the shelf@(Model.HasOpening ? ", and its opening with it" : string.Empty). Its last
+            saved-over version, if it has one, stays beside it as <code>@(Model.Entry).txt.bak</code>.
         </p>
 
         <form method="post">
-            <a href="@Shelves.PathOf(Model.Shelf, Model.Entry!)">Keep it</a>
+            <a href="@Model.BackTo">Keep it</a>
             <button type="submit" class="danger">Delete</button>
         </form>
     }

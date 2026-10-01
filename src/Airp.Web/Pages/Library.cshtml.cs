@@ -12,8 +12,11 @@ namespace Airp.Web.Pages;
 /// <param name="library">The shelves.</param>
 public sealed class LibraryModel(TextLibrary library) : PageModel
 {
-    /// <summary>All four shelves, for the tabs.</summary>
-    public IReadOnlyList<Shelf> All { get; } = Shelves.All(library);
+    /// <summary>The shelves that have a tab.</summary>
+    public IReadOnlyList<Shelf> Tabs { get; } = Shelves.Tabs(library);
+
+    /// <summary>Openings with no character to belong to, listed under the characters.</summary>
+    public IReadOnlyList<string> Orphans { get; private set; } = [];
 
     /// <summary>The shelf being shown.</summary>
     public Shelf? Shelf { get; private set; }
@@ -32,7 +35,15 @@ public sealed class LibraryModel(TextLibrary library) : PageModel
     /// <param name="shelf">The shelf's slug.</param>
     /// <returns>The page, or not found for a shelf that does not exist.</returns>
     public IActionResult OnGet(string? shelf)
-        => Load(shelf ?? "characters") ? Page() : NotFound();
+    {
+        // Openings live on their characters' pages; the shelf of them is not a page of its own.
+        if (string.Equals(shelf, "openings", StringComparison.OrdinalIgnoreCase))
+        {
+            return Redirect("/library/characters");
+        }
+
+        return Load(shelf ?? "characters") ? Page() : NotFound();
+    }
 
     /// <summary>Starts a new entry from the shelf's template and opens it.</summary>
     /// <param name="shelf">The shelf's slug.</param>
@@ -40,7 +51,7 @@ public sealed class LibraryModel(TextLibrary library) : PageModel
     /// <returns>A redirect to the new entry, or the shelf with the reason it was refused.</returns>
     public async Task<IActionResult> OnPostAsync(string? shelf, CancellationToken cancellationToken)
     {
-        if (!Load(shelf ?? "characters"))
+        if (!Load(shelf ?? "characters") || !Shelf!.Tabbed)
         {
             return NotFound();
         }
@@ -77,6 +88,7 @@ public sealed class LibraryModel(TextLibrary library) : PageModel
         }
 
         Entries = [.. TextLibrary.Names(Shelf.Folder).Select(n => (n, Teaser(n)))];
+        Orphans = Shelf.Slug == "characters" ? Shelves.Orphans(library) : [];
         return true;
     }
 

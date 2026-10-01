@@ -2,7 +2,7 @@
 @model LibraryEntryModel
 
 @section Header {
-    <a class="back" href="/library/@Model.Shelf!.Slug" aria-label="@Model.Shelf.Title">‹</a>
+    <a class="back" href="/library/@(Model.Shelf!.Tabbed ? Model.Shelf.Slug : "characters")" aria-label="Library">‹</a>
     <h1>@Model.Entry</h1>
 }
 
@@ -11,7 +11,12 @@
     <p class="notice" role="status">@Model.Notice</p>
 }
 
-@if (Model.Shelf!.StoriesNameIt)
+@if (!Model.Shelf!.Tabbed)
+{
+    <p class="used-by">An opening with no character of the same name: no new story is offered it. Delete it, or add the character.</p>
+}
+
+@if (Model.Shelf.StoriesNameIt)
 {
     <p class="used-by">
         @if (Model.UsedBy.Count == 0)
@@ -67,6 +72,7 @@
 
                 <button type="submit">Save the opening</button>
             </form>
+            <p class="entry-tools"><a class="danger" href="/library/openings/@Uri.EscapeDataString(Model.Entry!)/delete">Delete the opening…</a></p>
 
             @if (Model.OpeningCurrent is not null)
             {

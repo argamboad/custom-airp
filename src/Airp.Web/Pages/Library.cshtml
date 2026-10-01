@@ -7,7 +7,7 @@
 }
 
 <nav class="shelves">
-    @foreach (var shelf in Model.All)
+    @foreach (var shelf in Model.Tabs)
     {
         <a href="/library/@shelf.Slug" aria-current="@(shelf == Model.Shelf ? "page" : null)">@shelf.Title</a>
     }
@@ -18,7 +18,7 @@
     <summary>New @Model.Shelf!.Kind</summary>
     <form method="post">
         <label>
-            <span>Name <span class="aside">becomes the file name@(Model.Shelf.Slug == "openings" ? " — the character's, to go with it" : string.Empty)</span></span>
+            <span>Name <span class="aside">becomes the file name</span></span>
             <input name="Name" value="@Model.Name" autocomplete="off">
         </label>
         <button type="submit">Create</button>
@@ -47,4 +47,18 @@ else
             </li>
         }
     </ul>
+}
+
+@if (Model.Orphans.Count > 0)
+{
+    <section class="orphans">
+        <h2>Openings with no character</h2>
+        <p class="aside">An opening goes with the character of the same name. These match none, so no new story is offered them.</p>
+        <ul class="stories">
+            @foreach (var name in Model.Orphans)
+            {
+                <li><a href="/library/openings/@Uri.EscapeDataString(name)"><span class="name">@name</span></a></li>
+            }
+        </ul>
+    </section>
 }

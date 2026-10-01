@@ -542,3 +542,11 @@ button.danger {
     margin: 2rem 0 1rem;
     text-align: right;
 }
+
+.orphans { margin-top: 2rem; }
+
+.orphans h2 { font-size: 1rem; margin: 0; }
+
+.orphans .aside { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.875rem; }
+
+.opening .entry-tools { margin: 0.75rem 0 0; }

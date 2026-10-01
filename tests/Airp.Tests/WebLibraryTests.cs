@@ -239,6 +239,58 @@ public sealed class WebLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Openings_have_no_tab_and_their_shelf_leads_to_the_characters()
+    {
+        var page = new LibraryModel(_library);
+
+        page.Tabs.Select(static t => t.Slug).ShouldBe(["characters", "personas", "snippets"]);
+        new LibraryModel(_library).OnGet("openings").ShouldBeOfType<RedirectResult>().Url.ShouldBe("/library/characters");
+    }
+
+    [Fact]
+    public async Task An_opening_is_edited_on_its_characters_page()
+        => (await Entry().OnGetAsync("openings", "vardhal", CancellationToken.None))
+            .ShouldBeOfType<RedirectResult>().Url.ShouldBe("/library/characters/Vardhal#opening");
+
+    [Fact]
+    public async Task An_opening_with_no_character_is_listed_under_the_characters_and_can_still_be_opened()
+    {
+        File.WriteAllText(Path.Combine(_library.Openings, "Ghost.txt"), "*Nobody here.*\n");
+
+        var shelf = new LibraryModel(_library);
+        shelf.OnGet("characters");
+        shelf.Orphans.ShouldBe(["Ghost"]);
+
+        var page = Entry();
+        (await page.OnGetAsync("openings", "Ghost", CancellationToken.None)).ShouldBeOfType<PageResult>();
+        page.Text.ShouldBe("*Nobody here.*\n");
+    }
+
+    [Fact]
+    public async Task Deleting_a_character_takes_its_opening_with_it()
+    {
+        var page = Deletion();
+        await page.OnGetAsync("characters", "Vardhal", CancellationToken.None);
+        page.HasOpening.ShouldBeTrue();
+
+        (await Deletion().OnPostAsync("characters", "Vardhal", CancellationToken.None))
+            .ShouldBeOfType<RedirectResult>().Url.ShouldBe("/library/characters");
+
+        TextLibrary.Names(_library.Characters).ShouldBeEmpty();
+        TextLibrary.Names(_library.Openings).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Deleting_an_opening_alone_keeps_the_character_and_goes_back_to_it()
+    {
+        (await Deletion().OnPostAsync("openings", "Vardhal", CancellationToken.None))
+            .ShouldBeOfType<RedirectResult>().Url.ShouldBe("/library/characters/Vardhal");
+
+        TextLibrary.Names(_library.Openings).ShouldBeEmpty();
+        TextLibrary.Names(_library.Characters).ShouldBe(["Vardhal"]);
+    }
+
+    [Fact]
     public async Task An_entry_that_is_not_on_the_shelf_is_not_found()
     {
         (await Entry().OnGetAsync("characters", "Nobody", CancellationToken.None)).ShouldBeOfType<NotFoundResult>();

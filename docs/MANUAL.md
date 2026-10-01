@@ -1120,11 +1120,13 @@ Do not put it behind Funnel or any public tunnel: the database holds every story
   inner thoughts included, applied together — and the transcript as Markdown, JSON or text. The download is named by the date
   alone, so a phone's download notice does not say what it is.
 
-- **Library**, beside New in the list: the four shelves as tabs — characters, personas, snippets,
-  openings. Open an entry and it is a text box: change it and **Save**, which stays at the bottom
-  of the screen however far down a long card you are. A character's page has its opening under it,
-  saved on its own, or **Write an opening** when it has none. **New** on a shelf starts from the
-  same template the terminal uses, and refuses a name already there rather than replacing it.
+- **Library**, beside New in the list: characters, personas and snippets as tabs. Open an entry
+  and it is a text box: change it and **Save**, which stays at the bottom of the screen however far
+  down a long card you are. **A character and its opening are one page** — the opening under the
+  card, saved on its own, or **Write an opening** when there is none — because the matching name
+  is the whole association; they stay two files. An opening that matches no character is listed at
+  the bottom of the characters tab, to be fixed or removed. **New** on a shelf starts from the same
+  template the terminal uses, and refuses a name already there rather than replacing it.
 
   **A save never loses writing.** Each one keeps what it replaced as `<name>.txt.bak` beside the
   file — one step back from a bad edit, and invisible to the shelves. If the file was changed
@@ -1134,8 +1136,9 @@ Do not put it behind Funnel or any public tunnel: the database holds every story
 
   **A character or persona a story uses cannot be deleted** from here. Every turn reads it, so the
   story would carry on with nothing in its place; the page lists the stories instead. The default
-  persona counts as used by every story that names none. Snippets and openings can always go — a
-  story keeps its own copy of what it took from them. Renaming is not offered here or in the
+  persona counts as used by every story that names none. Deleting a character takes its opening
+  with it, and the page says so; an opening can also go on its own, from the character's page.
+  Snippets and openings can always go — a story keeps its own copy of what it took from them. Renaming is not offered here or in the
   terminal: stories hold the name.
 
 **What stays in the terminal:** copying with one key — on a phone, press and hold the text

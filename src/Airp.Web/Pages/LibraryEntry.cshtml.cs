@@ -88,6 +88,12 @@ public sealed class LibraryEntryModel(LocalConversationProvider conversations, T
             return NotFound();
         }
 
+        // An opening is edited on its character's page, when it has one.
+        if (Shelf!.Slug == "openings" && TextLibrary.Find(library.Characters, Entry) is { } character)
+        {
+            return Redirect(Shelves.PathOf(Shelves.Find(library, "characters")!, Path.GetFileNameWithoutExtension(character)) + "#opening");
+        }
+
         Notice = TempData[NoticeKey] as string;
         (Text, Version) = await ReadAsync(Shelf!.Folder, Entry!, cancellationToken).ConfigureAwait(false);
         await LoadOpeningAsync(cancellationToken).ConfigureAwait(false);

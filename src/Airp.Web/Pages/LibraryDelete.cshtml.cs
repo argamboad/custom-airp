@@ -26,6 +26,17 @@ public sealed class LibraryDeleteModel(LocalConversationProvider conversations, 
     /// <summary>The stories that name it; while there are any, it is not deleted.</summary>
     public IReadOnlyList<string> UsedBy { get; private set; } = [];
 
+    /// <summary>For a character, whether it has an opening, which goes with it.</summary>
+    public bool HasOpening { get; private set; }
+
+    /// <summary>For an opening, the character it belongs to, which this page returns to.</summary>
+    public string? Character { get; private set; }
+
+    /// <summary>Where "keep it" and a finished deletion lead.</summary>
+    public string BackTo => Character is not null
+        ? Shelves.PathOf(Shelves.Find(library, "characters")!, Character) + "#opening"
+        : Shelves.PathOf(Shelf!, Entry!);
+
     /// <summary>Shows what would go, or why it cannot.</summary>
     /// <param name="shelf">The shelf's slug.</param>
     /// <param name="name">The entry's name.</param>
@@ -54,7 +65,16 @@ public sealed class LibraryDeleteModel(LocalConversationProvider conversations, 
         }
 
         TextLibrary.Delete(Shelf!.Folder, Entry!);
-        return Redirect($"/library/{Shelf.Slug}");
+
+        // The two are one entry on these pages: an opening left behind would belong to nothing.
+        if (HasOpening)
+        {
+            TextLibrary.Delete(library.Openings, Entry!);
+        }
+
+        return Redirect(Character is not null
+            ? Shelves.PathOf(Shelves.Find(library, "characters")!, Character)
+            : $"/library/{(Shelf.Tabbed ? Shelf.Slug : "characters")}");
     }
 
     private async Task<bool> LoadAsync(string shelf, string name, CancellationToken cancellationToken)
@@ -67,6 +87,10 @@ public sealed class LibraryDeleteModel(LocalConversationProvider conversations, 
         }
 
         Entry = Path.GetFileNameWithoutExtension(path);
+        HasOpening = Shelf.Slug == "characters" && TextLibrary.Find(library.Openings, Entry) is not null;
+        Character = Shelf.Slug == "openings" && TextLibrary.Find(library.Characters, Entry) is { } owner
+            ? Path.GetFileNameWithoutExtension(owner)
+            : null;
 
         if (Shelf.StoriesNameIt)
         {
