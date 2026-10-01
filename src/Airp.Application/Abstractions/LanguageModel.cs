@@ -167,6 +167,10 @@ public interface ILanguageModelClient
     /// zero, because omitting the field and sending <c>0</c> are different requests to some
     /// backends and only one of them is "no opinion".
     /// </param>
+    /// <param name="reasoning">
+    /// Whether the model may reason before answering, or <see langword="null"/> to send
+    /// nothing and leave it to the model.
+    /// </param>
     /// <param name="cancellationToken">Token used to abort the call.</param>
     /// <returns>The reply.</returns>
     /// <exception cref="Domain.ModelUnavailableException">
@@ -178,6 +182,7 @@ public interface ILanguageModelClient
         double? temperature = null,
         int? maxTokens = null,
         double? frequencyPenalty = null,
+        bool? reasoning = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Lists the models the account can reach, with the context each accepts.</summary>

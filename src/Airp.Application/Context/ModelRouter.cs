@@ -37,11 +37,16 @@ public enum ModelTask
 /// background tasks want accuracy, and penalising a summary for repeating the transcript's
 /// own names would be penalising it for doing its job.
 /// </param>
+/// <param name="Reasoning">
+/// Whether the model may reason before it answers, or null to send nothing and leave it to the
+/// model. Only what the reader waits on says <c>false</c> (<see cref="ModelOptions.ThinkBeforeReplying"/>).
+/// </param>
 public readonly record struct ModelChoice(
     string Model,
     double Temperature,
     int MaxTokens,
-    double? FrequencyPenalty = null);
+    double? FrequencyPenalty = null,
+    bool? Reasoning = null);
 
 /// <summary>
 /// Decides which model answers which kind of request.
@@ -115,13 +120,19 @@ public static class ModelRouter
             ModelTask.Aside => new ModelChoice(
                 settings.Name,
                 Temperature: 0.4,
-                MaxTokens: 600),
+                MaxTokens: 600,
+                Reasoning: Thinking(settings)),
 
             _ => new ModelChoice(
                 settings.Name,
                 temperature ?? settings.Temperature,
                 maxTokens ?? settings.MaxTokens,
-                frequencyPenalty),
+                frequencyPenalty,
+                Thinking(settings)),
         };
     }
+
+    // A reply's ceiling is the length of the scene, and a model that thinks first spends it
+    // before the scene starts.
+    private static bool? Thinking(ModelOptions settings) => settings.ThinkBeforeReplying ? null : false;
 }
