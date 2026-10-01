@@ -239,5 +239,4 @@ transcript and redraws.
 | Regenerate | `RegenerateAsync` (line 338): refused on a written opening with no turn of the reader's yet (`RegenerateReasons.CanReplace`); otherwise tombstone the newest reply **before** the call, restore it on failure — then `ReplyAsync` with `RegenerateDirective` |
 | Aside (`/ask`) | `AskAsync` (line 492): `ComposeAsync` with `AskDirective`, `ModelTask.Aside`; answer goes to `Asides` + a spend row — **never** to `Messages` |
 | Rebuild | `RebuildMemoryAsync` (line 1149): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
-| From the proxy | `FrontEndTurn.RunAsync` decides turn, command or refusal; identical from `SendAsync` down ([FLOWS.md §7](FLOWS.md)) |
-| From the web pages | the same `FrontEndTurn.RunAsync`, then identical from `SendAsync` down; a stored turn answers with a redirect ([FLOWS.md §7b](FLOWS.md)) |
+| From the web pages | `FrontEndTurn.RunAsync` decides turn, command or refusal, then identical from `SendAsync` down; a stored turn answers with a redirect ([FLOWS.md §7](FLOWS.md)) |

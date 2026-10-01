@@ -46,10 +46,10 @@ public sealed record SearchMatch(int Number, ChatRole Role, string Excerpt);
 /// </summary>
 /// <remarks>
 /// <para>
-/// The terminal draws these as a pane, the web pages as a block under the transcript and the
-/// proxy as a reply. One place builds the lines, because the alternative is three places
-/// deciding what "the facts" or "what this story has cost" means, and a figure that reads one
-/// way in the terminal and another on a phone is one of them wrong.
+/// The terminal draws these as a pane and the web pages as a block under the transcript. One
+/// place builds the lines, because the alternative is two places deciding what "the facts" or
+/// "what this story has cost" means, and a figure that reads one way in the terminal and another
+/// on a phone is one of them wrong.
 /// </para>
 /// <para>Every one only reads. None calls the model or writes anything.</para>
 /// </remarks>

@@ -12,8 +12,8 @@ namespace Airp.Application.Text;
 /// to be read as suspending.
 /// </para>
 /// <para>
-/// Shared rather than kept by the terminal, because the proxy runs the same commands for a
-/// front end, and a second copy of this wording is a second place for the frame to be lost.
+/// Shared rather than kept by the terminal, because the web pages run the same commands, and a
+/// second copy of this wording is a second place for the frame to be lost.
 /// </para>
 /// </remarks>
 public static class LocalDirections

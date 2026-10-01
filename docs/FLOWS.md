@@ -222,51 +222,7 @@ sequenceDiagram
 
 ---
 
-## 7. The proxy — playing from a third-party front end
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant J as Front end (Janitor)
-    participant PX as Airp.Proxy
-    participant SR as SessionResolver
-    participant FT as FrontEndTurn
-    participant P as LocalConversationProvider
-
-    J->>PX: POST /v1/chat/completions + Bearer
-    PX->>PX: constant-time token check — 401 on mismatch
-    PX->>P: ListAsync
-    PX->>SR: Resolve(full prompt, chats)
-    Note over SR: the [[rp:id]] tag, and nothing else —<br/>no names, no openings (ADR 0017)
-    alt no tag, or a tag naming nothing
-        PX-->>J: 404 saying which, and how to fix it<br/>(nothing written — a wrong write is permanent)
-    else resolved
-        PX->>FT: RunAsync(chat, newest user turn only, persona label stripped)
-        alt a message, /do or /focus
-            FT->>P: SendAsync / ContinueAsync
-            Note over P: flows 1–3 run exactly as from the terminal —<br/>the front end's truncated history is discarded
-        else /ask
-            FT->>P: AskAsync — shown, never stored
-        else /recap, /help or a reading command (/card /facts /cost …)
-            Note over FT: StoryReports, read from disk — no model call
-        else /fact or /tracker
-            FT->>P: AddFactAsync / SetTrackerAsync — state, never a turn
-        else unknown command
-            FT-->>PX: refused — nothing stored, nothing billed
-        end
-        alt stream: true
-            PX-->>J: finished reply chunked as SSE
-        else
-            PX-->>J: one OpenAI-shaped completion
-        end
-    end
-```
-
-`FrontEndTurn` lives in Infrastructure, not in the proxy, because the web pages (§7b) need the
-same answer to "what does this typed message mean". Two copies would be two places for a typo to
-be read differently — once as a refusal, once as a permanent turn.
-
-## 7b. The web pages — playing from a phone's browser
+## 7. The web pages — playing from a phone's browser
 
 ```mermaid
 sequenceDiagram

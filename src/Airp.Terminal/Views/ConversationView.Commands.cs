@@ -196,8 +196,8 @@ internal sealed partial class ConversationView
     /// <summary>Opens a pane over one of the reading commands' reports, or says why there is none.</summary>
     /// <remarks>
     /// The lines come from <see cref="StoryReports"/>, which every front end reads from, so
-    /// "the facts" or "what this story has cost" means the same thing here, on a phone's
-    /// browser and in Janitor.
+    /// "the facts" or "what this story has cost" means the same thing here and on a phone's
+    /// browser.
     /// </remarks>
     /// <param name="title">What the progress line calls it.</param>
     /// <param name="read">Produces the report.</param>

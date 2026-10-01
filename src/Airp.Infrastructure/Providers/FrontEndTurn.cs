@@ -33,14 +33,14 @@ public readonly record struct FrontEndOutcome(
 /// <para>
 /// The same commands the terminal's composer has, read by the same parser and carrying the
 /// same directions, because a front end is a chat box and a chat box is where a reader types
-/// them. Before this, <c>/ask what does she know?</c> typed in Janitor was stored as a turn of
-/// the story — permanent, billed, and answered in character by someone who had just been
-/// asked a question nobody in the scene heard.
+/// them. Before this, <c>/ask what does she know?</c> typed into a chat box was stored as a
+/// turn of the story — permanent, billed, and answered in character by someone who had just
+/// been asked a question nobody in the scene heard.
 /// </para>
 /// <para>
-/// Here rather than in the proxy because two front ends need it: the proxy, for Janitor, and
-/// the web pages. Two copies of what counts as a command would be two places for a typo to be
-/// read differently — once as a refusal, once as a permanent turn.
+/// Here rather than in the web project because it is about the story, not about HTTP: a second
+/// front end reads it from the same place. Two copies of what counts as a command would be two
+/// places for a typo to be read differently — once as a refusal, once as a permanent turn.
 /// </para>
 /// <para>
 /// Every command the composer has is run here, with the same meaning, plus <c>/recap</c>.

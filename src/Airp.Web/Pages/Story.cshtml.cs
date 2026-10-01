@@ -138,8 +138,9 @@ public sealed class StoryModel(
     /// <summary>Sends what the reader wrote: a turn, a command, or a refusal.</summary>
     /// <remarks>
     /// <para>
-    /// Through the same handling as a message from Janitor, so a command means the same thing in
-    /// every front end and a typo is refused everywhere rather than stored somewhere.
+    /// Through <see cref="FrontEndTurn"/>, which reads commands with the terminal composer's own
+    /// parser, so a command means the same thing in every front end and a typo is refused
+    /// everywhere rather than stored somewhere.
     /// </para>
     /// <para>
     /// Snippets and emoji shortcodes are expanded first. The terminal expands them as they are

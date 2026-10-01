@@ -98,8 +98,8 @@ internal static partial class Program
     /// <para>
     /// Deliberately against <c>IConversationProvider</c> rather than the local adapter, so this
     /// exercises the same call the conversation view makes, for whichever flavour is configured.
-    /// A test that drove turns through the proxy instead would leave the terminal's own send
-    /// path uncovered, which is the one a reader actually uses.
+    /// A test that drove turns through another front end instead would leave the terminal's own
+    /// send path uncovered, which is the one a reader actually uses.
     /// </para>
     /// <para>
     /// The reply goes to standard output on its own, with everything else as markup around it,
