@@ -38,7 +38,8 @@
 {
     @* Read from the reply itself, so it is said for as long as it is the newest turn. *@
     <p class="notice" role="status">
-        @Model.FellBackFrom was not available, so the default (@Model.DefaultModel) wrote the newest reply.
+        @Model.FellBackFrom could not write the newest reply — it was not available, or the story no longer fits
+        what it can read — so the default (@Model.DefaultModel) wrote it.
         The story still asks for @Model.FellBackFrom and will try it again next turn; change it in Settings.
     </p>
 }

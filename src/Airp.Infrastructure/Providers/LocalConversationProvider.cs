@@ -517,7 +517,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
 
             (reply, _) = await CompleteForStoryAsync(
                 conversation,
-                composed.Context.Messages,
+                composed,
                 choice with { FrequencyPenalty = null },
                 cancellationToken).ConfigureAwait(false);
         }
@@ -764,7 +764,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
             // work this is, not which character is played on what.
             (reply, fellBackFrom) = await CompleteForStoryAsync(
                 conversation,
-                context.Messages,
+                composed,
                 choice,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -834,7 +834,8 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         ModelOptions Settings,
         IReadOnlyList<TrackerRecord> Meters,
         SamplerOverrides Sampler,
-        int? ShrunkBudget = null)
+        int? ShrunkBudget = null,
+        int? Room = null)
     {
         /// <summary>The audit line: the builder's breakdown, and the budget when the story's model shrank it.</summary>
         public string Audit => ShrunkBudget is { } budget
@@ -918,7 +919,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
         // below — the summariser reserves room, the retriever trims to its share, the builder
         // drops turns, and the day those three disagreed about the budget a real story lost
         // twenty-four turns with nothing written down about them.
-        var window = conversation.Model is not null && conversation.ModelContext is { } length
+        var window = conversation.Model is { } own && settings.WindowOf(own, conversation.ModelContext) is { } length
             ? length - (sampler.MaxTokens ?? settings.MaxTokens)
             : (int?)null;
 
@@ -996,7 +997,7 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 conversation.Id);
         }
 
-        return new Composed(context, settings, meters, sampler, shrunk);
+        return new Composed(context, settings, meters, sampler, shrunk, window);
     }
 
     /// <summary>
@@ -2258,24 +2259,67 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
                 + $"The story stays on {keeping}.");
         }
 
+        // What the model can really read, which the list can overstate (Model:Windows).
+        var settings = _options.CurrentValue.Model;
+        var window = settings.WindowOf(found.Id, found.ContextLength);
+
+        if (window is { } room)
+        {
+            // What every prompt of this story carries whatever is compressed: the character, the
+            // persona, the dials' words, and room for the reply and for the newest turn. A model
+            // that cannot hold them cannot play the story — handed more than it was trained for,
+            // it answers in token soup — so it is refused here rather than paid for there.
+            var identity = await IdentityAsync(conversationId, cancellationToken).ConfigureAwait(false);
+            var pack = await _dials.PackAsync(cancellationToken).ConfigureAwait(false);
+            var dialValues = await DialService.ValuesAsync(store, conversationId, cancellationToken).ConfigureAwait(false);
+            var reply = DialEngine.Sampler(pack, dialValues).MaxTokens ?? settings.MaxTokens;
+
+            var fixedLayers = ContextBuilder.Reserve(
+                identity.Character,
+                ContextBuilder.PersonaLayer(identity.Persona),
+                DialEngine.Directives(pack, dialValues));
+            var needed = fixedLayers + reply + RoomForATurn;
+
+            if (needed > room)
+            {
+                return new ModelChange(
+                    Saved: false,
+                    Model: conversation.Model,
+                    Context: conversation.ModelContext,
+                    $"{found.Id} can read {room:N0} tokens, and this story needs {needed:N0} before any of it is "
+                    + $"said: {fixedLayers:N0} for the character, persona and dials, {reply:N0} for the reply. "
+                    + $"It cannot be played on it, so it was not set. The story stays on {keeping}.");
+            }
+        }
+
         conversation.Model = found.Id;
-        conversation.ModelContext = found.ContextLength;
+        conversation.ModelContext = window;
         await store.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // The same sum the prompt builder makes: the window less room for the reply.
-        var settings = _options.CurrentValue.Model;
         var budget = settings.ContextBudget;
-        var fits = found.ContextLength is not { } length || length - settings.MaxTokens >= budget;
+        var fits = window is not { } length || length - settings.MaxTokens >= budget;
 
         return new ModelChange(
             Saved: true,
             Model: found.Id,
-            Context: found.ContextLength,
+            Context: window,
             fits
                 ? $"This story now uses {found.Id}."
-                : $"This story now uses {found.Id}. Its window is {found.ContextLength:N0} tokens, under the "
+                : $"This story now uses {found.Id}. It can read {window:N0} tokens, under the "
                   + $"{budget:N0} budget, so the story's budget shrinks to fit it and older turns compress sooner.");
     }
+
+    /// <summary>
+    /// The least room a prompt must have for its newest turns, over its fixed layers and the
+    /// reply, for a model to be offered a story at all.
+    /// </summary>
+    /// <remarks>
+    /// A floor, not a target: a story whose newest turn is longer still plays, going over the
+    /// budget as it always may — but a model with less than this left would be summarising
+    /// on every turn and seeing almost none of the scene.
+    /// </remarks>
+    private const int RoomForATurn = 1_000;
 
     /// <summary>
     /// The provider's models by id, for labelling a choice with its price; empty when the list
@@ -2319,25 +2363,46 @@ public sealed class LocalConversationProvider : IChatProvider, IConversationProv
     }
 
     /// <summary>
-    /// Asks the story's model, and the default when the story's model is not there any more.
+    /// Asks the story's model, and the default when the story's model cannot write this turn.
     /// </summary>
     /// <remarks>
-    /// Only a refusal about the model itself falls back (<see cref="ModelUnavailableException.NoSuchModel"/>):
-    /// a rejected key, an empty account or a host that is down would refuse the default
-    /// identically, and a second attempt would only be a second failure. The story keeps its
-    /// model — "no endpoints" is often a host missing for an hour — and the reply says who
-    /// wrote it.
+    /// <para>
+    /// Two things mean it cannot. The prompt is larger than the model can read — which the
+    /// budget prevents unless the character and persona alone outgrow it, and a model handed
+    /// more than it was trained for answers in token soup rather than failing — so that turn
+    /// never goes to it. Or the provider refuses the model itself
+    /// (<see cref="ModelUnavailableException.NoSuchModel"/>).
+    /// </para>
+    /// <para>
+    /// Nothing else falls back: a rejected key, an empty account or a host that is down would
+    /// refuse the default identically. The story keeps its model either way — "no endpoints" is
+    /// often a host missing for an hour — and the reply records who wrote it.
+    /// </para>
     /// </remarks>
     /// <returns>The reply, and the story's model when the default wrote it instead.</returns>
     private async Task<(ModelReply Reply, string? FellBackFrom)> CompleteForStoryAsync(
         ConversationRecord conversation,
-        IReadOnlyList<ModelMessage> messages,
+        Composed composed,
         ModelChoice choice,
         CancellationToken cancellationToken)
     {
+        var messages = composed.Context.Messages;
+
         if (conversation.Model is not { } own)
         {
             return (await Ask(choice.Model).ConfigureAwait(false), null);
+        }
+
+        if (composed.Room is { } room && composed.Context.EstimatedTokens > room)
+        {
+            _logger.LogWarning(
+                "{Model} cannot read {Conversation}'s prompt ({Estimated} tokens against {Room}); the default wrote this turn.",
+                own,
+                conversation.Id,
+                composed.Context.EstimatedTokens,
+                room);
+
+            return (await Ask(choice.Model).ConfigureAwait(false), own);
         }
 
         try

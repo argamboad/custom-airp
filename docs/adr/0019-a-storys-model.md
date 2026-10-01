@@ -18,6 +18,13 @@ that fills the budget. And a model that is there today can have no host tomorrow
 - **Checked before it is saved.** A model is saved only if the provider's list has it, with the
   window the list gives. One not listed, or not checkable because the list cannot be read, is not
   saved; the reader is told, and the story stays on what it had.
+- **The window is the model's, not the listing's.** A provider lists what a host accepts; a
+  model handed more than it was trained for answers in token soup. Dolphin Venice, listed at 128k
+  and built on a 32k model, did exactly that on a 35k-token story. A correction per model
+  (`model.windows`, shipped for the known cases) is believed over the list.
+- **A model that cannot hold the story is refused.** The character, persona, dials and reply are
+  in every prompt; if they do not fit the window, the model is not saved. If they stop fitting
+  later, that turn goes to the default, recorded as a fallback.
 - **The budget fits the window.** A story on a model whose window, less the reply's ceiling, is
   under the configured budget gets that as its budget — one copy of the settings, handed to the
   summariser, the retriever and the builder alike, since those three disagreeing is what once lost

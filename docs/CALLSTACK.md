@@ -52,7 +52,7 @@ database enforces what a check-then-insert could race past.
 
 ---
 
-## 2. Building the prompt — `ComposeAsync` (line 861)
+## 2. Building the prompt — `ComposeAsync` (line 862)
 
 Shared verbatim by a send, a carry-on, a regenerate, an aside, and every pass of a rebuild —
 an aside that differed by one layer would miss the prefix cache the next real turn is about to
@@ -60,32 +60,32 @@ hit.
 
 ```text
 ComposeAsync(store, conversation, instruction, ct)
-├─ 867  visible history            live rows, ordered by Sequence
-├─ 881  character  = TextLibrary.ResolveAsync(own text → file by name → default)
-├─ 888  persona    = same rule, with Airp:DefaultPersona as the default   (TextLibrary.cs:206)
-├─ 896  known      = FactExtractor.LiveAsync    facts with ValidToSequence == null
-├─ 899  meters     = trackers by name
-├─ 909  pack       = IDialService.PackAsync     dials.json, or the embedded default
-├─ 910  dialValues = the conversation's stored choices (DialValues rows)
-├─ 913  directives = DialEngine.Directives(pack, values)   every prompt-lever dial
+├─ 868  visible history            live rows, ordered by Sequence
+├─ 882  character  = TextLibrary.ResolveAsync(own text → file by name → default)
+├─ 889  persona    = same rule, with Airp:DefaultPersona as the default   (TextLibrary.cs:206)
+├─ 897  known      = FactExtractor.LiveAsync    facts with ValidToSequence == null
+├─ 900  meters     = trackers by name
+├─ 910  pack       = IDialService.PackAsync     dials.json, or the embedded default
+├─ 911  dialValues = the conversation's stored choices (DialValues rows)
+├─ 914  directives = DialEngine.Directives(pack, values)   every prompt-lever dial
 │                    in force, rendered in the screen's own words (DialEngine.cs:54)
-├─ 914  sampler    = DialEngine.Sampler(pack, values)      temperature / ceiling /
+├─ 915  sampler    = DialEngine.Sampler(pack, values)      temperature / ceiling /
 │                    frequency penalty, from the sampler-lever dials (DialEngine.cs:124)
-├─ 926  settings   = settings.WithWindow(ModelContext − reply ceiling) when the story
+├─ 927  settings   = settings.WithWindow(ModelContext − reply ceiling) when the story
 │                    has its own model with a smaller window — ONE copy, handed to the
 │                    summariser, the retriever and the builder, so they cannot disagree
-├─ 938  prepared   = ConversationSummariser.PrepareAsync(...)   ← §3, may compress
-├─ 956  live       = FactExtractor.LiveAsync AGAIN — extraction may have just run,
+├─ 939  prepared   = ConversationSummariser.PrepareAsync(...)   ← §3, may compress
+├─ 957  live       = FactExtractor.LiveAsync AGAIN — extraction may have just run,
 │                    and a fact established in the compressed stretch must reach
 │                    THIS turn's prompt, not the next one's
-├─ 965  budget     = prepared.CompressionFailed ? (model window ?? int.MaxValue) : ContextBudget
+├─ 966  budget     = prepared.CompressionFailed ? (model window ?? int.MaxValue) : ContextBudget
 │                    — going over budget costs cents; dropping turns costs the story;
 │                    a model's own window is a wall, not a target
-├─ 972  memories   = RecallAsync(...)                            ← §4
-└─ 978  LocalPrompt.Build(named arguments, every one)            ← §5
+├─ 973  memories   = RecallAsync(...)                            ← §4
+└─ 979  LocalPrompt.Build(named arguments, every one)            ← §5
 ```
 
-The resolution at 881/888 is the line the 202-message failure taught: the summariser must see
+The resolution at 882/889 is the line the 202-message failure taught: the summariser must see
 the **resolved** layers, because `conversation.CharacterDefinition` is empty in every
 conversation the application creates — the conversation stores a name, the text lives in a
 file.
@@ -136,10 +136,10 @@ occupies.
 
 ---
 
-## 4. Retrieval — `RecallAsync` (provider line 1010) → `MemoryRetriever`
+## 4. Retrieval — `RecallAsync` (provider line 1011) → `MemoryRetriever`
 
 ```text
-RecallAsync(store, conversation, prepared, settings, ct)        (line 1010)
+RecallAsync(store, conversation, prepared, settings, ct)        (line 1011)
 ├─ no embedding client, or no recent turns → []
 ├─ compressedUpTo = prepared.Recent[0].Sequence − 1;  ≤0 → []
 ├─ query = the newest USER turn among the recent ones; blank → []
@@ -194,6 +194,8 @@ ReplyAsync(store, conversation, pending, instruction, progress, ct)
 │                ceiling (200..2600) and frequency penalty, each falling back
 │                to the configured default when its dial is unset)
 ├─ 765  CompleteForStoryAsync → _model.CompleteAsync(messages, conversation.Model ?? choice.Model, ...)
+│         · a prompt larger than the story's model can read (Model:Windows) →
+│           never sent to it; choice.Model writes it, the reply records FellBackFrom
 │         · the story's model refused as NoSuchModel (404, "not a valid model") →
 │           the same call on choice.Model; the reply records FellBackFrom
 │         · any other refusal is not retried on the default
@@ -231,6 +233,6 @@ transcript and redraws.
 | Carry on (no user turn) | `ContinueAsync` (line 406): no pending row, a framed "carry the scene forward" instruction — then `ReplyAsync` as above |
 | Regenerate | `RegenerateAsync` (line 338): refused on a written opening with no turn of the reader's yet (`RegenerateReasons.CanReplace`); otherwise tombstone the newest reply **before** the call, restore it on failure — then `ReplyAsync` with `RegenerateDirective` |
 | Aside (`/ask`) | `AskAsync` (line 492): `ComposeAsync` with `AskDirective`, `ModelTask.Aside`; answer goes to `Asides` + a spend row — **never** to `Messages` |
-| Rebuild | `RebuildMemoryAsync` (line 1148): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
+| Rebuild | `RebuildMemoryAsync` (line 1149): delete derived memory (pinned facts kept), then loop `ComposeAsync` until a pass writes no summary |
 | From the proxy | `FrontEndTurn.RunAsync` decides turn, command or refusal; identical from `SendAsync` down ([FLOWS.md §7](FLOWS.md)) |
 | From the web pages | the same `FrontEndTurn.RunAsync`, then identical from `SendAsync` down; a stored turn answers with a redirect ([FLOWS.md §7b](FLOWS.md)) |

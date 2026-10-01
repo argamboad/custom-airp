@@ -703,10 +703,20 @@ only if it is on it, with the size of its context window. One that is not listed
 checked, because the list could not be read — is not saved, and you are told what the story
 stays on.
 
+**A model that cannot hold the story is refused.** The character, the persona, the dials and the
+reply go into every prompt whatever is summarised, so a model whose window is smaller than those
+cannot play the story at all — handed more than it was trained to read, a model answers in token
+soup rather than an error. You are told how much the story needs against what the model reads,
+and nothing is saved. Dolphin reads 32k, so a story whose card alone is 30k is refused; a
+distilled card of a few thousand tokens plays on it fine.
+
 **A small window shrinks the story's budget.** If the model holds less than your budget plus the
 reply, the story's budget becomes what it can hold: older turns are summarised sooner, and the
-audit says `budget … (the story's model)`. Magnum and Skyfall take 32k; the default takes a
-million.
+audit says `budget … (the story's model)`. Magnum, Skyfall and Dolphin take 32k; the default
+takes a million. OpenRouter's list says what a host accepts, not always what a model was trained
+for — it lists Dolphin at 128k — so airp keeps a correction per model, `model.windows` in
+`airp.json`, believed over the list. If a story's card grows past its model after the fact, that
+turn goes to the default instead, with the same warning as below.
 
 **If the story's model disappears**, a turn is not lost: the default writes that reply, the
 screen says so, and the story keeps asking for its own model on the next turn, since a model
