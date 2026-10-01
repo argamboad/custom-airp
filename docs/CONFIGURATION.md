@@ -75,6 +75,7 @@ table and survive re-enabling a disabled dial.
 | `Name` | `deepseek/deepseek-v4-flash` | criterion #1: the model must not refuse the story's content ([ADR 0008](adr/0008-uncensored-model-first.md)); prose second, cost a distant third |
 | `ApiKeyName` | `OPENROUTER_API_KEY` | the **name** of a secret in `ISecretStore` (`airp secret set`), never the key |
 | `Choices` | null → ten shipped roleplay finetunes (`ModelOptions.ShippedChoices`) | the models a story can be switched to, besides `Name`. Null rather than pre-filled because the binder appends a file's array to one that already has items. A choice is still checked against the provider's list before it is saved |
+| `Windows` | null → `ModelOptions.ShippedWindows` | the context a model can really read, by id, where the provider lists more — `{ "some/model": 32768 }`. Believed over the list: a story's budget is fitted to it, a model that cannot hold the story's fixed layers is refused, and a prompt larger than it goes to the default. Shipped: Dolphin Venice 32k (Mistral Small 24B 2501), UnslopNemo 128k (Mistral Nemo) |
 | `BackgroundModel` | null → `Name` | summariser + extractor. Must be as permissive as the reply model — a summariser that refuses is a character that forgets |
 | `EmbeddingModel` | `openai/text-embedding-3-small` | 1536 dims, ~$0.02/M |
 | `EmbeddingBaseUrl` | null → `BaseUrl` | what makes going direct-to-DeepSeek survivable: DeepSeek has no `/embeddings`, and without the split retrieval dies silently |

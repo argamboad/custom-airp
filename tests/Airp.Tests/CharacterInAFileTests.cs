@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Airp.Application.Abstractions;
 using Airp.Application.Options;
 using Airp.Domain.Conversations;
 using Airp.Infrastructure;
@@ -346,6 +347,47 @@ public sealed class CharacterInAFileTests : IDisposable
         reply.ContextAudit.ShouldNotBeNull().ShouldContain("(the story's model)");
         reply.ContextAudit.ShouldNotContain("dropped", Case.Sensitive);
         reply.EstimatedPromptTokens.ShouldNotBeNull().ShouldBeLessThanOrEqualTo(4000 - 200);
+    }
+
+    [Fact]
+    public async Task A_model_that_cannot_hold_the_character_is_refused_before_it_costs_anything()
+    {
+        // Observed: a 30k-token card sent to a model trained for 32k came back as token soup,
+        // 1,600 tokens of it, billed. The character here is about 3,000 tokens.
+        var id = await SeedAsync(4);
+        _model.Catalogue = [new ModelInfo("small/model", 3_500), new ModelInfo("roomy/model", 8_000)];
+
+        var refused = await Provider().SetModelAsync(id, "small/model");
+
+        refused.Saved.ShouldBeFalse();
+        refused.Message.ShouldContain("cannot be played on it");
+        _model.Calls.ShouldBeEmpty();
+
+        (await Provider().SetModelAsync(id, "roomy/model")).Saved.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_prompt_larger_than_the_storys_model_can_read_is_written_by_the_default_instead()
+    {
+        // How a story comes to not fit after its model was chosen: the card was edited longer.
+        var id = await SeedAsync(4);
+
+        await using (var store = _factory.CreateDbContext())
+        {
+            var story = await store.Conversations.SingleAsync(c => c.Id == id);
+            story.Model = "small/model";
+            story.ModelContext = 2_500;
+            await store.SaveChangesAsync();
+        }
+
+        _model.Summarises("They met at the dock.").Says("Fine.");
+        var added = await Provider().SendAsync(id, "Hello.");
+
+        // Never sent to the model that cannot read it; the reply (and any summary, which is
+        // always the default's) went to the default.
+        _model.Models.ShouldNotContain("small/model");
+        _model.Models[^1].ShouldBe("deepseek/deepseek-v4-flash");
+        added[^1].FellBackFrom.ShouldBe("small/model");
     }
 }
 

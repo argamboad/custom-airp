@@ -39,6 +39,7 @@ public sealed class StoryModelTests : IDisposable
             new ModelInfo("small/model", 32_768),
             new ModelInfo("gone/model", 128_000),
             new ModelInfo("tiny/model", 16_000),
+            new ModelInfo("cognitivecomputations/dolphin-mistral-24b-venice-edition", 128_000),
         ],
     };
 
@@ -309,5 +310,28 @@ public sealed class StoryModelTests : IDisposable
         _model.CatalogueFailure = new ModelUnavailableException("Could not reach the provider.");
 
         (await Provider().ModelsAsync()).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_model_whose_list_overstates_its_window_is_saved_with_the_window_it_can_really_read()
+    {
+        var chat = await StoryAsync();
+
+        var change = await Provider().SetModelAsync(chat.Id, "cognitivecomputations/dolphin-mistral-24b-venice-edition");
+
+        change.Saved.ShouldBeTrue();
+        change.Context.ShouldBe(32_768);
+    }
+
+    [Fact]
+    public void A_configured_window_beats_the_shipped_correction_which_beats_the_list()
+    {
+        var settings = new ModelOptions { Windows = new Dictionary<string, int> { ["mine/model"] = 16_000 } };
+
+        settings.WindowOf("mine/model", 128_000).ShouldBe(16_000);
+        settings.WindowOf("cognitivecomputations/dolphin-mistral-24b-venice-edition", 128_000).ShouldBe(32_768);
+        settings.WindowOf("cognitivecomputations/dolphin-mistral-24b-venice-edition", 8_000).ShouldBe(8_000);
+        settings.WindowOf("other/model", 64_000).ShouldBe(64_000);
+        settings.WindowOf("other/model", null).ShouldBeNull();
     }
 }

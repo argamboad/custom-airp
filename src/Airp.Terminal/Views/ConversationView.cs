@@ -753,7 +753,7 @@ internal sealed partial class ConversationView : ViewBase
     }
 
     /// <summary>
-    /// Says a reply arrived — or, when the story's model was not available and the default
+    /// Says a reply arrived — or, when the story's model could not write it and the default
     /// wrote it, says that instead, since the voice on screen is not the one chosen.
     /// </summary>
     /// <param name="arrived">What to say when the story's own model wrote it.</param>
@@ -761,7 +761,7 @@ internal sealed partial class ConversationView : ViewBase
     private ViewAction Arrived(string arrived)
         => _messages.LastOrDefault(static m => m.Role == ChatRole.Assistant)?.FellBackFrom is { } missing
             ? ViewAction.Status(
-                $"{missing} was not available, so the default wrote this reply. The story still asks for it; S to change.",
+                $"{missing} could not write this reply (not available, or the story no longer fits it), so the default did. S to change.",
                 StatusKind.Warning)
             : ViewAction.Status(arrived, StatusKind.Success);
 
